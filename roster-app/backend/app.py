@@ -17,9 +17,13 @@
 import json
 import os
 import random
+from datetime import date, timedelta
 from flask import Flask, request, jsonify, send_from_directory
 
-from scheduler import Employee, ShiftRequirement, solve_schedule, DAYS, SHIFT_TYPES
+from scheduler import (
+    Employee, ShiftRequirement, solve_schedule, DAYS, SHIFT_TYPES,
+    DEPARTMENTS, DEPARTMENT_LABEL_KO, DEPARTMENT_SHIFTS, SHIFT_LABEL_KO, SHIFT_TIME_RANGES,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "..", "data", "state.json")
@@ -48,18 +52,22 @@ def load_state():
     if _upstash_redis is not None:
         raw = _upstash_redis.get(STATE_KEY)
         if not raw:
-            return {"employees": [], "weeks": {}}
+            return {"employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {}}
         state = json.loads(raw)
         state.setdefault("employees", [])
         state.setdefault("weeks", {})
+        state.setdefault("public_holidays", [])
+        state.setdefault("shift_time_overrides", {})
         return state
 
     if not os.path.exists(DATA_PATH):
-        return {"employees": [], "weeks": {}}
+        return {"employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {}}
     with open(DATA_PATH, "r", encoding="utf-8") as f:
         state = json.load(f)
         state.setdefault("employees", [])
         state.setdefault("weeks", {})
+        state.setdefault("public_holidays", [])
+        state.setdefault("shift_time_overrides", {})
         return state
 
 
@@ -73,8 +81,66 @@ def save_state(state):
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+def _effective_shift_times(state):
+    """근무유형별 실제 적용되는 시작/종료 시간. 관리자가 조정해둔 값(shift_time_overrides)이
+    있으면 그걸 쓰고, 없으면 코드에 정의된 기본값(SHIFT_TIME_RANGES)을 씁니다."""
+    times = dict(SHIFT_TIME_RANGES)
+    for shift, ov in state.get("shift_time_overrides", {}).items():
+        if shift in times and ov.get("start") and ov.get("end"):
+            times[shift] = (ov["start"], ov["end"])
+    return times
+
+
+def _effective_shift_hours(state):
+    hours = {}
+    for shift, (s, e) in _effective_shift_times(state).items():
+        sh, sm = map(int, s.split(":"))
+        eh, em = map(int, e.split(":"))
+        hours[shift] = (eh * 60 + em - sh * 60 - sm) / 60
+    return hours
+
+
 def empty_week():
-    return {"requirements": [], "off_days": {}, "schedule": None, "auto_assignments": []}
+    return {"requirements": [], "off_days": {}, "schedule": None, "auto_assignments": [], "locked": False}
+
+
+def _prune_expired_leave_requests(leave_requests):
+    """이미 끝난(오늘보다 종료일이 이른) Leave Request는 걸러냅니다."""
+    today = date.today()
+    result = []
+    for lr in (leave_requests or []):
+        try:
+            end = date.fromisoformat(lr["end_date"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if end >= today:
+            result.append(lr)
+    return result
+
+
+def _week_dates(week_key):
+    """week_key(그 주 월요일, YYYY-MM-DD)를 기준으로 DAYS 순서에 맞는 실제 날짜 7개를 돌려줍니다."""
+    y, m, d = map(int, week_key.split("-"))
+    monday = date(y, m, d)
+    return [monday + timedelta(days=i) for i in range(7)]
+
+
+def _leave_forced_days(employee_dict, week_key):
+    """이 직원의 Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들을 반환합니다."""
+    week_dates = _week_dates(week_key)
+    forced = []
+    for i, day in enumerate(DAYS):
+        the_date = week_dates[i]
+        for lr in employee_dict.get("leave_requests", []):
+            try:
+                start = date.fromisoformat(lr["start_date"])
+                end = date.fromisoformat(lr["end_date"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if start <= the_date <= end:
+                forced.append(day)
+                break
+    return forced
 
 
 @app.route("/")
@@ -84,17 +150,74 @@ def index():
 
 @app.route("/api/meta", methods=["GET"])
 def get_meta():
-    return jsonify({"days": DAYS, "shift_types": SHIFT_TYPES})
+    return jsonify({
+        "days": DAYS,
+        "shift_types": SHIFT_TYPES,
+        "departments": DEPARTMENTS,
+        "department_labels": DEPARTMENT_LABEL_KO,
+        "department_shifts": DEPARTMENT_SHIFTS,
+        "shift_labels": SHIFT_LABEL_KO,
+        "shift_times": SHIFT_TIME_RANGES,
+    })
 
 
 # ---------------------------------------------------------------------------
 # 직원 (여러 주 공통)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# 근무유형별 기본 시작/종료 시간 (바쁜 시기가 아니면 30분씩 당기거나 늦추는 식으로
+# 관리자가 상황에 맞게 조정할 수 있습니다. 개별 배치를 따로 수정해둔 것(custom_start/end)에는
+# 영향을 주지 않습니다.)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/shift-time-settings", methods=["GET"])
+def get_shift_time_settings():
+    state = load_state()
+    times = _effective_shift_times(state)
+    overrides = state.get("shift_time_overrides", {})
+    return jsonify({
+        shift: {"start": s, "end": e, "is_default": shift not in overrides}
+        for shift, (s, e) in times.items()
+    })
+
+
+@app.route("/api/shift-time-settings", methods=["POST"])
+def set_shift_time_setting():
+    """body: {shift_type, start, end}"""
+    state = load_state()
+    payload = request.get_json()
+    shift = payload.get("shift_type")
+    start = payload.get("start")
+    end = payload.get("end")
+    if shift not in SHIFT_TYPES:
+        return jsonify({"error": "존재하지 않는 근무유형입니다."}), 400
+    if not start or not end:
+        return jsonify({"error": "start, end가 필요합니다."}), 400
+    state.setdefault("shift_time_overrides", {})[shift] = {"start": start, "end": end}
+    save_state(state)
+    return jsonify({"shift_type": shift, "start": start, "end": end})
+
+
+@app.route("/api/shift-time-settings/<shift_type>", methods=["DELETE"])
+def reset_shift_time_setting(shift_type):
+    """이 근무유형의 시간을 코드에 정의된 원래 기본값으로 되돌립니다."""
+    state = load_state()
+    state.get("shift_time_overrides", {}).pop(shift_type, None)
+    save_state(state)
+    default_start, default_end = SHIFT_TIME_RANGES.get(shift_type, (None, None))
+    return jsonify({"shift_type": shift_type, "start": default_start, "end": default_end})
+
+
 @app.route("/api/employees", methods=["GET"])
 def list_employees():
     state = load_state()
-    return jsonify(state["employees"])
+    out = []
+    for e in state["employees"]:
+        e2 = dict(e)
+        e2["leave_requests"] = _prune_expired_leave_requests(e.get("leave_requests", []))
+        out.append(e2)
+    return jsonify(out)
 
 
 @app.route("/api/employees", methods=["POST"])
@@ -112,12 +235,14 @@ def add_employee():
     employee = {
         "id": payload["id"],
         "name": payload["name"],
+        "department": payload.get("department", "kitchen"),
         "min_hours_per_week": payload.get("min_hours_per_week", 30),
         "target_days_per_week": payload.get("target_days_per_week"),
         "blocked_shift_types": payload.get("blocked_shift_types", []),
         "day_off_pattern": payload.get("day_off_pattern"),
         "preferred": payload.get("preferred", []),
         "preferred_off_days": payload.get("preferred_off_days", []),
+        "leave_requests": _prune_expired_leave_requests(payload.get("leave_requests", [])),
         "recent_night_count": payload.get("recent_night_count", 0),
         "recent_weekend_count": payload.get("recent_weekend_count", 0),
     }
@@ -130,6 +255,8 @@ def add_employee():
 def update_employee(employee_id):
     state = load_state()
     payload = request.get_json()
+    if "leave_requests" in payload:
+        payload["leave_requests"] = _prune_expired_leave_requests(payload["leave_requests"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             state["employees"][i].update(payload)
@@ -177,6 +304,7 @@ def create_week():
             "off_days": {k: list(v) for k, v in source["off_days"].items()},
             "schedule": None,
             "auto_assignments": [],
+            "locked": False,
         }
     else:
         new_week = empty_week()
@@ -203,6 +331,24 @@ def delete_week(week_key):
     return "", 204
 
 
+@app.route("/api/weeks/<week_key>/lock", methods=["POST"])
+def set_week_lock(week_key):
+    """body: {locked: true/false} - 이 주차를 잠그거나 풉니다. 잠긴 동안엔 이 주의
+    근무요건/휴무지정/스케줄 생성·수동조정이 모두 서버에서도 거부됩니다."""
+    state = load_state()
+    if week_key not in state["weeks"]:
+        state["weeks"][week_key] = empty_week()
+    payload = request.get_json(silent=True) or {}
+    state["weeks"][week_key]["locked"] = bool(payload.get("locked", False))
+    save_state(state)
+    return jsonify({"locked": state["weeks"][week_key]["locked"]})
+
+
+def _week_locked(state, week_key):
+    week = state["weeks"].get(week_key)
+    return bool(week and week.get("locked"))
+
+
 # ---------------------------------------------------------------------------
 # 주차별 근무요건
 # ---------------------------------------------------------------------------
@@ -210,6 +356,8 @@ def delete_week(week_key):
 @app.route("/api/weeks/<week_key>/requirements", methods=["POST"])
 def set_week_requirements(week_key):
     state = load_state()
+    if _week_locked(state, week_key):
+        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
@@ -228,6 +376,8 @@ def set_week_requirements(week_key):
 def set_week_off_days(week_key):
     """body: {employee_id, off_days: [day, ...]} - 그 직원의 그 주 휴무일 전체를 교체"""
     state = load_state()
+    if _week_locked(state, week_key):
+        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
@@ -250,6 +400,8 @@ def generate_week_schedule(week_key):
     week = state["weeks"].get(week_key)
     if week is None:
         return jsonify({"error": "존재하지 않는 주차입니다."}), 404
+    if week.get("locked"):
+        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
 
     if not state["employees"]:
         return jsonify({"error": "등록된 직원이 없습니다."}), 400
@@ -262,9 +414,12 @@ def generate_week_schedule(week_key):
         Employee(
             id=e["id"],
             name=e["name"],
+            department=e.get("department", "kitchen"),
             min_hours_per_week=e.get("min_hours_per_week", 30),
             target_days_per_week=e.get("target_days_per_week"),
-            forced_off_days=off_days_map.get(e["id"], []),
+            forced_off_days=list(set(
+                off_days_map.get(e["id"], []) + _leave_forced_days(e, week_key)
+            )),
             blocked_shift_types=e.get("blocked_shift_types", []),
             day_off_pattern=e.get("day_off_pattern"),
             preferred=[tuple(p) for p in e.get("preferred", [])],
@@ -281,18 +436,23 @@ def generate_week_schedule(week_key):
     ]
 
     # "다시 생성" 요청이면 body에 exclude(이전에 봤던 조합들)가 담겨 옵니다.
+    # 사용자가 생성 전에 수동으로 미리 배치해둔 자리가 있으면 pin으로 담겨 옵니다.
     payload = request.get_json(silent=True) or {}
     exclude_raw = payload.get("exclude", [])
     exclude_solutions = [
         [(a["employee_id"], a["day"], a["shift_type"]) for a in sol]
         for sol in exclude_raw
     ]
+    pin_raw = payload.get("pin", [])
+    pinned = [(a["employee_id"], a["day"], a["shift_type"]) for a in pin_raw]
     random_seed = random.randint(1, 10_000_000) if exclude_solutions else None
 
     result = solve_schedule(
         employees, requirements,
         exclude_solutions=exclude_solutions or None,
         random_seed=random_seed,
+        pinned=pinned or None,
+        shift_hours=_effective_shift_hours(state),
     )
 
     result_dict = {
@@ -316,6 +476,8 @@ def generate_week_schedule(week_key):
 @app.route("/api/weeks/<week_key>/manual-adjust", methods=["POST"])
 def manual_adjust_week(week_key):
     state = load_state()
+    if _week_locked(state, week_key):
+        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
@@ -328,6 +490,24 @@ def manual_adjust_week(week_key):
     state["weeks"][week_key]["schedule"] = schedule
     save_state(state)
     return jsonify(schedule)
+
+
+@app.route("/api/weeks/<week_key>/reset-schedule", methods=["POST"])
+def reset_week_schedule(week_key):
+    """이 주의 스케줄(자동 생성 결과 + 수동 조정 결과)만 완전히 초기화합니다.
+    근무요건, 휴무(Off) 지정, 잠금 상태는 건드리지 않습니다. Leave Request는
+    직원별 전역 데이터라 애초에 이 주차 데이터에 포함되지 않으므로 영향을 받지 않습니다.
+    트레이닝 실습용으로 스케줄을 새로 시작하고 싶을 때 사용합니다."""
+    state = load_state()
+    if _week_locked(state, week_key):
+        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
+    if week_key not in state["weeks"]:
+        state["weeks"][week_key] = empty_week()
+    else:
+        state["weeks"][week_key]["schedule"] = None
+        state["weeks"][week_key]["auto_assignments"] = []
+    save_state(state)
+    return jsonify({"status": "reset"})
 
 
 MIN_PATTERN_OCCURRENCES = 3
@@ -394,6 +574,162 @@ def _analyze_edit_patterns(state):
 
     suggestions.sort(key=lambda s: -s["count"])
     return suggestions
+
+
+# ---------------------------------------------------------------------------
+# Public Holiday (연간 공휴일 등록)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/public-holidays", methods=["GET"])
+def list_public_holidays():
+    state = load_state()
+    return jsonify(sorted(state["public_holidays"], key=lambda h: h["date"]))
+
+
+@app.route("/api/public-holidays", methods=["POST"])
+def add_public_holiday():
+    state = load_state()
+    payload = request.get_json()
+    h_date = payload.get("date")
+    name = payload.get("name", "")
+    if not h_date:
+        return jsonify({"error": "date가 필요합니다."}), 400
+    if any(h["date"] == h_date for h in state["public_holidays"]):
+        return jsonify({"error": "이미 등록된 날짜입니다."}), 400
+    holiday = {"date": h_date, "name": name}
+    state["public_holidays"].append(holiday)
+    save_state(state)
+    return jsonify(holiday), 201
+
+
+@app.route("/api/public-holidays/<h_date>", methods=["DELETE"])
+def delete_public_holiday(h_date):
+    state = load_state()
+    state["public_holidays"] = [h for h in state["public_holidays"] if h["date"] != h_date]
+    save_state(state)
+    return "", 204
+
+
+# ---------------------------------------------------------------------------
+# 참고용 근무 빈도 (연속 스트릭 / 총 횟수)
+# ---------------------------------------------------------------------------
+
+FREQUENCY_WINDOW_WEEKS = 8
+FREQUENCY_HIGHLIGHT_THRESHOLD = 5  # 이 값(포함) 이상이면 화면에서 강조 표시 (강제 배정 제한 아님)
+
+
+def _worked_that_weekday(state, employee_id, day, week_key):
+    week = state["weeks"].get(week_key)
+    if not week:
+        return False
+    assignments = (week.get("schedule") or {}).get("assignments") or []
+    return any(a["employee_id"] == employee_id and a["day"] == day for a in assignments)
+
+
+@app.route("/api/weeks/<week_key>/weekday-frequency", methods=["GET"])
+def get_weekday_frequency(week_key):
+    """이 주(week_key)를 기준으로, 각 직원이 각 요일에 "몇 주 연속으로" 근무했는지
+    (근무유형은 상관없이) 셉니다. 이번 주부터 거슬러 올라가며 세다가, 그 요일에
+    근무하지 않은(쉬거나 배정이 없는) 주를 만나면 그 즉시 스트릭이 끊깁니다.
+    최대 8주까지만 셉니다. 순전히 참고용 정보이며, 스케줄 생성 로직에는 전혀
+    영향을 주지 않습니다(하드 규칙도 소프트 규칙도 아님 — 화면에 숫자로만 표시)."""
+    state = load_state()
+    y, m, d = map(int, week_key.split("-"))
+    base_monday = date(y, m, d)
+
+    this_week = state["weeks"].get(week_key)
+    this_week_assignments = (this_week.get("schedule") or {}).get("assignments") if this_week else None
+    pairs = set()
+    if this_week_assignments:
+        for a in this_week_assignments:
+            pairs.add((a["employee_id"], a["day"]))
+
+    counts = {}  # employee_id -> {day: streak}
+    for (emp_id, day) in pairs:
+        streak = 0
+        for i in range(FREQUENCY_WINDOW_WEEKS):
+            wk_key = (base_monday - timedelta(weeks=i)).isoformat()
+            if _worked_that_weekday(state, emp_id, day, wk_key):
+                streak += 1
+            else:
+                break
+        counts.setdefault(emp_id, {})[day] = streak
+
+    return jsonify({"window": FREQUENCY_WINDOW_WEEKS, "highlight_at": FREQUENCY_HIGHLIGHT_THRESHOLD, "counts": counts})
+
+
+HOLIDAY_OWD_THRESHOLD = 5  # 지난 8주(이번 주 포함) 중 이 값(포함) 이상 일했으면 "평소 근무 요일"로 간주
+
+
+def _weekday_total_count(state, employee_id, day, week_key, window=FREQUENCY_WINDOW_WEEKS):
+    """연속 스트릭이 아니라, 지난 window주(이번 주 포함) 동안 그 요일에 일한 '총 횟수'입니다.
+    Public Holiday 노동법 판정에는 연속 여부가 아니라 총 횟수를 씁니다."""
+    y, m, d = map(int, week_key.split("-"))
+    base_monday = date(y, m, d)
+    count = 0
+    for i in range(window):
+        wk_key = (base_monday - timedelta(weeks=i)).isoformat()
+        if _worked_that_weekday(state, employee_id, day, wk_key):
+            count += 1
+    return count
+
+
+@app.route("/api/weeks/<week_key>/public-holiday-info", methods=["GET"])
+def get_public_holiday_info(week_key):
+    """이 주(week_key)에 Public Holiday가 포함되어 있으면, 사용자가 정의한 뉴질랜드
+    노동법 4가지 기준에 따라 직원별 적용 항목(1.5배+Lieu / 평소급여만 / 1.5배만 / 해당없음)을
+    계산해서 돌려줍니다.
+
+    기준: 지난 8주(이번 주 포함) 중 5주 이상 그 요일에 근무했으면 "평소 근무 요일"로 간주합니다.
+    ⚠️ 이 계산은 사용자가 정의한 규칙을 그대로 옮긴 것으로, 실제 급여 지급 전에는
+    회계/노무 담당자 확인을 권장합니다."""
+    state = load_state()
+    y, m, d = map(int, week_key.split("-"))
+    monday = date(y, m, d)
+    week_dates = [monday + timedelta(days=i) for i in range(7)]
+
+    holidays_this_week = []
+    for h in state["public_holidays"]:
+        try:
+            hd = date.fromisoformat(h["date"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if hd in week_dates:
+            day_idx = week_dates.index(hd)
+            holidays_this_week.append({"date": h["date"], "name": h.get("name", ""), "day": DAYS[day_idx]})
+
+    if not holidays_this_week:
+        return jsonify({"holidays": [], "categories": {}})
+
+    week = state["weeks"].get(week_key)
+    assignments = ((week.get("schedule") or {}).get("assignments") if week else None) or []
+    worked_today = {(a["employee_id"], a["day"]) for a in assignments}
+
+    categories = {}
+    for holiday in holidays_this_week:
+        day = holiday["day"]
+        rows = []
+        for e in state["employees"]:
+            emp_id = e["id"]
+            count = _weekday_total_count(state, emp_id, day, week_key)
+            is_usual_day = count >= HOLIDAY_OWD_THRESHOLD
+            worked = (emp_id, day) in worked_today
+            if is_usual_day and worked:
+                category = 1
+            elif is_usual_day and not worked:
+                category = 2
+            elif not is_usual_day and worked:
+                category = 3
+            else:
+                category = 4
+            rows.append({
+                "employee_id": emp_id, "employee_name": e["name"],
+                "occurrence_count": count, "is_usual_working_day": is_usual_day,
+                "worked_on_holiday": worked, "category": category,
+            })
+        categories[day] = rows
+
+    return jsonify({"holidays": holidays_this_week, "categories": categories, "threshold": HOLIDAY_OWD_THRESHOLD, "window": FREQUENCY_WINDOW_WEEKS})
 
 
 @app.route("/api/pattern-suggestions", methods=["GET"])
