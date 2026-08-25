@@ -33,6 +33,16 @@
     --helper: #52d9a0; --helper-bg: rgba(82, 217, 160, 0.14);
     --closing1: #ef8f5f; --closing1-bg: rgba(239, 143, 95, 0.14);
     --closing2: #c98bf0; --closing2-bg: rgba(201, 139, 240, 0.14);
+    --sushi1: #8ecdf7; --sushi1-bg: rgba(142, 205, 247, 0.20);
+    --sushi2: #4fb0e8; --sushi2-bg: rgba(79, 176, 232, 0.20);
+    --sushi3: #7f9df0; --sushi3-bg: rgba(127, 157, 240, 0.20);
+    --c-opening: #ffbedb; --c-opening-bg: rgba(255, 190, 219, 0.22);
+    --c-helper: #ff8bc4; --c-helper-bg: rgba(255, 139, 196, 0.22);
+    --c-closing1: #ff62ac; --c-closing1-bg: rgba(255, 98, 172, 0.22);
+    --c-closing2: #e8549e; --c-closing2-bg: rgba(232, 84, 158, 0.22);
+    --management: #d4a373; --management-bg: rgba(212, 163, 115, 0.20);
+    --management-cashier: #a97142; --management-cashier-bg: rgba(169, 113, 66, 0.22);
+    --training: #9aa5b6; --training-bg: rgba(154, 165, 182, 0.20);
     --off-bg: rgba(148, 178, 214, 0.10); --off-text: #7c8798;
   }
   * { box-sizing: border-box; }
@@ -134,6 +144,19 @@
     outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(79, 216, 224, 0.16);
   }
   select option { background: var(--panel-solid); color: var(--text); }
+  input[type="date"], input[type="time"] { cursor: pointer; }
+  input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.8);
+    opacity: 0.85;
+    cursor: pointer;
+    padding: 3px;
+    border-radius: 4px;
+    background-color: rgba(79, 216, 224, 0.15);
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover, input[type="time"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    background-color: rgba(79, 216, 224, 0.3);
+  }
   button {
     font-size: 13px; padding: 8px 16px; border-radius: 7px; border: none; cursor: pointer; font-weight: 600;
     font-family: inherit; transition: opacity 0.15s, transform 0.05s, box-shadow 0.15s;
@@ -147,6 +170,9 @@
   .btn-danger { background: var(--danger-light); color: var(--danger); border: 1px solid rgba(240,119,106,0.3); }
   .btn-ghost { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }
   .btn-ghost:hover { background: rgba(79, 216, 224, 0.06); border-color: var(--cyan); }
+  .lang-btn.active { background: var(--cyan); color: #06171a; border-color: transparent; font-weight: 700; }
+  .lock-active { background: var(--danger-light); color: var(--danger); border-color: rgba(240,119,106,0.3); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
   .btn-sm { padding: 5px 10px; font-size: 12px; }
 
   .chip {
@@ -159,6 +185,16 @@
   .chip.helper.active { background: var(--helper); box-shadow: 0 0 12px rgba(82,217,160,0.4); }
   .chip.closing1.active { background: var(--closing1); box-shadow: 0 0 12px rgba(239,143,95,0.4); }
   .chip.closing2.active { background: var(--closing2); box-shadow: 0 0 12px rgba(201,139,240,0.4); }
+  .chip.sushi1.active { background: var(--sushi1); box-shadow: 0 0 12px rgba(90,169,230,0.4); }
+  .chip.sushi2.active { background: var(--sushi2); box-shadow: 0 0 12px rgba(61,127,196,0.4); }
+  .chip.sushi3.active { background: var(--sushi3); box-shadow: 0 0 12px rgba(38,83,143,0.4); }
+  .chip.c_opening.active { background: var(--c-opening); box-shadow: 0 0 12px rgba(242,166,199,0.4); }
+  .chip.c_helper.active { background: var(--c-helper); box-shadow: 0 0 12px rgba(224,103,157,0.4); }
+  .chip.c_closing1.active { background: var(--c-closing1); box-shadow: 0 0 12px rgba(201,63,122,0.4); }
+  .chip.c_closing2.active { background: var(--c-closing2); box-shadow: 0 0 12px rgba(143,44,92,0.4); }
+  .chip.management.active { background: var(--management); box-shadow: 0 0 12px rgba(212,163,115,0.4); }
+  .chip.management_cashier.active { background: var(--management-cashier); box-shadow: 0 0 12px rgba(169,113,66,0.4); }
+  .chip.training.active { background: var(--training); box-shadow: 0 0 12px rgba(154,165,182,0.4); }
 
   .rules-panel {
     background: rgba(10, 14, 20, 0.5); border: 1px solid var(--line); border-radius: 9px;
@@ -186,6 +222,7 @@
     background: var(--void-soft); color: var(--cyan); font-weight: 600; text-align: center; padding: 11px 6px;
     cursor: default; font-size: 11px; letter-spacing: 0.08em; font-family: "JetBrains Mono", monospace;
   }
+  .cal-head-hours { display: block; margin-top: 3px; font-size: 10px; color: var(--text-muted); font-weight: 500; letter-spacing: 0; }
   .cal-emp-cell {
     background: var(--void-soft); display: flex; align-items: center; font-weight: 600; padding: 8px 10px;
     cursor: default; font-size: 12.5px; border-right: 2px solid rgba(79,216,224,0.2); color: var(--text);
@@ -194,13 +231,30 @@
   .shift-block {
     display: block; font-size: 11px; border-radius: 5px; padding: 5px 7px; margin-bottom: 3px;
     cursor: grab; border-left: 3px solid transparent; font-weight: 500; box-shadow: var(--shadow-sm);
+    position: relative;
   }
   .shift-block.opening { background: var(--opening-bg); border-left-color: var(--opening); color: var(--opening); }
   .shift-block.helper { background: var(--helper-bg); border-left-color: var(--helper); color: var(--helper); }
   .shift-block.closing1 { background: var(--closing1-bg); border-left-color: var(--closing1); color: var(--closing1); }
   .shift-block.closing2 { background: var(--closing2-bg); border-left-color: var(--closing2); color: var(--closing2); }
+  .shift-block.sushi1 { background: var(--sushi1-bg); border-left-color: var(--sushi1); color: var(--sushi1); }
+  .shift-block.sushi2 { background: var(--sushi2-bg); border-left-color: var(--sushi2); color: var(--sushi2); }
+  .shift-block.sushi3 { background: var(--sushi3-bg); border-left-color: var(--sushi3); color: var(--sushi3); }
+  .shift-block.c_opening { background: var(--c-opening-bg); border-left-color: var(--c-opening); color: var(--c-opening); }
+  .shift-block.c_helper { background: var(--c-helper-bg); border-left-color: var(--c-helper); color: var(--c-helper); }
+  .shift-block.c_closing1 { background: var(--c-closing1-bg); border-left-color: var(--c-closing1); color: var(--c-closing1); }
+  .shift-block.c_closing2 { background: var(--c-closing2-bg); border-left-color: var(--c-closing2); color: var(--c-closing2); }
+  .shift-block.management { background: var(--management-bg); border-left-color: var(--management); color: var(--management); }
+  .shift-block.management_cashier { background: var(--management-cashier-bg); border-left-color: var(--management-cashier); color: var(--management-cashier); }
+  .shift-block.training { background: var(--training-bg); border-left-color: var(--training); color: var(--training); border-left-style: dashed; }
   .shift-block.dragging { opacity: 0.4; }
   .shift-block .shift-time { display: block; font-size: 10px; opacity: 0.75; font-family: "JetBrains Mono", monospace; }
+  .shift-block .shift-source { display: block; font-size: 9px; opacity: 0.6; margin-top: 1px; letter-spacing: 0.03em; }
+  .freq-badge {
+    position: absolute; top: 3px; right: 4px; font-size: 9px; padding: 1px 5px; border-radius: 999px;
+    background: rgba(255,255,255,0.12); color: var(--text-muted); font-family: "JetBrains Mono", monospace;
+  }
+  .freq-badge.high { background: var(--danger); color: #fff; font-weight: 700; }
   .off-block {
     display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
     border-radius: 5px; padding: 6px; background: var(--off-bg); color: var(--off-text); cursor: pointer;
@@ -230,76 +284,115 @@
 <body>
 
 <header>
-  <p class="eyebrow">SYS · KITCHEN ROSTER</p>
-  <h1>직원 로스터 관리</h1>
-  <p>직원과 근무 요건을 등록하면, 아래 캘린더에서 바로 휴무를 지정하거나 스케줄을 자동 생성할 수 있습니다.</p>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
+    <div>
+      <p class="eyebrow">SYS · KITCHEN ROSTER</p>
+      <h1 data-i18n="header_title">직원 로스터 관리</h1>
+      <p data-i18n="header_desc">직원과 근무 요건을 등록하면, 아래 캘린더에서 바로 휴무를 지정하거나 스케줄을 자동 생성할 수 있습니다.</p>
+    </div>
+    <div id="lang-switcher" style="display:flex; gap:6px; flex-shrink:0;">
+      <button class="btn-ghost btn-sm lang-btn" data-lang="ko" onclick="setLanguage('ko')">한국어</button>
+      <button class="btn-ghost btn-sm lang-btn" data-lang="ja" onclick="setLanguage('ja')">日本語</button>
+      <button class="btn-ghost btn-sm lang-btn" data-lang="en" onclick="setLanguage('en')">English</button>
+    </div>
+  </div>
 </header>
 
 <main>
 
   <section>
-    <h2>직원</h2>
-    <p class="desc">이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.</p>
+    <h2 data-i18n="emp_title">직원</h2>
+    <p class="desc" data-i18n="emp_desc">이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.</p>
 
     <div class="row-form">
-      <div class="field"><label>ID</label><input id="emp-id" placeholder="e001"></div>
-      <div class="field"><label>이름</label><input id="emp-name" placeholder="홍길동"></div>
-      <div class="field"><label>주당 최소시간</label>
+      <div class="field"><label data-i18n="label_id">ID</label><input id="emp-id" placeholder="e001"></div>
+      <div class="field"><label data-i18n="label_name">이름</label><input id="emp-name" placeholder="홍길동"></div>
+      <div class="field"><label data-i18n="label_department">부서</label>
+        <select id="emp-department"></select>
+      </div>
+      <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
         <select id="emp-min-hours">
-          <option value="5">5시간</option>
-          <option value="30" selected>30시간</option>
-          <option value="40">40시간</option>
+          <option value="0" data-i18n="opt_0h">0시간</option>
+          <option value="5" data-i18n="opt_5h">5시간</option>
+          <option value="30" selected data-i18n="opt_30h">30시간</option>
+          <option value="40" data-i18n="opt_40h">40시간</option>
         </select>
       </div>
       <div class="field">
-        <label>주간 근무일수 (권장)</label>
+        <label data-i18n="label_target_days">주간 근무일수 (권장)</label>
         <div style="display:flex; align-items:center; gap:6px; height:34px;">
           <input id="emp-target-days" type="number" min="0" max="7" placeholder="예: 3" style="width:70px">
           <label style="display:flex; align-items:center; gap:3px; font-size:12px; color:var(--text-muted); white-space:nowrap;">
-            <input type="checkbox" id="emp-target-days-any" onchange="toggleTargetDaysAny()"> 상관없음
+            <input type="checkbox" id="emp-target-days-any" onchange="toggleTargetDaysAny()"> <span data-i18n="label_any">상관없음</span>
           </label>
         </div>
       </div>
-      <button class="btn-primary" id="emp-submit-btn" onclick="submitEmployee()">직원 추가</button>
-      <button class="btn-ghost" id="emp-cancel-btn" onclick="cancelEditEmployee()" style="display:none;">취소</button>
+      <button class="btn-primary" id="emp-submit-btn" onclick="submitEmployee()" data-i18n="btn_add_employee">직원 추가</button>
+      <button class="btn-ghost" id="emp-cancel-btn" onclick="cancelEditEmployee()" style="display:none;" data-i18n="btn_cancel">취소</button>
     </div>
 
     <table id="employee-table">
       <thead>
-        <tr><th>ID</th><th>이름</th><th>최소시간/주</th><th>목표근무일</th><th style="width:260px">규칙</th><th></th></tr>
+        <tr>
+          <th data-i18n="label_id">ID</th><th data-i18n="label_name">이름</th><th data-i18n="label_department">부서</th>
+          <th data-i18n="th_min_hours">최소시간/주</th><th data-i18n="th_target_days">목표근무일</th>
+          <th style="width:260px" data-i18n="th_rules">규칙</th><th></th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
   </section>
 
   <section>
-    <h2>근무 요건</h2>
-    <p class="desc">각 칸에 필요 인원 수를 직접 입력하세요 (0 또는 빈칸이면 그 요건 없음). 숫자만 바꾸면 바로 수정되는 방식입니다 — 다 입력하신 후 "저장" 한 번만 누르면 됩니다.</p>
+    <h2 data-i18n="shift_time_title">근무유형 기본 시간</h2>
+    <p class="desc" data-i18n="shift_time_desc">바쁜 시기가 아닐 때는 시작을 30분 늦추거나 종료를 30분 앞당기는 식으로, 근무유형별 기본 시작/종료 시간을 상황에 맞게 조정할 수 있습니다. 여기서 바꾸면 새로 생성되는 스케줄과 아직 개별 수정하지 않은 기존 배치 모두에 반영됩니다 (블록을 개별적으로 수정해둔 시간은 그대로 유지됩니다).</p>
+    <div id="shift-time-settings-wrap"></div>
+  </section>
+
+  <section>
+    <h2 data-i18n="req_title">근무 요건</h2>
+    <p class="desc" data-i18n="req_desc">각 칸에 필요 인원 수를 직접 입력하세요 (0 또는 빈칸이면 그 요건 없음). 숫자만 바꾸면 바로 수정되는 방식입니다 — 다 입력하신 후 "저장" 한 번만 누르면 됩니다.</p>
 
     <div id="requirement-grid-wrap" style="overflow-x:auto;"></div>
     <div style="margin-top:12px;">
-      <button class="btn-primary" onclick="saveRequirementGrid()">저장</button>
+      <button class="btn-primary" id="save-req-btn" onclick="saveRequirementGrid()" data-i18n="btn_save">저장</button>
     </div>
   </section>
 
   <section>
-    <h2>스케줄</h2>
+    <h2 data-i18n="ph_title">Public Holidays</h2>
+    <p class="desc" data-i18n="ph_desc">1년치 공휴일을 미리 등록해두면, 그 날짜가 포함된 주로 이동할 때 자동으로 알려드리고, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인할 수 있습니다.</p>
+    <div class="row-form">
+      <div class="field"><label data-i18n="ph_date">날짜</label><input type="date" id="ph-date"></div>
+      <div class="field"><label data-i18n="ph_name">이름</label><input id="ph-name" placeholder="Waitangi Day"></div>
+      <button class="btn-primary" onclick="addPublicHoliday()" data-i18n="btn_add_generic">추가</button>
+    </div>
+    <table id="ph-table">
+      <thead><tr><th data-i18n="ph_date">날짜</th><th data-i18n="ph_name">이름</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2 data-i18n="sched_title">스케줄</h2>
     <div id="week-nav" style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-      <button class="btn-ghost btn-sm" onclick="navigateWeek(-7)">◀ 이전 주</button>
+      <button class="btn-ghost btn-sm" onclick="navigateWeek(-7)" data-i18n="btn_prev_week">◀ 이전 주</button>
       <div id="week-label" style="font-weight:600; font-size:14px;"></div>
-      <button class="btn-ghost btn-sm" onclick="navigateWeek(7)">다음 주 ▶</button>
+      <button class="btn-ghost btn-sm" onclick="navigateWeek(7)" data-i18n="btn_next_week">다음 주 ▶</button>
       <input type="date" id="week-date-picker" onchange="jumpToDate(this.value)" style="margin-left:8px;">
     </div>
-    <p class="desc">
+    <p class="desc" data-i18n="sched_desc">
       빈 칸을 클릭해 근무(Opening/Helper/Closing1/Closing2)를 추가하거나 <b>Off(휴무)</b>로 지정할 수 있습니다.
       Off로 지정하면 자동 생성 시 그 직원은 그날 절대 배정되지 않습니다. 준비가 되면 자동 생성을 눌러주세요.
       휴무 지정과 근무 요건은 <b>주차별로 따로</b> 저장됩니다.
     </p>
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn-primary" onclick="generateSchedule()">스케줄 자동 생성</button>
-      <button class="btn-ghost" id="regenerate-btn" onclick="regenerateSchedule()" style="display:none;">🔄 다른 조합으로 다시 생성</button>
-      <button class="btn-ghost" id="save-manual-btn" onclick="saveManualAdjustments()" style="display:none;">변경사항 저장</button>
-      <button class="btn-ghost" onclick="checkPatternSuggestions()" style="margin-left:auto;">📊 지난 수정 패턴에서 규칙 제안 보기</button>
+      <button class="btn-primary" id="generate-btn" onclick="generateSchedule()" data-i18n="btn_generate">스케줄 자동 생성</button>
+      <button class="btn-ghost" id="regenerate-btn" onclick="regenerateSchedule()" style="display:none;" data-i18n="btn_regenerate">🔄 다른 조합으로 다시 생성</button>
+      <button class="btn-ghost" id="lock-btn" onclick="toggleWeekLock()" style="display:none;">🔒</button>
+      <button class="btn-ghost" id="save-manual-btn" onclick="saveManualAdjustments()" style="display:none;" data-i18n="btn_save_changes">변경사항 저장</button>
+      <button class="btn-ghost" id="reset-schedule-btn" onclick="resetWeekSchedule()" style="display:none;" data-i18n="btn_reset_schedule">🗑️ 스케줄 초기화</button>
+      <button class="btn-ghost" onclick="checkPatternSuggestions()" style="margin-left:auto;" data-i18n="btn_pattern">📊 지난 수정 패턴에서 규칙 제안 보기</button>
     </div>
     <div id="schedule-output" style="margin-top:20px;"></div>
   </section>
@@ -308,16 +401,421 @@
 
 <script>
 const DAYS = ["mon","tue","wed","thu","fri","sat","sun"];
-const DAY_LABEL = {mon:"월", tue:"화", wed:"수", thu:"목", fri:"금", sat:"토", sun:"일"};
-const SHIFT_TYPES = ["opening","helper","closing1","closing2"];
-const SHIFT_LABEL = {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2"};
-const SHIFT_TIME = {opening:"06:00-15:00", helper:"08:00-17:00", closing1:"11:00-20:30", closing2:"11:30-20:30"};
+let DAY_LABEL = {mon:"월", tue:"화", wed:"수", thu:"목", fri:"금", sat:"토", sun:"일"};
+const SHIFT_TYPES = ["opening","helper","closing1","closing2","sushi1","sushi2","sushi3","c_opening","c_helper","c_closing1","c_closing2","management","management_cashier","training"];
+let SHIFT_LABEL = {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"스시1", sushi2:"스시2", sushi3:"스시3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"};
+let SHIFT_TIME = {opening:"06:00-15:00", helper:"08:00-17:00", closing1:"11:00-20:30", closing2:"11:30-20:30", sushi1:"05:00-14:00", sushi2:"05:00-14:00", sushi3:"10:00-19:00", c_opening:"06:00-15:00", c_helper:"10:00-19:00", c_closing1:"11:00-20:30", c_closing2:"12:00-20:30", management:"09:00-18:00", management_cashier:"10:00-19:00", training:"09:00-17:00"};
+const DEPARTMENTS = ["kitchen","sushi","cashier","management","training"];
+let DEPARTMENT_LABEL = {kitchen:"Kitchen", sushi:"스시", cashier:"Cashier", management:"Management", training:"Training"};
+const DEPARTMENT_SHIFTS = {
+  kitchen: ["opening","helper","closing1","closing2"],
+  sushi: ["sushi1","sushi2","sushi3"],
+  cashier: ["c_opening","c_helper","c_closing1","c_closing2"],
+  management: ["management","management_cashier"],
+  training: ["training"],
+};
+const SHIFT_DEPT = {
+  opening:"kitchen", helper:"kitchen", closing1:"kitchen", closing2:"kitchen",
+  sushi1:"sushi", sushi2:"sushi", sushi3:"sushi",
+  c_opening:"cashier", c_helper:"cashier", c_closing1:"cashier", c_closing2:"cashier",
+  management:"management", management_cashier:"management",
+  training:"training",
+};
+
+// ---------------------------------------------------------------------------
+// 다국어(i18n) — 한국어 / 日本語 / English
+// 직원 이름은 등록된 그대로 표시되며 절대 번역되지 않습니다.
+// ---------------------------------------------------------------------------
+
+const DAY_LABEL_I18N = {
+  ko: {mon:"월", tue:"화", wed:"수", thu:"목", fri:"금", sat:"토", sun:"일"},
+  ja: {mon:"月", tue:"火", wed:"水", thu:"木", fri:"金", sat:"土", sun:"日"},
+  en: {mon:"Mon", tue:"Tue", wed:"Wed", thu:"Thu", fri:"Fri", sat:"Sat", sun:"Sun"},
+};
+const SHIFT_LABEL_I18N = {
+  ko: {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"스시1", sushi2:"스시2", sushi3:"스시3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"},
+  ja: {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"寿司1", sushi2:"寿司2", sushi3:"寿司3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"},
+  en: {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"Sushi 1", sushi2:"Sushi 2", sushi3:"Sushi 3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"},
+};
+const DEPARTMENT_LABEL_I18N = {
+  ko: {kitchen:"Kitchen", sushi:"스시", cashier:"Cashier", management:"Management", training:"Training"},
+  ja: {kitchen:"Kitchen", sushi:"寿司", cashier:"Cashier", management:"Management", training:"Training"},
+  en: {kitchen:"Kitchen", sushi:"Sushi", cashier:"Cashier", management:"Management", training:"Training"},
+};
+
+const I18N = {
+  ko: {
+    header_title: "직원 로스터 관리",
+    header_desc: "직원과 근무 요건을 등록하면, 아래 캘린더에서 바로 휴무를 지정하거나 스케줄을 자동 생성할 수 있습니다.",
+    emp_title: "직원",
+    emp_desc: '이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.',
+    label_id: "ID", label_name: "이름", label_department: "부서",
+    label_min_hours: "주당 최소시간", label_target_days: "주간 근무일수 (권장)", label_any: "상관없음",
+    opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
+    modal_training_added_title: "Training 인원이 등록되었습니다",
+    modal_training_added_msg: "Training은 시작·종료 시간이 정해져 있지 않습니다. 캘린더에서 이 직원의 근무를 직접 추가하고, 블록을 클릭해 실제 근무 시간을 매번 수동으로 설정해주세요.",
+    btn_add_employee: "직원 추가", btn_save_edit: "수정 저장", btn_cancel: "취소",
+    th_min_hours: "최소시간/주", th_target_days: "목표근무일", th_rules: "규칙",
+    btn_rule_settings: "규칙 설정", btn_edit: "수정", btn_delete: "삭제",
+    rules_none: "설정된 규칙 없음",
+    req_title: "근무 요건",
+    req_desc: '각 칸에 필요 인원 수를 직접 입력하세요 (0 또는 빈칸이면 그 요건 없음). 숫자만 바꾸면 바로 수정되는 방식입니다 — 다 입력하신 후 "저장" 한 번만 누르면 됩니다.',
+    btn_save: "저장",
+    sched_title: "스케줄",
+    btn_prev_week: "◀ 이전 주", btn_next_week: "다음 주 ▶",
+    sched_desc: '빈 칸을 클릭해 근무(Opening/Helper/Closing1/Closing2)를 추가하거나 <b>Off(휴무)</b>로 지정할 수 있습니다. Off로 지정하면 자동 생성 시 그 직원은 그날 절대 배정되지 않습니다. 준비가 되면 자동 생성을 눌러주세요. 휴무 지정과 근무 요건은 <b>주차별로 따로</b> 저장됩니다.',
+    btn_generate: "스케줄 자동 생성", btn_regenerate: "🔄 다른 조합으로 다시 생성",
+    btn_save_changes: "변경사항 저장", btn_pattern: "📊 지난 수정 패턴에서 규칙 제안 보기",
+    name_col: "이름", off_label: "OFF ✕", off_tooltip: "클릭하면 휴무 지정을 해제합니다",
+    auto_placed: "자동배치", manual_placed: "수동배치",
+    legend_off: "Off(휴무)", legend_hint: "드래그: 스왑 · 빈 칸 클릭: 추가/Off 지정 · 블록 클릭: 시간 수정/삭제",
+    rules_pref_off: "선호 오프요일 (2순위 — 필요인원 충족 다음으로 최대한 지켜집니다)",
+    rules_pref_shift: "선호 근무 요일 · 근무유형", rules_dept_suffix: "부서, 중복 선택 가능)",
+    rules_block_shift: "근무유형 전체 배정 금지", rules_block_shift_suffix: "부서 내에서, 모든 요일에서 해당 유형 절대 배정 안 함)",
+    rules_pattern: "휴무 패턴 (권장사항 - 최대한 지키려 하되 필요시 조정될 수 있음)",
+    pattern_none: "지정 안 함", pattern_consecutive: "연속 휴무 (Consecutive)", pattern_split: "분산 휴무 (Split)",
+    hard_off_note: "이 휴무 요청을 반드시 지키기 (필수)",
+    btn_close: "닫기", btn_confirm: "확인",
+    modal_input_check_title: "입력값을 확인해주세요", modal_id_name_required: "ID와 이름은 필수입니다.",
+    modal_request_failed: "요청을 처리하지 못했습니다",
+    modal_save_done: "저장 완료", modal_save_msg: "이번 주 근무 요건이 저장되었습니다.",
+    modal_copy_done: "복사 완료",
+    modal_copy_prev_title: "전주와 동일하게 할까요?",
+    modal_copy_prev_msg: "직전 주에 확정된 스케줄이 있습니다. 그대로 이번 주에도 복사해서 쓸 수 있어요. (요일 기준으로 그대로 복사되므로, 이번 주의 휴무 지정 등과 다를 수 있으니 복사 후 확인해주세요.)",
+    modal_copy_no: "아니요, 새로 생성", modal_copy_yes: "네, 동일하게",
+    modal_computing: "계산 중...", modal_regenerating: "다른 조합을 찾는 중...",
+    modal_copying: "전주 스케줄을 복사하는 중...",
+    modal_copy_done_msg: "전주와 동일한 스케줄로 설정했습니다. 필요하면 드래그로 조정하거나, '변경사항 저장'을 눌러 확정하세요.",
+    modal_new_week_title: "새 주차", modal_new_week_msg: "이 주는 아직 데이터가 없습니다. 어떻게 시작할까요?",
+    modal_new_week_cancel: "취소 (이전 화면으로)", modal_new_week_new: "새로 시작", modal_new_week_copy: "전주와 동일하게 시작",
+    modal_saved_toast: "변경사항이 저장되었습니다.",
+    modal_add_placed_title: "배치 완료",
+    modal_add_title_off: "Off (휴무로 지정)", modal_add_off_detail: "자동 생성 시 이 날은 절대 배정되지 않습니다.",
+    modal_add_own_dept: "(소속 부서)", modal_add_other_dept: "(타 부서 · 수동 배치)",
+    modal_add_sub: "근무를 추가하거나 Off(휴무)로 지정하세요.",
+    modal_edit_time_sub: "출퇴근 시간을 수동으로 변경할 수 있습니다.",
+    btn_delete_this: "이 배치 삭제",
+    modal_diag_title: "확인이 필요한 사항이 있습니다", modal_diag_sub: "아래 내용을 확인하고 규칙을 조정해보세요.",
+    diag_missing: "명 부족", diag_pool: "전체 직원", diag_blocked: "명이 규칙으로 배정 불가",
+    diag_daycount_title: "— 목표 근무일수 미충족", diag_daycount_detail1: "목표 ", diag_daycount_detail2: "일 중 실제로는 ", diag_daycount_detail3: "일 배정되었습니다.",
+    diag_prefoff_title: "— 선호 오프요일에 배정됨",
+    diag_prefoff_detail1: "요일은 쉬고 싶다고 하셨지만, 필요인원을 채우기 위해 이번엔 배정되었습니다.",
+    pattern_modal_title: "지난 수정 패턴에서 찾은 규칙 제안",
+    pattern_modal_sub: "자동 생성된 스케줄과 최종 저장된 스케줄을 비교해서, 3주 이상 반복된 수정 패턴만 제안합니다. 적용 여부는 직접 선택하세요.",
+    pattern_empty: "아직 반복된 수정 패턴이 발견되지 않았습니다. 몇 주 더 사용해보시고 다시 확인해보세요.",
+    pattern_apply: "적용하기", pattern_applied: "적용됨",
+    banner_unmet: "일부 요건을 충족하지 못했습니다. 팝업 또는 아래 진단 내용을 확인하세요.",
+    banner_manual: "수동으로 조정된 스케줄입니다.",
+    banner_ok: "모든 요건을 충족하는 스케줄을 생성했습니다.",
+    empty_no_employees: "직원을 먼저 등록하면 여기에 캘린더가 표시됩니다.",
+    btn_lock: "잠금", btn_unlock: "잠금 해제",
+    banner_locked: "이 주는 잠겨 있습니다. 드래그·추가·삭제·자동 생성이 모두 비활성화됩니다. 수정하려면 잠금을 해제하세요.",
+    btn_show_more: "더보기 ({n}명 더)", btn_show_less: "접기",
+    summary_leave: "휴가신청 {n}건",
+    rules_leave_title: "Leave Request (휴가 신청) — 최우선 하드 규칙",
+    rules_leave_desc: "날짜 구간을 등록하면, 그 기간이 포함된 어느 주든 자동으로 휴무 처리됩니다. 등록한 마지막 날짜가 지나면 이 목록에서 자동으로 사라집니다.",
+    btn_leave_add: "추가", modal_leave_range_invalid: "종료일은 시작일보다 빠를 수 없습니다.",
+    leave_label: "LEAVE",
+    freq_badge_tooltip: "이번 주를 포함해 연속으로 이 요일에 근무한 주 수 (중간에 쉰 주가 있으면 초기화됨 - 참고용, 강제 아님)",
+    ph_title: "Public Holidays", btn_add_generic: "추가",
+    ph_desc: "1년치 공휴일을 미리 등록해두면, 그 날짜가 포함된 주로 이동할 때 자동으로 알려드리고, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인할 수 있습니다.",
+    ph_date: "날짜", ph_name: "이름", modal_ph_date_required: "날짜는 필수입니다.",
+    modal_ph_week_title: "이번 주는 Public Holiday가 있는 주입니다",
+    modal_ph_week_sub: "아래 공휴일에 대해, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인하세요. (참고용 계산이니 실제 지급 전 확인 권장)",
+    ph_cat1: "1.5배 급여 + Lieu Day", ph_cat2: "평소 일급만 지급 (Lieu Day 없음)",
+    ph_cat3: "1.5배 급여만 (Lieu Day 없음)", ph_cat4: "해당 없음",
+    ph_usual_day: "평소 근무 요일 (최근 8주 중 {n}주)", ph_not_usual_day: "평소 근무 요일 아님 (최근 8주 중 {n}주)",
+    ph_worked: "이번 공휴일 근무함", ph_not_worked: "이번 공휴일 근무 안 함",
+    shift_time_title: "근무유형 기본 시간",
+    shift_time_desc: "바쁜 시기가 아닐 때는 시작을 30분 늦추거나 종료를 30분 앞당기는 식으로, 근무유형별 기본 시작/종료 시간을 상황에 맞게 조정할 수 있습니다. 여기서 바꾸면 새로 생성되는 스케줄과 아직 개별 수정하지 않은 기존 배치 모두에 반영됩니다 (블록을 개별적으로 수정해둔 시간은 그대로 유지됩니다).",
+    shift_time_modified: "수정됨", btn_reset_default: "기본값으로",
+    btn_reset_schedule: "🗑️ 스케줄 초기화",
+    confirm_reset_title: "이번 주 스케줄을 초기화할까요?",
+    confirm_reset_msg: "이번 주에 배정된 모든 근무(자동·수동 포함)가 지워지고, 스케줄을 아예 생성하지 않은 상태로 돌아갑니다. 근무요건과 이미 지정한 Off(휴무), Leave Request는 그대로 유지됩니다. 되돌릴 수 없습니다.",
+    confirm_reset_yes: "네, 초기화", confirm_reset_no: "취소",
+    modal_reset_done_title: "초기화 완료", modal_reset_done_msg: "이번 주 스케줄이 초기화되었습니다.",
+    modal_regen_dept_title: "다른 조합으로 다시 생성",
+    modal_regen_dept_sub: "다시 생성할 부서를 선택하세요 (여러 개 선택 가능). 체크하지 않은 부서와 수동배치는 그대로 유지됩니다.",
+    modal_regen_dept_required: "다시 생성할 부서를 하나 이상 선택해주세요.",
+    confirm_regen_title: "다른 조합으로 다시 생성할까요?",
+    confirm_regen_msg: "지금 상태(수동배치 제외)는 새 조합으로 완전히 대체되며, 되돌릴 수 없습니다. 계속할까요?",
+    confirm_regen_yes: "네, 다시 생성", confirm_regen_no: "취소",
+    pattern_title_off: "— {day}요일에 자주 휴무로 바뀜",
+    pattern_detail_off: "자동 생성에서는 근무로 배정됐지만, 최근 {n}주 동안 최종 스케줄에서는 그 요일에 근무하지 않은 것으로 확인됩니다. \"선호 오프요일\"에 추가할까요?",
+    pattern_title_block: "— {shift} 근무에서 자주 제외됨",
+    pattern_detail_block: "자동 생성에서 {shift}로 배정됐지만, 최근 {n}회 다른 사람으로 바뀌었습니다. \"근무유형 전체 금지\"에 추가할까요?",
+    pattern_title_pref: "— {day}요일 {shift}에 자주 수동 배치됨",
+    pattern_detail_pref: "자동 생성엔 없었는데, 최근 {n}주 동안 직접 이 자리에 넣으셨습니다. \"선호 근무\"에 추가할까요?",
+    day_suffix: "일", summary_pref_off: "선호오프 {n}일", summary_pattern_consecutive: "연속휴무선호", summary_pattern_split: "분산휴무선호",
+    summary_blocked: "금지유형 {list}", summary_pref_count: "선호 {n}건",
+    reason_off: "휴무 지정", reason_blocked_type: "근무유형 전체 금지", reason_other_dept: "다른 부서 소속", reason_person: "명",
+    week_range_join: "~",
+  },
+  ja: {
+    header_title: "スタッフローステル管理",
+    header_desc: "スタッフと勤務要件を登録すると、下のカレンダーで休みを指定したり、スケジュールを自動生成できます。",
+    emp_title: "スタッフ",
+    emp_desc: '氏名、週の最低勤務時間、週の目標勤務日数を登録し、「ルール」で個別の制約を設定してください。',
+    label_id: "ID", label_name: "氏名", label_department: "部署",
+    label_min_hours: "週の最低時間", label_target_days: "週の勤務日数(推奨)", label_any: "指定なし",
+    opt_0h: "0時間", opt_5h: "5時間", opt_30h: "30時間", opt_40h: "40時間",
+    modal_training_added_title: "Trainingスタッフが登録されました",
+    modal_training_added_msg: "Trainingは開始・終了時間が決まっていません。カレンダーでこのスタッフの勤務を直接追加し、ブロックをクリックして実際の勤務時間を毎回手動で設定してください。",
+    btn_add_employee: "スタッフ追加", btn_save_edit: "変更を保存", btn_cancel: "キャンセル",
+    th_min_hours: "最低時間/週", th_target_days: "目標勤務日", th_rules: "ルール",
+    btn_rule_settings: "ルール設定", btn_edit: "編集", btn_delete: "削除",
+    rules_none: "設定されたルールなし",
+    req_title: "勤務要件",
+    req_desc: '各セルに必要人数を直接入力してください(0または空欄はその要件なし)。数字を変えるとそれがそのまま修正になります — 入力後「保存」を一度押してください。',
+    btn_save: "保存",
+    sched_title: "スケジュール",
+    btn_prev_week: "◀ 前の週", btn_next_week: "次の週 ▶",
+    sched_desc: '空いているセルをクリックして勤務(Opening/Helper/Closing1/Closing2)を追加するか、<b>Off(休み)</b>に指定できます。Offに指定すると自動生成時にそのスタッフはその日は絶対に配置されません。準備ができたら自動生成を押してください。休み指定と勤務要件は<b>週ごとに別々に</b>保存されます。',
+    btn_generate: "スケジュール自動生成", btn_regenerate: "🔄 別の組み合わせで再生成",
+    btn_save_changes: "変更を保存", btn_pattern: "📊 過去の修正パターンからルール提案を見る",
+    name_col: "氏名", off_label: "OFF ✕", off_tooltip: "クリックすると休み指定が解除されます",
+    auto_placed: "自動配置", manual_placed: "手動配置",
+    legend_off: "Off(休み)", legend_hint: "ドラッグ:入れ替え · 空セルクリック:追加/Off指定 · ブロッククリック:時間修正/削除",
+    rules_pref_off: "希望休(優先度2位 — 必要人数の充足の次に最大限守られます)",
+    rules_pref_shift: "希望勤務曜日・勤務タイプ", rules_dept_suffix: "部署、複数選択可)",
+    rules_block_shift: "勤務タイプ全体の配置禁止", rules_block_shift_suffix: "部署内で、すべての曜日でそのタイプを絶対に配置しない)",
+    rules_pattern: "休みパターン(推奨 - 最大限守ろうとしますが必要に応じて調整される場合があります)",
+    pattern_none: "指定なし", pattern_consecutive: "連続休み (Consecutive)", pattern_split: "分散休み (Split)",
+    hard_off_note: "この休み希望を必ず守る(必須)",
+    btn_close: "閉じる", btn_confirm: "確認",
+    modal_input_check_title: "入力内容をご確認ください", modal_id_name_required: "IDと氏名は必須です。",
+    modal_request_failed: "リクエストを処理できませんでした",
+    modal_save_done: "保存完了", modal_save_msg: "今週の勤務要件が保存されました。",
+    modal_copy_done: "コピー完了",
+    modal_copy_prev_title: "前週と同じにしますか?",
+    modal_copy_prev_msg: "直前の週に確定したスケジュールがあります。そのまま今週にもコピーして使用できます。(曜日基準でそのままコピーされるため、今週の休み指定などと異なる場合がありますのでコピー後にご確認ください。)",
+    modal_copy_no: "いいえ、新規作成", modal_copy_yes: "はい、同じにする",
+    modal_computing: "計算中...", modal_regenerating: "別の組み合わせを検索中...",
+    modal_copying: "前週のスケジュールをコピー中...",
+    modal_copy_done_msg: "前週と同じスケジュールに設定しました。必要に応じてドラッグで調整するか、「変更を保存」を押して確定してください。",
+    modal_new_week_title: "新しい週", modal_new_week_msg: "この週はまだデータがありません。どのように始めますか?",
+    modal_new_week_cancel: "キャンセル (前の画面へ)", modal_new_week_new: "新規作成", modal_new_week_copy: "前週と同じで開始",
+    modal_saved_toast: "変更内容が保存されました。",
+    modal_add_placed_title: "配置完了",
+    modal_add_title_off: "Off (休みに指定)", modal_add_off_detail: "自動生成時、この日は絶対に配置されません。",
+    modal_add_own_dept: "(所属部署)", modal_add_other_dept: "(他部署・手動配置)",
+    modal_add_sub: "勤務を追加するか、Off(休み)に指定してください。",
+    modal_edit_time_sub: "出退勤時間を手動で変更できます。",
+    btn_delete_this: "この配置を削除",
+    modal_diag_title: "確認が必要な項目があります", modal_diag_sub: "以下の内容を確認してルールを調整してください。",
+    diag_missing: "名不足", diag_pool: "全スタッフ", diag_blocked: "名がルールにより配置不可",
+    diag_daycount_title: "— 目標勤務日数未達成", diag_daycount_detail1: "目標 ", diag_daycount_detail2: "日中、実際には ", diag_daycount_detail3: "日配置されました。",
+    diag_prefoff_title: "— 希望休に配置されました",
+    diag_prefoff_detail1: "曜日は休みたいとのことでしたが、必要人数を満たすため今回は配置されました。",
+    pattern_modal_title: "過去の修正パターンから見つかったルール提案",
+    pattern_modal_sub: "自動生成されたスケジュールと最終保存されたスケジュールを比較し、3週間以上繰り返された修正パターンのみ提案します。適用するかどうかはご自身で選択してください。",
+    pattern_empty: "まだ繰り返された修正パターンは見つかっていません。数週間ご利用の上、再度ご確認ください。",
+    pattern_apply: "適用する", pattern_applied: "適用済み",
+    banner_unmet: "一部の要件を満たせませんでした。ポップアップまたは下の診断内容をご確認ください。",
+    banner_manual: "手動で調整されたスケジュールです。",
+    banner_ok: "すべての要件を満たすスケジュールを生成しました。",
+    empty_no_employees: "スタッフを先に登録すると、ここにカレンダーが表示されます。",
+    btn_lock: "ロック", btn_unlock: "ロック解除",
+    banner_locked: "この週はロックされています。ドラッグ・追加・削除・自動生成はすべて無効です。編集するにはロックを解除してください。",
+    btn_show_more: "もっと見る (他{n}人)", btn_show_less: "折りたたむ",
+    summary_leave: "休暇申請{n}件",
+    rules_leave_title: "Leave Request (休暇申請) — 最優先ハードルール",
+    rules_leave_desc: "日付範囲を登録すると、その期間を含むどの週でも自動的に休みとして扱われます。登録した最終日を過ぎると、このリストから自動的に消えます。",
+    btn_leave_add: "追加", modal_leave_range_invalid: "終了日は開始日より前にできません。",
+    leave_label: "休暇",
+    freq_badge_tooltip: "今週を含め、この曜日に連続して勤務した週数(休んだ週があればリセット・参考用、強制ではありません)",
+    ph_title: "Public Holidays", btn_add_generic: "追加",
+    ph_desc: "1年分の祝日を事前に登録しておくと、その日付を含む週に移動した際に自動でお知らせし、スタッフごとにニュージーランド労働法の基準を確認できます。",
+    ph_date: "日付", ph_name: "名前", modal_ph_date_required: "日付は必須です。",
+    modal_ph_week_title: "今週はPublic Holidayがある週です",
+    modal_ph_week_sub: "以下の祝日について、スタッフごとにニュージーランド労働法基準の適用項目を確認してください。(参考用の計算のため、実際の支払い前にご確認をお勧めします)",
+    ph_cat1: "1.5倍給与 + Lieu Day", ph_cat2: "通常の日給のみ支給(Lieu Dayなし)",
+    ph_cat3: "1.5倍給与のみ(Lieu Dayなし)", ph_cat4: "該当なし",
+    ph_usual_day: "通常勤務曜日(直近8週中{n}週)", ph_not_usual_day: "通常勤務曜日ではない(直近8週中{n}週)",
+    ph_worked: "この祝日に勤務した", ph_not_worked: "この祝日に勤務していない",
+    shift_time_title: "勤務タイプの基本時間",
+    shift_time_desc: "繁忙期でない時は開始を30分遅らせたり終了を30分早めたりと、勤務タイプごとの基本開始・終了時間を状況に合わせて調整できます。ここで変更すると、新しく生成されるスケジュールと、まだ個別修正していない既存の配置の両方に反映されます(ブロックを個別に修正した時間はそのまま維持されます)。",
+    shift_time_modified: "変更済み", btn_reset_default: "デフォルトに戻す",
+    btn_reset_schedule: "🗑️ スケジュールをリセット",
+    confirm_reset_title: "今週のスケジュールをリセットしますか?",
+    confirm_reset_msg: "今週配置されたすべての勤務(自動・手動含む)が消去され、スケジュールを全く生成していない状態に戻ります。勤務要件と、既に指定したOff(休み)、Leave Requestはそのまま維持されます。元に戻せません。",
+    confirm_reset_yes: "はい、リセット", confirm_reset_no: "キャンセル",
+    modal_reset_done_title: "リセット完了", modal_reset_done_msg: "今週のスケジュールがリセットされました。",
+    modal_regen_dept_title: "別の組み合わせで再生成",
+    modal_regen_dept_sub: "再生成する部署を選択してください(複数選択可)。チェックしていない部署と手動配置はそのまま維持されます。",
+    modal_regen_dept_required: "再生成する部署を1つ以上選択してください。",
+    confirm_regen_title: "別の組み合わせで再生成しますか?",
+    confirm_regen_msg: "現在の状態(手動配置を除く)は新しい組み合わせに完全に置き換えられ、元に戻すことはできません。続けますか?",
+    confirm_regen_yes: "はい、再生成する", confirm_regen_no: "キャンセル",
+    pattern_title_off: "— {day}曜日によく休みに変更される",
+    pattern_detail_off: "自動生成では勤務に配置されましたが、直近{n}週間の最終スケジュールではその曜日に勤務していないことが確認されます。「希望休」に追加しますか?",
+    pattern_title_block: "— {shift}勤務からよく除外される",
+    pattern_detail_block: "自動生成で{shift}に配置されましたが、直近{n}回、他の人に変更されました。「勤務タイプ全体禁止」に追加しますか?",
+    pattern_title_pref: "— {day}曜日{shift}によく手動配置される",
+    pattern_detail_pref: "自動生成にはなかったのに、直近{n}週間、直接この場所に入れています。「希望勤務」に追加しますか?",
+    day_suffix: "日", summary_pref_off: "希望休{n}日", summary_pattern_consecutive: "連続休み希望", summary_pattern_split: "分散休み希望",
+    summary_blocked: "禁止タイプ {list}", summary_pref_count: "希望{n}件",
+    reason_off: "休み指定", reason_blocked_type: "勤務タイプ全体禁止", reason_other_dept: "他部署所属", reason_person: "名",
+    week_range_join: "〜",
+  },
+  en: {
+    header_title: "Staff Roster Management",
+    header_desc: "Register employees and shift requirements, then mark days off or auto-generate the schedule right from the calendar below.",
+    emp_title: "Employees",
+    emp_desc: 'Enter name, weekly minimum hours, and target working days, then set individual constraints under "Rules".',
+    label_id: "ID", label_name: "Name", label_department: "Department",
+    label_min_hours: "Min hours/week", label_target_days: "Target days/week (preferred)", label_any: "No preference",
+    opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
+    modal_training_added_title: "Training employee registered",
+    modal_training_added_msg: "Training has no fixed start/end time. Please manually add this employee's shifts on the calendar and click each block to set the actual times every time.",
+    btn_add_employee: "Add Employee", btn_save_edit: "Save Changes", btn_cancel: "Cancel",
+    th_min_hours: "Min hrs/week", th_target_days: "Target days", th_rules: "Rules",
+    btn_rule_settings: "Rules", btn_edit: "Edit", btn_delete: "Delete",
+    rules_none: "No rules set",
+    req_title: "Shift Requirements",
+    req_desc: 'Enter the required headcount directly in each cell (0 or blank means no requirement). Changing a number is itself the edit — click "Save" once when done.',
+    btn_save: "Save",
+    sched_title: "Schedule",
+    btn_prev_week: "◀ Prev week", btn_next_week: "Next week ▶",
+    sched_desc: 'Click an empty cell to add a shift (Opening/Helper/Closing1/Closing2) or mark it as <b>Off</b>. Off means that employee will never be scheduled that day. Click generate when ready. Off-marks and shift requirements are saved <b>per week</b>.',
+    btn_generate: "Auto-generate Schedule", btn_regenerate: "🔄 Try Another Combination",
+    btn_save_changes: "Save Changes", btn_pattern: "📊 View Rule Suggestions from Past Edits",
+    name_col: "Name", off_label: "OFF ✕", off_tooltip: "Click to remove the day-off mark",
+    auto_placed: "Auto", manual_placed: "Manual",
+    legend_off: "Off", legend_hint: "Drag: swap · Click empty cell: add/mark Off · Click block: edit time/delete",
+    rules_pref_off: "Preferred days off (Priority 2 — honored right after meeting headcount)",
+    rules_pref_shift: "Preferred working days & shift types", rules_dept_suffix: "department, multiple allowed)",
+    rules_block_shift: "Block shift types entirely", rules_block_shift_suffix: "department, never assigned on any day)",
+    rules_pattern: "Day-off pattern (preferred — followed as closely as possible, may be adjusted if needed)",
+    pattern_none: "Not set", pattern_consecutive: "Consecutive", pattern_split: "Split",
+    hard_off_note: "Always honor this day-off request (mandatory)",
+    btn_close: "Close", btn_confirm: "OK",
+    modal_input_check_title: "Please check your input", modal_id_name_required: "ID and name are required.",
+    modal_request_failed: "The request could not be processed",
+    modal_save_done: "Saved", modal_save_msg: "This week's shift requirements have been saved.",
+    modal_copy_done: "Copied",
+    modal_copy_prev_title: "Use the same schedule as last week?",
+    modal_copy_prev_msg: "There is a finalized schedule from the previous week. You can copy it directly for this week. (It's copied by weekday, so it may not match this week's day-off marks — please review after copying.)",
+    modal_copy_no: "No, generate new", modal_copy_yes: "Yes, same as before",
+    modal_computing: "Calculating...", modal_regenerating: "Looking for another combination...",
+    modal_copying: "Copying last week's schedule...",
+    modal_copy_done_msg: "The schedule has been set to match last week. Adjust with drag-and-drop if needed, or click 'Save Changes' to confirm.",
+    modal_new_week_title: "New Week", modal_new_week_msg: "This week has no data yet. How would you like to start?",
+    modal_new_week_cancel: "Cancel (go back)", modal_new_week_new: "Start fresh", modal_new_week_copy: "Start same as last week",
+    modal_saved_toast: "Your changes have been saved.",
+    modal_add_placed_title: "Placement Complete",
+    modal_add_title_off: "Off (mark day off)", modal_add_off_detail: "This day will never be scheduled during auto-generation.",
+    modal_add_own_dept: "(own department)", modal_add_other_dept: "(other department · manual only)",
+    modal_add_sub: "Add a shift, or mark this day as Off.",
+    modal_edit_time_sub: "You can manually adjust the start/end time.",
+    btn_delete_this: "Delete this shift",
+    modal_diag_title: "A few things need your attention", modal_diag_sub: "Review the items below and adjust rules as needed.",
+    diag_missing: " short", diag_pool: "Of all", diag_blocked: " were blocked by a rule",
+    diag_daycount_title: "— target days not met", diag_daycount_detail1: "Target: ", diag_daycount_detail2: " days, actually scheduled: ", diag_daycount_detail3: " days.",
+    diag_prefoff_title: "— scheduled on a preferred day off",
+    diag_prefoff_detail1: "requested this day off, but was scheduled anyway to meet required headcount.",
+    pattern_modal_title: "Rule suggestions from past edits",
+    pattern_modal_sub: "Comparing auto-generated schedules against what was finally saved, only patterns repeated 3+ weeks are suggested. You choose whether to apply each one.",
+    pattern_empty: "No repeated edit patterns found yet. Use the app for a few more weeks and check again.",
+    pattern_apply: "Apply", pattern_applied: "Applied",
+    banner_unmet: "Some requirements could not be met. Check the popup or the notes below.",
+    banner_manual: "This schedule has been manually adjusted.",
+    banner_ok: "A schedule meeting all requirements has been generated.",
+    empty_no_employees: "Register an employee first to see the calendar here.",
+    btn_lock: "Lock", btn_unlock: "Unlock",
+    banner_locked: "This week is locked. Drag, add, delete, and auto-generate are all disabled. Unlock to make changes.",
+    btn_show_more: "Show more ({n} more)", btn_show_less: "Show less",
+    summary_leave: "{n} leave request(s)",
+    rules_leave_title: "Leave Request — top-priority hard rule",
+    rules_leave_desc: "Register a date range and it will automatically be treated as a day off in any week that overlaps it. It disappears from this list automatically once the last day has passed.",
+    btn_leave_add: "Add", modal_leave_range_invalid: "The end date cannot be before the start date.",
+    leave_label: "LEAVE",
+    freq_badge_tooltip: "Consecutive weeks (including this one) worked on this weekday - resets if a week off breaks the streak. Informational only, not enforced.",
+    ph_title: "Public Holidays", btn_add_generic: "Add",
+    ph_desc: "Register a year's worth of public holidays in advance. When you navigate to a week containing one, you'll be notified automatically and can check which NZ labour law entitlement applies to each employee.",
+    ph_date: "Date", ph_name: "Name", modal_ph_date_required: "Date is required.",
+    modal_ph_week_title: "This week contains a Public Holiday",
+    modal_ph_week_sub: "For the holiday(s) below, check which NZ labour law entitlement applies to each employee. (This is a reference calculation - please verify before running payroll.)",
+    ph_cat1: "1.5x pay + Lieu Day", ph_cat2: "Normal daily pay only (no Lieu Day)",
+    ph_cat3: "1.5x pay only (no Lieu Day)", ph_cat4: "Not entitled",
+    ph_usual_day: "Usual working day ({n}/8 recent weeks)", ph_not_usual_day: "Not a usual working day ({n}/8 recent weeks)",
+    ph_worked: "Worked this holiday", ph_not_worked: "Did not work this holiday",
+    shift_time_title: "Default Shift Times",
+    shift_time_desc: "During quieter periods you can adjust each shift type's default start/end time - e.g. starting 30 minutes later or ending 30 minutes earlier. Changes here apply to newly generated schedules and any existing block that hasn't been individually edited (blocks you've customized keep their own time).",
+    shift_time_modified: "Modified", btn_reset_default: "Reset to default",
+    btn_reset_schedule: "🗑️ Reset Schedule",
+    confirm_reset_title: "Reset this week's schedule?",
+    confirm_reset_msg: "All shifts assigned this week (auto and manual) will be cleared, returning to a state as if no schedule was ever generated. Shift requirements, existing Off marks, and Leave Requests are kept. This cannot be undone.",
+    confirm_reset_yes: "Yes, reset", confirm_reset_no: "Cancel",
+    modal_reset_done_title: "Reset Complete", modal_reset_done_msg: "This week's schedule has been reset.",
+    modal_regen_dept_title: "Try Another Combination",
+    modal_regen_dept_sub: "Choose which department(s) to regenerate (multiple allowed). Unchecked departments and manual placements stay as they are.",
+    modal_regen_dept_required: "Please select at least one department to regenerate.",
+    confirm_regen_title: "Try another combination?",
+    confirm_regen_msg: "The current state (except manual placements) will be completely replaced and cannot be undone. Continue?",
+    confirm_regen_yes: "Yes, regenerate", confirm_regen_no: "Cancel",
+    pattern_title_off: "— often changed to a day off on {day}",
+    pattern_detail_off: "Auto-generation scheduled a shift here, but for the last {n} weeks the final schedule shows no shift on this day. Add to \"preferred days off\"?",
+    pattern_title_block: "— often removed from {shift}",
+    pattern_detail_block: "Auto-generation assigned {shift}, but it was changed to someone else {n} time(s) recently. Add to \"blocked shift types\"?",
+    pattern_title_pref: "— often manually placed on {day} {shift}",
+    pattern_detail_pref: "Auto-generation never placed this, but you've manually added it here for {n} weeks. Add to \"preferred shifts\"?",
+    day_suffix: " days", summary_pref_off: "{n} preferred days off", summary_pattern_consecutive: "Prefers consecutive off", summary_pattern_split: "Prefers split off",
+    summary_blocked: "Blocked: {list}", summary_pref_count: "{n} preferences",
+    reason_off: "day off", reason_blocked_type: "blocked shift type", reason_other_dept: "different department", reason_person: "",
+    week_range_join: "–",
+  },
+};
+
+let currentLang = localStorage.getItem("roster_lang") || "ko";
+
+function enableClickToOpenDatePicker(input) {
+  input.addEventListener("click", () => {
+    if (typeof input.showPicker === "function") {
+      try { input.showPicker(); } catch (e) { /* 일부 브라우저는 지원 안 함 - 무시 */ }
+    }
+  });
+}
+
+function t(key) {
+  return (I18N[currentLang] && I18N[currentLang][key] !== undefined) ? I18N[currentLang][key] : (I18N.ko[key] || key);
+}
+
+function tf(key, params) {
+  let s = t(key);
+  Object.keys(params || {}).forEach(k => { s = s.replace(`{${k}}`, params[k]); });
+  return s;
+}
+
+function applyI18nStatic() {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    el.innerHTML = t(key);
+  });
+  document.querySelectorAll(".lang-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.lang === currentLang);
+  });
+}
+
+function setLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem("roster_lang", lang);
+  Object.assign(DAY_LABEL, DAY_LABEL_I18N[lang]);
+  Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[lang]);
+  Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[lang]);
+  applyI18nStatic();
+  updateLockButtonUI();
+  renderShiftTimeSettingsUI();
+  loadEmployees();
+  renderRequirementGrid();
+  renderCalendarArea();
+}
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
   if (!res.ok) {
     const err = await res.json().catch(() => ({error: res.statusText}));
-    showMessageModal("요청을 처리하지 못했습니다", err.error || res.statusText, true);
+    showMessageModal(t("modal_request_failed"), err.error || res.statusText, true);
     throw new Error(err.error);
   }
   return res.status === 204 ? null : res.json();
@@ -341,7 +839,7 @@ function showMessageModal(title, message, isError) {
   closeRow.className = "modal-close-row";
   const btn = document.createElement("button");
   btn.className = "btn-primary";
-  btn.textContent = "확인";
+  btn.textContent = t("btn_confirm");
   btn.onclick = () => overlay.remove();
   closeRow.appendChild(btn);
   box.appendChild(closeRow);
@@ -351,27 +849,42 @@ function showMessageModal(title, message, isError) {
 
 let openRulesPanelId = null;
 let rulesDraft = null;
+let employeeListExpanded = false;
+const EMPLOYEE_LIST_DEFAULT_COUNT = 5;
 
 async function loadEmployees() {
   const employees = await api("/api/employees");
   window._employees = employees;
+  ensureDepartmentSelectOptions();
   const tbody = document.querySelector("#employee-table tbody");
   tbody.innerHTML = "";
-  employees.forEach(e => {
+
+  // 규칙 패널이 열려있는 직원이 "더보기" 밖에 숨어있으면 자동으로 펼칩니다 (혼란 방지).
+  if (openRulesPanelId) {
+    const openIdx = employees.findIndex(e => e.id === openRulesPanelId);
+    if (openIdx >= EMPLOYEE_LIST_DEFAULT_COUNT) employeeListExpanded = true;
+  }
+
+  const showAll = employeeListExpanded || employees.length <= EMPLOYEE_LIST_DEFAULT_COUNT;
+  const displayEmployees = showAll ? employees : employees.slice(0, EMPLOYEE_LIST_DEFAULT_COUNT);
+
+  displayEmployees.forEach(e => {
     const tr = document.createElement("tr");
     const ruleSummary = summarizeRules(e);
+    const dept = e.department || "kitchen";
     tr.innerHTML = `
       <td>${e.id}</td>
       <td>${e.name}</td>
+      <td>${DEPARTMENT_LABEL[dept] || dept}</td>
       <td>${e.min_hours_per_week}</td>
-      <td>${e.target_days_per_week != null ? e.target_days_per_week + "일" : "-"}</td>
+      <td>${e.target_days_per_week != null ? e.target_days_per_week + t("day_suffix") : "-"}</td>
       <td>
         <div style="font-size:11px; color: var(--text-muted); margin-bottom:4px;">${ruleSummary}</div>
-        <button class="btn-ghost btn-sm" onclick="toggleRulesPanel('${e.id}')">규칙 설정</button>
+        <button class="btn-ghost btn-sm" onclick="toggleRulesPanel('${e.id}')">${t("btn_rule_settings")}</button>
       </td>
       <td>
-        <button class="btn-ghost btn-sm" onclick='startEditEmployee(${JSON.stringify(e)})'>수정</button>
-        <button class="btn-danger btn-sm" onclick="deleteEmployee('${e.id}')">삭제</button>
+        <button class="btn-ghost btn-sm" onclick='startEditEmployee(${JSON.stringify(e)})'>${t("btn_edit")}</button>
+        <button class="btn-danger btn-sm" onclick="deleteEmployee('${e.id}')">${t("btn_delete")}</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -379,22 +892,55 @@ async function loadEmployees() {
     if (openRulesPanelId === e.id) {
       const panelTr = document.createElement("tr");
       const panelTd = document.createElement("td");
-      panelTd.colSpan = 6;
+      panelTd.colSpan = 7;
       panelTd.appendChild(buildRulesPanel(e));
       panelTr.appendChild(panelTd);
       tbody.appendChild(panelTr);
     }
   });
+
+  if (employees.length > EMPLOYEE_LIST_DEFAULT_COUNT) {
+    const toggleTr = document.createElement("tr");
+    const toggleTd = document.createElement("td");
+    toggleTd.colSpan = 7;
+    toggleTd.style.textAlign = "center";
+    toggleTd.style.padding = "10px";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn-ghost btn-sm";
+    if (showAll) {
+      toggleBtn.textContent = t("btn_show_less");
+      toggleBtn.onclick = () => { employeeListExpanded = false; loadEmployees(); };
+    } else {
+      toggleBtn.textContent = tf("btn_show_more", {n: employees.length - EMPLOYEE_LIST_DEFAULT_COUNT});
+      toggleBtn.onclick = () => { employeeListExpanded = true; loadEmployees(); };
+    }
+    toggleTd.appendChild(toggleBtn);
+    toggleTr.appendChild(toggleTd);
+    tbody.appendChild(toggleTr);
+  }
+
   renderCalendarArea();
+}
+
+function ensureDepartmentSelectOptions() {
+  const sel = document.getElementById("emp-department");
+  if (sel.options.length > 0) return;
+  DEPARTMENTS.forEach(dept => {
+    const opt = document.createElement("option");
+    opt.value = dept;
+    opt.textContent = DEPARTMENT_LABEL[dept] || dept;
+    sel.appendChild(opt);
+  });
 }
 
 function summarizeRules(e) {
   const parts = [];
-  if (e.preferred_off_days && e.preferred_off_days.length) parts.push(`선호오프 ${e.preferred_off_days.length}일`);
-  if (e.day_off_pattern) parts.push(e.day_off_pattern === "consecutive" ? "연속휴무선호" : "분산휴무선호");
-  if (e.blocked_shift_types && e.blocked_shift_types.length) parts.push(`금지유형 ${e.blocked_shift_types.map(s=>SHIFT_LABEL[s]).join("/")}`);
-  if (e.preferred && e.preferred.length) parts.push(`선호 ${e.preferred.length}건`);
-  return parts.length ? parts.join(" · ") : "설정된 규칙 없음";
+  if (e.leave_requests && e.leave_requests.length) parts.push(tf("summary_leave", {n: e.leave_requests.length}));
+  if (e.preferred_off_days && e.preferred_off_days.length) parts.push(tf("summary_pref_off", {n: e.preferred_off_days.length}));
+  if (e.day_off_pattern) parts.push(e.day_off_pattern === "consecutive" ? t("summary_pattern_consecutive") : t("summary_pattern_split"));
+  if (e.blocked_shift_types && e.blocked_shift_types.length) parts.push(tf("summary_blocked", {list: e.blocked_shift_types.map(s=>SHIFT_LABEL[s]).join("/")}));
+  if (e.preferred && e.preferred.length) parts.push(tf("summary_pref_count", {n: e.preferred.length}));
+  return parts.length ? parts.join(" · ") : t("rules_none");
 }
 
 function toggleRulesPanel(id) {
@@ -408,6 +954,7 @@ function toggleRulesPanel(id) {
       preferred: (e.preferred || []).map(p => [...p]),
       preferred_off_days: [...(e.preferred_off_days || [])],
       blocked_shift_types: [...(e.blocked_shift_types || [])],
+      leave_requests: (e.leave_requests || []).map(lr => ({...lr})),
     };
   }
   loadEmployees();
@@ -417,9 +964,61 @@ function buildRulesPanel(e) {
   const wrap = document.createElement("div");
   wrap.className = "rules-panel";
 
+  const leaveBlock = document.createElement("div");
+  leaveBlock.className = "rules-block";
+  leaveBlock.innerHTML = `<h4>${t("rules_leave_title")}</h4><div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">${t("rules_leave_desc")}</div>`;
+  const leaveList = document.createElement("div");
+  rulesDraft.leave_requests.forEach((lr, idx) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12px;";
+    const label = document.createElement("span");
+    label.textContent = `${lr.start_date} ${t("week_range_join")} ${lr.end_date}`;
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn-danger btn-sm";
+    removeBtn.textContent = t("btn_delete");
+    removeBtn.onclick = () => {
+      rulesDraft.leave_requests.splice(idx, 1);
+      loadEmployees();
+    };
+    row.appendChild(label);
+    row.appendChild(removeBtn);
+    leaveList.appendChild(row);
+  });
+  leaveBlock.appendChild(leaveList);
+
+  const leaveAddRow = document.createElement("div");
+  leaveAddRow.style.cssText = "display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;";
+  const startInput = document.createElement("input");
+  startInput.type = "date";
+  enableClickToOpenDatePicker(startInput);
+  const dash = document.createElement("span");
+  dash.textContent = t("week_range_join");
+  dash.style.color = "var(--text-muted)";
+  const endInput = document.createElement("input");
+  endInput.type = "date";
+  enableClickToOpenDatePicker(endInput);
+  const addLeaveBtn = document.createElement("button");
+  addLeaveBtn.className = "btn-ghost btn-sm";
+  addLeaveBtn.textContent = t("btn_leave_add");
+  addLeaveBtn.onclick = () => {
+    if (!startInput.value || !endInput.value) return;
+    if (startInput.value > endInput.value) {
+      showMessageModal(t("modal_input_check_title"), t("modal_leave_range_invalid"), true);
+      return;
+    }
+    rulesDraft.leave_requests.push({start_date: startInput.value, end_date: endInput.value});
+    loadEmployees();
+  };
+  leaveAddRow.appendChild(startInput);
+  leaveAddRow.appendChild(dash);
+  leaveAddRow.appendChild(endInput);
+  leaveAddRow.appendChild(addLeaveBtn);
+  leaveBlock.appendChild(leaveAddRow);
+  wrap.appendChild(leaveBlock);
+
   const prefOffBlock = document.createElement("div");
   prefOffBlock.className = "rules-block";
-  prefOffBlock.innerHTML = `<h4>선호 오프요일 (2순위 — 필요인원 충족 다음으로 최대한 지켜집니다)</h4>`;
+  prefOffBlock.innerHTML = `<h4>${t("rules_pref_off")}</h4>`;
   const prefOffWrap = document.createElement("div");
   DAYS.forEach(day => {
     const has = rulesDraft.preferred_off_days.includes(day);
@@ -438,9 +1037,12 @@ function buildRulesPanel(e) {
   prefOffBlock.appendChild(prefOffWrap);
   wrap.appendChild(prefOffBlock);
 
+  const empDept = e.department || "kitchen";
+  const deptShifts = DEPARTMENT_SHIFTS[empDept] || SHIFT_TYPES;
+
   const prefBlock = document.createElement("div");
   prefBlock.className = "rules-block";
-  prefBlock.innerHTML = `<h4>선호 근무 요일 · 근무유형 (중복 선택 가능)</h4>`;
+  prefBlock.innerHTML = `<h4>${t("rules_pref_shift")} (${DEPARTMENT_LABEL[empDept] || empDept} ${t("rules_dept_suffix")}</h4>`;
   const prefWrap = document.createElement("div");
   DAYS.forEach(day => {
     const row = document.createElement("div");
@@ -449,7 +1051,7 @@ function buildRulesPanel(e) {
     label.style.cssText = "font-size:12px; width:22px; color:var(--text-muted);";
     label.textContent = DAY_LABEL[day];
     row.appendChild(label);
-    SHIFT_TYPES.forEach(shift => {
+    deptShifts.forEach(shift => {
       const has = rulesDraft.preferred.some(p => p[0] === day && p[1] === shift);
       const chip = document.createElement("span");
       chip.className = "chip " + shift + (has ? " active" : "");
@@ -469,9 +1071,9 @@ function buildRulesPanel(e) {
 
   const blockBlock = document.createElement("div");
   blockBlock.className = "rules-block";
-  blockBlock.innerHTML = `<h4>근무유형 전체 배정 금지 (모든 요일에서 해당 유형 절대 배정 안 함)</h4>`;
+  blockBlock.innerHTML = `<h4>${t("rules_block_shift")} (${DEPARTMENT_LABEL[empDept] || empDept} ${t("rules_block_shift_suffix")}</h4>`;
   const blockWrap = document.createElement("div");
-  SHIFT_TYPES.forEach(shift => {
+  deptShifts.forEach(shift => {
     const has = rulesDraft.blocked_shift_types.includes(shift);
     const chip = document.createElement("span");
     chip.className = "chip " + shift + (has ? " active" : "");
@@ -489,9 +1091,9 @@ function buildRulesPanel(e) {
 
   const patternBlock = document.createElement("div");
   patternBlock.className = "rules-block";
-  patternBlock.innerHTML = `<h4>휴무 패턴 (권장사항 - 최대한 지키려 하되 필요시 조정될 수 있음)</h4>`;
+  patternBlock.innerHTML = `<h4>${t("rules_pattern")}</h4>`;
   const patternSelect = document.createElement("select");
-  [["", "지정 안 함"], ["consecutive", "연속 휴무 (Consecutive)"], ["split", "분산 휴무 (Split)"]].forEach(([val, label]) => {
+  [["", t("pattern_none")], ["consecutive", t("pattern_consecutive")], ["split", t("pattern_split")]].forEach(([val, label]) => {
     const opt = document.createElement("option");
     opt.value = val;
     opt.textContent = label;
@@ -505,7 +1107,7 @@ function buildRulesPanel(e) {
   const btnRow = document.createElement("div");
   const saveBtn = document.createElement("button");
   saveBtn.className = "btn-primary btn-sm";
-  saveBtn.textContent = "규칙 저장";
+  saveBtn.textContent = t("btn_save");
   saveBtn.onclick = async () => {
     await api(`/api/employees/${e.id}`, {
       method: "PUT",
@@ -517,7 +1119,7 @@ function buildRulesPanel(e) {
   };
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn-ghost btn-sm";
-  closeBtn.textContent = "닫기";
+  closeBtn.textContent = t("btn_close");
   closeBtn.style.marginLeft = "6px";
   closeBtn.onclick = () => { openRulesPanelId = null; loadEmployees(); };
   btnRow.appendChild(saveBtn); btnRow.appendChild(closeBtn);
@@ -540,12 +1142,14 @@ function startEditEmployee(e) {
   document.getElementById("emp-id").value = e.id;
   document.getElementById("emp-id").disabled = true;
   document.getElementById("emp-name").value = e.name;
+  ensureDepartmentSelectOptions();
+  document.getElementById("emp-department").value = e.department || "kitchen";
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
   const isAny = e.target_days_per_week == null;
   document.getElementById("emp-target-days-any").checked = isAny;
   document.getElementById("emp-target-days").disabled = isAny;
   document.getElementById("emp-target-days").value = isAny ? "" : e.target_days_per_week;
-  document.getElementById("emp-submit-btn").textContent = "수정 저장";
+  document.getElementById("emp-submit-btn").textContent = t("btn_save_edit");
   document.getElementById("emp-cancel-btn").style.display = "inline-block";
   document.getElementById("emp-name").focus();
 }
@@ -555,38 +1159,44 @@ function cancelEditEmployee() {
   document.getElementById("emp-id").disabled = false;
   document.getElementById("emp-id").value = "";
   document.getElementById("emp-name").value = "";
+  document.getElementById("emp-department").value = "kitchen";
   document.getElementById("emp-min-hours").value = "30";
   document.getElementById("emp-target-days").value = "";
   document.getElementById("emp-target-days").disabled = false;
   document.getElementById("emp-target-days-any").checked = false;
-  document.getElementById("emp-submit-btn").textContent = "직원 추가";
+  document.getElementById("emp-submit-btn").textContent = t("btn_add_employee");
   document.getElementById("emp-cancel-btn").style.display = "none";
 }
 
 async function submitEmployee() {
   const id = document.getElementById("emp-id").value.trim();
   const name = document.getElementById("emp-name").value.trim();
-  const min_hours_per_week = Number(document.getElementById("emp-min-hours").value) || 30;
+  const department = document.getElementById("emp-department").value || "kitchen";
+  const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
   const isAny = document.getElementById("emp-target-days-any").checked;
   const targetDaysRaw = document.getElementById("emp-target-days").value;
   const target_days_per_week = isAny || targetDaysRaw === "" ? null : Number(targetDaysRaw);
-  if (!id || !name) { showMessageModal("입력값을 확인해주세요", "ID와 이름은 필수입니다.", true); return; }
+  if (!id || !name) { showMessageModal(t("modal_input_check_title"), t("modal_id_name_required"), true); return; }
 
   if (editingEmployeeId) {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, min_hours_per_week, target_days_per_week})
     });
   } else {
     await api("/api/employees", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({id, name, department, min_hours_per_week, target_days_per_week})
     });
   }
   cancelEditEmployee();
   loadEmployees();
+
+  if (department === "training") {
+    showMessageModal(t("modal_training_added_title"), t("modal_training_added_msg"), false);
+  }
 }
 
 async function deleteEmployee(id) {
@@ -631,7 +1241,7 @@ function updateWeekLabel() {
   const sundayDate = keyToDate(sundayKey);
   const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
   document.getElementById("week-label").textContent =
-    `${fmt(mondayDate)}(월) ~ ${fmt(sundayDate)}(일)`;
+    `${fmt(mondayDate)}(${DAY_LABEL.mon}) ${t("week_range_join")} ${fmt(sundayDate)}(${DAY_LABEL.sun})`;
   document.getElementById("week-date-picker").value = currentWeekKey;
 }
 
@@ -655,25 +1265,25 @@ function showNewWeekChoiceModal(weekLabel) {
     const box = document.createElement("div");
     box.className = "modal-box info";
     const h = document.createElement("h3");
-    h.textContent = `새 주차 (${weekLabel})`;
+    h.textContent = `${t("modal_new_week_title")} (${weekLabel})`;
     box.appendChild(h);
     const sub = document.createElement("div");
     sub.className = "modal-sub";
-    sub.textContent = "이 주는 아직 데이터가 없습니다. 어떻게 시작할까요?";
+    sub.textContent = t("modal_new_week_msg");
     box.appendChild(sub);
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;";
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "btn-ghost";
-    cancelBtn.textContent = "취소 (이전 화면으로)";
+    cancelBtn.textContent = t("modal_new_week_cancel");
     cancelBtn.onclick = () => { overlay.remove(); resolve("cancel"); };
     const newBtn = document.createElement("button");
     newBtn.className = "btn-ghost";
-    newBtn.textContent = "새로 시작";
+    newBtn.textContent = t("modal_new_week_new");
     newBtn.onclick = () => { overlay.remove(); resolve("new"); };
     const copyBtn = document.createElement("button");
     copyBtn.className = "btn-primary";
-    copyBtn.textContent = "전주와 동일하게 시작";
+    copyBtn.textContent = t("modal_new_week_copy");
     copyBtn.onclick = () => { overlay.remove(); resolve("copy"); };
     btnRow.appendChild(cancelBtn);
     btnRow.appendChild(newBtn);
@@ -685,6 +1295,258 @@ function showNewWeekChoiceModal(weekLabel) {
 }
 
 let lastLoadedWeekKey = null; // 취소 시 되돌아갈 "마지막으로 정상 로드된 주"
+
+async function loadShiftTimeSettings() {
+  const data = await api("/api/shift-time-settings");
+  window._shiftTimeSettings = data;
+  Object.keys(data).forEach(shift => {
+    SHIFT_TIME[shift] = `${data[shift].start}-${data[shift].end}`;
+  });
+  renderShiftTimeSettingsUI();
+}
+
+let shiftTimeExpanded = false;
+const SHIFT_TIME_DEFAULT_COUNT = 5;
+
+function renderShiftTimeSettingsUI() {
+  const wrap = document.getElementById("shift-time-settings-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  const settings = window._shiftTimeSettings || {};
+
+  const allPairs = [];
+  DEPARTMENTS.forEach(dept => {
+    (DEPARTMENT_SHIFTS[dept] || []).forEach(shift => allPairs.push([dept, shift]));
+  });
+  const totalCount = allPairs.length;
+  const showAll = shiftTimeExpanded || totalCount <= SHIFT_TIME_DEFAULT_COUNT;
+  const visiblePairs = showAll ? allPairs : allPairs.slice(0, SHIFT_TIME_DEFAULT_COUNT);
+
+  let lastDept = null;
+  visiblePairs.forEach(([dept, shift]) => {
+    if (dept !== lastDept) {
+      const deptHeader = document.createElement("div");
+      deptHeader.style.cssText = "font-family:'JetBrains Mono',monospace; color:var(--cyan); font-size:11px; letter-spacing:0.06em; margin:14px 0 8px;";
+      deptHeader.textContent = DEPARTMENT_LABEL[dept] || dept;
+      wrap.appendChild(deptHeader);
+      lastDept = dept;
+    }
+
+    const info = settings[shift] || {};
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;";
+
+    const label = document.createElement("span");
+    label.style.cssText = "min-width:160px; font-size:13px;";
+    label.textContent = SHIFT_LABEL[shift];
+    row.appendChild(label);
+
+    const startInput = document.createElement("input");
+    startInput.type = "time";
+    startInput.value = info.start || "";
+    enableClickToOpenDatePicker(startInput);
+    row.appendChild(startInput);
+
+    const dash = document.createElement("span");
+    dash.textContent = "~";
+    dash.style.color = "var(--text-muted)";
+    row.appendChild(dash);
+
+    const endInput = document.createElement("input");
+    endInput.type = "time";
+    endInput.value = info.end || "";
+    enableClickToOpenDatePicker(endInput);
+    row.appendChild(endInput);
+
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "btn-ghost btn-sm";
+    saveBtn.textContent = t("btn_save");
+    saveBtn.onclick = async () => {
+      if (!startInput.value || !endInput.value) return;
+      await api("/api/shift-time-settings", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({shift_type: shift, start: startInput.value, end: endInput.value})
+      });
+      await loadShiftTimeSettings();
+      renderRequirementGrid();
+      renderCalendarArea();
+    };
+    row.appendChild(saveBtn);
+
+    wrap.appendChild(row);
+  });
+
+  if (totalCount > SHIFT_TIME_DEFAULT_COUNT) {
+    const toggleRow = document.createElement("div");
+    toggleRow.style.cssText = "text-align:center; margin-top:10px;";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn-ghost btn-sm";
+    if (showAll) {
+      toggleBtn.textContent = t("btn_show_less");
+      toggleBtn.onclick = () => { shiftTimeExpanded = false; renderShiftTimeSettingsUI(); };
+    } else {
+      toggleBtn.textContent = tf("btn_show_more", {n: totalCount - SHIFT_TIME_DEFAULT_COUNT});
+      toggleBtn.onclick = () => { shiftTimeExpanded = true; renderShiftTimeSettingsUI(); };
+    }
+    toggleRow.appendChild(toggleBtn);
+    wrap.appendChild(toggleRow);
+  }
+}
+
+let publicHolidaysExpanded = false;
+const PUBLIC_HOLIDAY_DEFAULT_COUNT = 5;
+
+async function loadPublicHolidays() {
+  const holidays = await api("/api/public-holidays");
+  window._publicHolidays = holidays;
+  const tbody = document.querySelector("#ph-table tbody");
+  tbody.innerHTML = "";
+
+  const showAll = publicHolidaysExpanded || holidays.length <= PUBLIC_HOLIDAY_DEFAULT_COUNT;
+  const displayHolidays = showAll ? holidays : holidays.slice(0, PUBLIC_HOLIDAY_DEFAULT_COUNT);
+
+  displayHolidays.forEach(h => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${h.date}</td><td>${h.name || "-"}</td><td><button class="btn-danger btn-sm" onclick="deletePublicHoliday('${h.date}')">${t("btn_delete")}</button></td>`;
+    tbody.appendChild(tr);
+  });
+
+  if (holidays.length > PUBLIC_HOLIDAY_DEFAULT_COUNT) {
+    const toggleTr = document.createElement("tr");
+    const toggleTd = document.createElement("td");
+    toggleTd.colSpan = 3;
+    toggleTd.style.textAlign = "center";
+    toggleTd.style.padding = "10px";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn-ghost btn-sm";
+    if (showAll) {
+      toggleBtn.textContent = t("btn_show_less");
+      toggleBtn.onclick = () => { publicHolidaysExpanded = false; loadPublicHolidays(); };
+    } else {
+      toggleBtn.textContent = tf("btn_show_more", {n: holidays.length - PUBLIC_HOLIDAY_DEFAULT_COUNT});
+      toggleBtn.onclick = () => { publicHolidaysExpanded = true; loadPublicHolidays(); };
+    }
+    toggleTd.appendChild(toggleBtn);
+    toggleTr.appendChild(toggleTd);
+    tbody.appendChild(toggleTr);
+  }
+}
+
+async function addPublicHoliday() {
+  const dateVal = document.getElementById("ph-date").value;
+  const nameVal = document.getElementById("ph-name").value.trim();
+  if (!dateVal) { showMessageModal(t("modal_input_check_title"), t("modal_ph_date_required"), true); return; }
+  await api("/api/public-holidays", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({date: dateVal, name: nameVal})
+  });
+  document.getElementById("ph-date").value = "";
+  document.getElementById("ph-name").value = "";
+  loadPublicHolidays();
+}
+
+async function deletePublicHoliday(dateVal) {
+  await api(`/api/public-holidays/${dateVal}`, {method: "DELETE"});
+  loadPublicHolidays();
+}
+
+async function checkPublicHolidayForWeek() {
+  let info;
+  try {
+    info = await api(`/api/weeks/${currentWeekKey}/public-holiday-info`);
+  } catch (e) {
+    return;
+  }
+  if (!info.holidays || !info.holidays.length) return;
+  showPublicHolidayModal(info);
+}
+
+function showPublicHolidayModal(info) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "640px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("modal_ph_week_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("modal_ph_week_sub");
+  box.appendChild(sub);
+
+  const CATEGORY_LABELS = {1: "ph_cat1", 2: "ph_cat2", 3: "ph_cat3", 4: "ph_cat4"};
+  const CATEGORY_COLORS = {1: "var(--danger)", 2: "var(--cyan)", 3: "var(--opening)", 4: "var(--text-muted)"};
+
+  info.holidays.forEach(holiday => {
+    const holidayHeader = document.createElement("div");
+    holidayHeader.style.cssText = "font-weight:700; margin-top:14px; margin-bottom:8px; color:var(--cyan);";
+    holidayHeader.textContent = `${DAY_LABEL[holiday.day]} · ${holiday.date}${holiday.name ? " · " + holiday.name : ""}`;
+    box.appendChild(holidayHeader);
+
+    const rows = info.categories[holiday.day] || [];
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "modal-item-detail";
+      empty.textContent = t("rules_none");
+      box.appendChild(empty);
+      return;
+    }
+
+    [1, 2, 3, 4].forEach(cat => {
+      const rowsInCat = rows.filter(r => r.category === cat);
+      if (!rowsInCat.length) return;
+      const catBlock = document.createElement("div");
+      catBlock.className = "modal-item";
+      catBlock.style.borderLeft = `3px solid ${CATEGORY_COLORS[cat]}`;
+      const catTitle = document.createElement("div");
+      catTitle.className = "modal-item-title";
+      catTitle.style.color = CATEGORY_COLORS[cat];
+      catTitle.textContent = t(CATEGORY_LABELS[cat]);
+      catBlock.appendChild(catTitle);
+      rowsInCat.forEach(r => {
+        const line = document.createElement("div");
+        line.className = "modal-item-detail";
+        const dayNote = r.is_usual_working_day
+          ? tf("ph_usual_day", {n: r.occurrence_count})
+          : tf("ph_not_usual_day", {n: r.occurrence_count});
+        const workNote = r.worked_on_holiday ? t("ph_worked") : t("ph_not_worked");
+        line.textContent = `${r.employee_name} — ${dayNote}, ${workNote}`;
+        catBlock.appendChild(line);
+      });
+      box.appendChild(catBlock);
+    });
+  });
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-primary";
+  closeBtn.textContent = t("btn_confirm");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function refreshWeekdayFrequency() {
+  try {
+    const data = await api(`/api/weeks/${currentWeekKey}/weekday-frequency`);
+    window._weekdayFrequency = data.counts || {};
+    window._weekdayFrequencyThreshold = data.highlight_at || 5;
+    window._weekdayFrequencyWindow = data.window || 8;
+  } catch (e) {
+    window._weekdayFrequency = {};
+  }
+}
 
 async function loadWeek() {
   updateWeekLabel();
@@ -716,7 +1578,10 @@ async function loadWeek() {
 
   window._weekOffDays = week.off_days || {};
   window._requirements = week.requirements || [];
+  weekLocked = !!week.locked;
   renderRequirementGrid();
+  updateLockButtonUI();
+  await refreshWeekdayFrequency();
 
   seenAssignmentSets = [];
   if (week.schedule) {
@@ -732,7 +1597,11 @@ async function loadWeek() {
   }
 
   lastLoadedWeekKey = currentWeekKey;
+  await checkPublicHolidayForWeek();
 }
+
+let requirementGridExpanded = false;
+const REQUIREMENT_GRID_DEFAULT_COUNT = 5;
 
 function renderRequirementGrid() {
   const wrap = document.getElementById("requirement-grid-wrap");
@@ -758,8 +1627,28 @@ function renderRequirementGrid() {
   thead.appendChild(headRow);
   table.appendChild(thead);
 
+  const allPairs = [];
+  DEPARTMENTS.forEach(dept => {
+    (DEPARTMENT_SHIFTS[dept] || []).forEach(shift => allPairs.push([dept, shift]));
+  });
+  const totalCount = allPairs.length;
+  const showAll = requirementGridExpanded || totalCount <= REQUIREMENT_GRID_DEFAULT_COUNT;
+  const visiblePairs = showAll ? allPairs : allPairs.slice(0, REQUIREMENT_GRID_DEFAULT_COUNT);
+
   const tbody = document.createElement("tbody");
-  SHIFT_TYPES.forEach(shift => {
+  let lastDept = null;
+  visiblePairs.forEach(([dept, shift]) => {
+    if (dept !== lastDept) {
+      const deptRow = document.createElement("tr");
+      const deptTh = document.createElement("th");
+      deptTh.textContent = DEPARTMENT_LABEL[dept] || dept;
+      deptTh.colSpan = DAYS.length + 1;
+      deptTh.style.cssText = "text-align:left; background:var(--void-soft); color:var(--cyan); font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.06em; padding:8px 10px;";
+      deptRow.appendChild(deptTh);
+      tbody.appendChild(deptRow);
+      lastDept = dept;
+    }
+
     const tr = document.createElement("tr");
     const th = document.createElement("th");
     th.textContent = SHIFT_LABEL[shift];
@@ -783,6 +1672,27 @@ function renderRequirementGrid() {
     });
     tbody.appendChild(tr);
   });
+
+  if (totalCount > REQUIREMENT_GRID_DEFAULT_COUNT) {
+    const toggleRow = document.createElement("tr");
+    const toggleTd = document.createElement("td");
+    toggleTd.colSpan = DAYS.length + 1;
+    toggleTd.style.textAlign = "center";
+    toggleTd.style.padding = "10px";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn-ghost btn-sm";
+    if (showAll) {
+      toggleBtn.textContent = t("btn_show_less");
+      toggleBtn.onclick = () => { requirementGridExpanded = false; renderRequirementGrid(); };
+    } else {
+      toggleBtn.textContent = tf("btn_show_more", {n: totalCount - REQUIREMENT_GRID_DEFAULT_COUNT});
+      toggleBtn.onclick = () => { requirementGridExpanded = true; renderRequirementGrid(); };
+    }
+    toggleTd.appendChild(toggleBtn);
+    toggleRow.appendChild(toggleTd);
+    tbody.appendChild(toggleRow);
+  }
+
   table.appendChild(tbody);
 
   wrap.innerHTML = "";
@@ -790,6 +1700,7 @@ function renderRequirementGrid() {
 }
 
 async function saveRequirementGrid() {
+  if (weekLocked) return;
   const inputs = document.querySelectorAll(".req-grid-input");
   const newRequirements = [];
   inputs.forEach(input => {
@@ -804,14 +1715,83 @@ async function saveRequirementGrid() {
     body: JSON.stringify(newRequirements)
   });
   window._requirements = newRequirements;
-  showMessageModal("저장 완료", "이번 주 근무 요건이 저장되었습니다.", false);
+  showMessageModal(t("modal_save_done"), t("modal_save_msg"), false);
 }
 
 let currentAssignments = [];
 let scheduleGenerated = false;
 let seenAssignmentSets = []; // "다시 생성" 시 반복 방지용 - 이 주에서 지금까지 본 조합들 (탭 새로고침하면 초기화)
+let weekLocked = false; // 이 주가 잠겨있으면 수정 관련 조작이 전부 막힙니다
+
+function updateLockButtonUI() {
+  const lockBtn = document.getElementById("lock-btn");
+  lockBtn.style.display = "inline-block";
+  lockBtn.textContent = weekLocked ? "🔓 " + t("btn_unlock") : "🔒 " + t("btn_lock");
+  lockBtn.classList.toggle("lock-active", weekLocked);
+
+  const generateBtn = document.getElementById("generate-btn");
+  const regenerateBtn = document.getElementById("regenerate-btn");
+  const saveManualBtn = document.getElementById("save-manual-btn");
+  const saveReqBtn = document.getElementById("save-req-btn");
+  const resetScheduleBtn = document.getElementById("reset-schedule-btn");
+  [generateBtn, regenerateBtn, saveManualBtn, saveReqBtn, resetScheduleBtn].forEach(btn => {
+    if (btn) btn.disabled = weekLocked;
+  });
+}
+
+async function toggleWeekLock() {
+  const newLocked = !weekLocked;
+  const result = await api(`/api/weeks/${currentWeekKey}/lock`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({locked: newLocked})
+  });
+  weekLocked = result.locked;
+  updateLockButtonUI();
+  if (scheduleGenerated) {
+    renderSchedule({
+      status: "MANUAL", assignments: currentAssignments,
+      unmet_requirements: [], diagnostics: [], day_count_issues: [], preferred_off_issues: [],
+    });
+  } else {
+    renderCalendarArea();
+  }
+}
+
+function showConfirmModal(title, message, yesLabel, noLabel) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.onclick = (ev) => { if (ev.target === overlay) { overlay.remove(); resolve(false); } };
+    const box = document.createElement("div");
+    box.className = "modal-box";
+    const h = document.createElement("h3");
+    h.textContent = title;
+    box.appendChild(h);
+    const sub = document.createElement("div");
+    sub.className = "modal-sub";
+    sub.textContent = message;
+    box.appendChild(sub);
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end;";
+    const noBtn = document.createElement("button");
+    noBtn.className = "btn-ghost";
+    noBtn.textContent = noLabel;
+    noBtn.onclick = () => { overlay.remove(); resolve(false); };
+    const yesBtn = document.createElement("button");
+    yesBtn.className = "btn-primary";
+    yesBtn.textContent = yesLabel;
+    yesBtn.onclick = () => { overlay.remove(); resolve(true); };
+    btnRow.appendChild(noBtn);
+    btnRow.appendChild(yesBtn);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  });
+}
 
 async function generateSchedule() {
+  if (weekLocked) return;
   // 이번 주에 스케줄이 아직 없고, 전주에 확정된 스케줄이 있으면 "전주와 동일하게?" 먼저 물어봅니다.
   if (!scheduleGenerated) {
     const prevKey = addDaysToKey(currentWeekKey, -7);
@@ -835,21 +1815,21 @@ function showCopyPreviousScheduleModal() {
     const box = document.createElement("div");
     box.className = "modal-box info";
     const h = document.createElement("h3");
-    h.textContent = "전주와 동일하게 할까요?";
+    h.textContent = t("modal_copy_prev_title");
     box.appendChild(h);
     const sub = document.createElement("div");
     sub.className = "modal-sub";
-    sub.textContent = "직전 주에 확정된 스케줄이 있습니다. 그대로 이번 주에도 복사해서 쓸 수 있어요. (요일 기준으로 그대로 복사되므로, 이번 주의 휴무 지정 등과 다를 수 있으니 복사 후 확인해주세요.)";
+    sub.textContent = t("modal_copy_prev_msg");
     box.appendChild(sub);
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end;";
     const noBtn = document.createElement("button");
     noBtn.className = "btn-ghost";
-    noBtn.textContent = "아니요, 새로 생성";
+    noBtn.textContent = t("modal_copy_no");
     noBtn.onclick = () => { overlay.remove(); resolve(false); };
     const yesBtn = document.createElement("button");
     yesBtn.className = "btn-primary";
-    yesBtn.textContent = "네, 동일하게";
+    yesBtn.textContent = t("modal_copy_yes");
     yesBtn.onclick = () => { overlay.remove(); resolve(true); };
     btnRow.appendChild(noBtn);
     btnRow.appendChild(yesBtn);
@@ -861,8 +1841,9 @@ function showCopyPreviousScheduleModal() {
 
 async function copyPreviousWeekSchedule(prevAssignments) {
   const output = document.getElementById("schedule-output");
-  output.innerHTML = `<p class="empty-hint">전주 스케줄을 복사하는 중...</p>`;
-  const copied = prevAssignments.map(a => ({...a}));
+  output.innerHTML = `<p class="empty-hint">${t("modal_copying")}</p>`;
+  // 복사해온 배치는 원래 자동/수동이었던 표시를 그대로 유지합니다 (없으면 자동으로 간주).
+  const copied = prevAssignments.map(a => ({...a, source: a.source || "auto"}));
   const result = await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -871,31 +1852,60 @@ async function copyPreviousWeekSchedule(prevAssignments) {
   scheduleGenerated = true;
   seenAssignmentSets = [copied.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}))];
   document.getElementById("regenerate-btn").style.display = "inline-block";
+  await refreshWeekdayFrequency();
   renderSchedule(result);
   showMessageModal(
-    "복사 완료",
-    "전주와 동일한 스케줄로 설정했습니다. 필요하면 드래그로 조정하거나, '변경사항 저장'을 눌러 확정하세요.",
+    t("modal_copy_done"),
+    t("modal_copy_done_msg"),
     false
   );
 }
 
+function _tagAssignmentSources(resultAssignments, pinnedList, previousAssignments) {
+  // 고정(pin)으로 보낸 자리는 "원래 갖고 있던 자동/수동 표시"를 그대로 유지하고,
+  // 새로 계산된(고정 아닌) 자리는 전부 자동으로 표시합니다.
+  const pinnedKeys = new Set(pinnedList.map(p => `${p.employee_id}|${p.day}|${p.shift_type}`));
+  const prevSourceByKey = {};
+  (previousAssignments || []).forEach(a => {
+    prevSourceByKey[`${a.employee_id}|${a.day}|${a.shift_type}`] = a.source || "auto";
+  });
+  return resultAssignments.map(a => {
+    const key = `${a.employee_id}|${a.day}|${a.shift_type}`;
+    if (pinnedKeys.has(key)) {
+      return {...a, source: prevSourceByKey[key] || "manual"};
+    }
+    return {...a, source: "auto"};
+  });
+}
+
+function _collectPinnedManualAssignments() {
+  // 지금 화면에 있는 "수동배치" 항목들을 그대로 유지하도록 솔버에게 고정 자리로 알려줍니다.
+  return currentAssignments
+    .filter(a => a.source === "manual")
+    .map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}));
+}
+
 async function runAutoGenerate() {
   const output = document.getElementById("schedule-output");
-  output.innerHTML = `<p class="empty-hint">계산 중...</p>`;
+  output.innerHTML = `<p class="empty-hint">${t("modal_computing")}</p>`;
+  const previousAssignments = currentAssignments;
+  const pinned = _collectPinnedManualAssignments();
   let result;
   try {
     result = await api(`/api/weeks/${currentWeekKey}/generate-schedule`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({exclude: []})
+      body: JSON.stringify({exclude: [], pin: pinned})
     });
   } catch (e) {
     renderCalendarArea();
     return;
   }
+  result.assignments = _tagAssignmentSources(result.assignments, pinned, previousAssignments);
   scheduleGenerated = true;
   seenAssignmentSets = [result.assignments.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}))];
   document.getElementById("regenerate-btn").style.display = "inline-block";
+  await refreshWeekdayFrequency();
   renderSchedule(result);
 
   const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
@@ -906,23 +1916,99 @@ async function runAutoGenerate() {
   }
 }
 
+function showRegenerateDeptModal() {
+  const deptsInUse = DEPARTMENTS.filter(d => currentAssignments.some(a => SHIFT_DEPT[a.shift_type] === d));
+  const depts = deptsInUse.length ? deptsInUse : DEPARTMENTS;
+
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.onclick = (ev) => { if (ev.target === overlay) { overlay.remove(); resolve(null); } };
+
+    const box = document.createElement("div");
+    box.className = "modal-box";
+
+    const h = document.createElement("h3");
+    h.textContent = t("modal_regen_dept_title");
+    box.appendChild(h);
+
+    const sub = document.createElement("div");
+    sub.className = "modal-sub";
+    sub.textContent = t("modal_regen_dept_sub");
+    box.appendChild(sub);
+
+    const checkboxes = [];
+    depts.forEach(d => {
+      const label = document.createElement("label");
+      label.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; cursor:pointer;";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = true;
+      cb.dataset.dept = d;
+      checkboxes.push(cb);
+      const span = document.createElement("span");
+      span.textContent = DEPARTMENT_LABEL[d] || d;
+      label.appendChild(cb);
+      label.appendChild(span);
+      box.appendChild(label);
+    });
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn-ghost";
+    cancelBtn.textContent = t("confirm_regen_no");
+    cancelBtn.onclick = () => { overlay.remove(); resolve(null); };
+    const okBtn = document.createElement("button");
+    okBtn.className = "btn-primary";
+    okBtn.textContent = t("confirm_regen_yes");
+    okBtn.onclick = () => {
+      const selected = checkboxes.filter(cb => cb.checked).map(cb => cb.dataset.dept);
+      overlay.remove();
+      resolve(selected);
+    };
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(okBtn);
+    box.appendChild(btnRow);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  });
+}
+
 async function regenerateSchedule() {
+  if (weekLocked) return;
+  const selectedDepts = await showRegenerateDeptModal();
+  if (selectedDepts === null) return; // 취소
+  if (!selectedDepts.length) {
+    showMessageModal(t("modal_input_check_title"), t("modal_regen_dept_required"), true);
+    return;
+  }
+
   const output = document.getElementById("schedule-output");
-  output.innerHTML = `<p class="empty-hint">다른 조합을 찾는 중...</p>`;
+  output.innerHTML = `<p class="empty-hint">${t("modal_regenerating")}</p>`;
+  const previousAssignments = currentAssignments;
+  // 수동배치는 항상 고정. 그리고 체크 안 한 부서는 자동배치라도 그대로 고정.
+  const pinned = currentAssignments
+    .filter(a => a.source === "manual" || !selectedDepts.includes(SHIFT_DEPT[a.shift_type]))
+    .map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}));
+
   let result;
   try {
     result = await api(`/api/weeks/${currentWeekKey}/generate-schedule`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({exclude: seenAssignmentSets})
+      body: JSON.stringify({exclude: seenAssignmentSets, pin: pinned})
     });
   } catch (e) {
     renderCalendarArea();
     return;
   }
+  result.assignments = _tagAssignmentSources(result.assignments, pinned, previousAssignments);
   scheduleGenerated = true;
   seenAssignmentSets.push(result.assignments.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type})));
   if (seenAssignmentSets.length > 5) seenAssignmentSets = seenAssignmentSets.slice(-5);
+  await refreshWeekdayFrequency();
   renderSchedule(result);
 
   const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
@@ -952,18 +2038,18 @@ function showPatternSuggestionsModal(suggestions) {
   box.className = "modal-box info";
 
   const h = document.createElement("h3");
-  h.textContent = "지난 수정 패턴에서 찾은 규칙 제안";
+  h.textContent = t("pattern_modal_title");
   box.appendChild(h);
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = "자동 생성된 스케줄과 최종 저장된 스케줄을 비교해서, 3주 이상 반복된 수정 패턴만 제안합니다. 적용 여부는 직접 선택하세요.";
+  sub.textContent = t("pattern_modal_sub");
   box.appendChild(sub);
 
   if (!suggestions.length) {
     const empty = document.createElement("div");
     empty.className = "modal-item-detail";
-    empty.textContent = "아직 반복된 수정 패턴이 발견되지 않았습니다. 몇 주 더 사용해보시고 다시 확인해보세요.";
+    empty.textContent = t("pattern_empty");
     box.appendChild(empty);
   }
 
@@ -972,23 +2058,23 @@ function showPatternSuggestionsModal(suggestions) {
     item.className = "modal-item";
     let title = "", detail = "";
     if (s.type === "preferred_off_day") {
-      title = `${s.employee_name} — ${DAY_LABEL[s.day]}요일에 자주 휴무로 바뀜`;
-      detail = `자동 생성에서는 근무로 배정됐지만, 최근 ${s.count}주 동안 최종 스케줄에서는 그 요일에 근무하지 않은 것으로 확인됩니다. "선호 오프요일"에 추가할까요?`;
+      title = `${s.employee_name} ${tf("pattern_title_off", {day: DAY_LABEL[s.day]})}`;
+      detail = tf("pattern_detail_off", {n: s.count});
     } else if (s.type === "blocked_shift_type") {
-      title = `${s.employee_name} — ${SHIFT_LABEL[s.shift_type]} 근무에서 자주 제외됨`;
-      detail = `자동 생성에서 ${SHIFT_LABEL[s.shift_type]}로 배정됐지만, 최근 ${s.count}회 다른 사람으로 바뀌었습니다. "근무유형 전체 금지"에 추가할까요?`;
+      title = `${s.employee_name} ${tf("pattern_title_block", {shift: SHIFT_LABEL[s.shift_type]})}`;
+      detail = tf("pattern_detail_block", {shift: SHIFT_LABEL[s.shift_type], n: s.count});
     } else if (s.type === "preferred_shift") {
-      title = `${s.employee_name} — ${DAY_LABEL[s.day]}요일 ${SHIFT_LABEL[s.shift_type]}에 자주 수동 배치됨`;
-      detail = `자동 생성엔 없었는데, 최근 ${s.count}주 동안 직접 이 자리에 넣으셨습니다. "선호 근무"에 추가할까요?`;
+      title = `${s.employee_name} ${tf("pattern_title_pref", {day: DAY_LABEL[s.day], shift: SHIFT_LABEL[s.shift_type]})}`;
+      detail = tf("pattern_detail_pref", {n: s.count});
     }
     const applyBtn = document.createElement("button");
     applyBtn.className = "btn-primary btn-sm";
-    applyBtn.textContent = "적용하기";
+    applyBtn.textContent = t("pattern_apply");
     applyBtn.style.marginTop = "8px";
     applyBtn.onclick = async () => {
       await applyPatternSuggestion(s);
       item.style.opacity = "0.4";
-      applyBtn.textContent = "적용됨";
+      applyBtn.textContent = t("pattern_applied");
       applyBtn.disabled = true;
     };
     item.innerHTML = `<div class="modal-item-title">${title}</div><div class="modal-item-detail">${detail}</div>`;
@@ -1000,7 +2086,7 @@ function showPatternSuggestionsModal(suggestions) {
   closeRow.className = "modal-close-row";
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn-ghost";
-  closeBtn.textContent = "닫기";
+  closeBtn.textContent = t("btn_close");
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
@@ -1038,6 +2124,11 @@ async function applyPatternSuggestion(s) {
   await loadEmployees();
 }
 
+function translateReason(rawKey) {
+  const map = {"휴무 지정": "reason_off", "근무유형 전체 금지": "reason_blocked_type", "다른 부서 소속": "reason_other_dept"};
+  return map[rawKey] ? t(map[rawKey]) : rawKey;
+}
+
 function showDiagnosticsModal(result) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -1047,23 +2138,23 @@ function showDiagnosticsModal(result) {
   box.className = "modal-box";
 
   const title = document.createElement("h3");
-  title.textContent = "확인이 필요한 사항이 있습니다";
+  title.textContent = t("modal_diag_title");
   box.appendChild(title);
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = "아래 내용을 확인하고 규칙을 조정해보세요.";
+  sub.textContent = t("modal_diag_sub");
   box.appendChild(sub);
 
   const unmet = result.unmet_requirements || [];
   unmet.forEach(u => {
     const item = document.createElement("div");
     item.className = "modal-item";
-    const reasonParts = Object.entries(u.reasons || {}).map(([k, v]) => `${k} ${v}명`);
+    const reasonParts = Object.entries(u.reasons || {}).map(([k, v]) => `${translateReason(k)} ${v}${t("reason_person")}`);
     item.innerHTML = `
-      <div class="modal-item-title">${DAY_LABEL[u.day]}요일 ${SHIFT_LABEL[u.shift_type]} — ${u.missing_count}명 부족</div>
+      <div class="modal-item-title">${DAY_LABEL[u.day]} ${SHIFT_LABEL[u.shift_type]} — ${u.missing_count}${t("diag_missing")}</div>
       <div class="modal-item-detail">
-        전체 직원 ${u.pool_size}명 중 ${u.blocked_count}명이 규칙으로 배정 불가
+        ${t("diag_pool")} ${u.pool_size}${t("reason_person")} ${u.blocked_count}${t("diag_blocked")}
         ${reasonParts.length ? " (" + reasonParts.join(", ") + ")" : ""}
       </div>
     `;
@@ -1075,8 +2166,8 @@ function showDiagnosticsModal(result) {
     const item = document.createElement("div");
     item.className = "modal-item";
     item.innerHTML = `
-      <div class="modal-item-title">${d.employee_name} — 목표 근무일수 미충족</div>
-      <div class="modal-item-detail">목표 ${d.target}일 중 실제로는 ${d.actual}일 배정되었습니다.</div>
+      <div class="modal-item-title">${d.employee_name} ${t("diag_daycount_title")}</div>
+      <div class="modal-item-detail">${t("diag_daycount_detail1")}${d.target}${t("diag_daycount_detail2")}${d.actual}${t("diag_daycount_detail3")}</div>
     `;
     box.appendChild(item);
   });
@@ -1086,8 +2177,8 @@ function showDiagnosticsModal(result) {
     const item = document.createElement("div");
     item.className = "modal-item";
     item.innerHTML = `
-      <div class="modal-item-title">${p.employee_name} — 선호 오프요일에 배정됨</div>
-      <div class="modal-item-detail">${DAY_LABEL[p.day]}요일은 쉬고 싶다고 하셨지만, 필요인원을 채우기 위해 이번엔 배정되었습니다.</div>
+      <div class="modal-item-title">${p.employee_name} ${t("diag_prefoff_title")}</div>
+      <div class="modal-item-detail">${DAY_LABEL[p.day]} ${t("diag_prefoff_detail1")}</div>
     `;
     box.appendChild(item);
   });
@@ -1105,7 +2196,7 @@ function showDiagnosticsModal(result) {
   closeRow.className = "modal-close-row";
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn-primary";
-  closeBtn.textContent = "확인";
+  closeBtn.textContent = t("btn_confirm");
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
@@ -1134,31 +2225,49 @@ function renderSchedule(result) {
     const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
     if (hasUnmet) {
       banner.className = "status-banner status-warn";
-      banner.textContent = "일부 요건을 충족하지 못했습니다. 팝업 또는 아래 진단 내용을 확인하세요.";
+      banner.textContent = t("banner_unmet");
     } else if (result.status === "MANUAL") {
       banner.className = "status-banner status-ok";
-      banner.textContent = "수동으로 조정된 스케줄입니다.";
+      banner.textContent = t("banner_manual");
     } else {
       banner.className = "status-banner status-ok";
-      banner.textContent = "모든 요건을 충족하는 스케줄을 생성했습니다.";
+      banner.textContent = t("banner_ok");
     }
     output.appendChild(banner);
+  }
+
+  if (weekLocked) {
+    const lockBanner = document.createElement("div");
+    lockBanner.className = "status-banner status-warn";
+    lockBanner.textContent = t("banner_locked");
+    output.appendChild(lockBanner);
   }
 
   const legend = document.createElement("div");
   legend.className = "legend";
   legend.innerHTML = `
-    <span><i style="background:var(--opening)"></i>Opening</span>
-    <span><i style="background:var(--helper)"></i>Helper</span>
-    <span><i style="background:var(--closing1)"></i>Closing1</span>
-    <span><i style="background:var(--closing2)"></i>Closing2</span>
-    <span><i style="background:var(--off-bg); border:1px solid var(--border);"></i>Off(휴무)</span>
-    <span style="margin-left:auto; color:var(--text-muted);">드래그: 스왑 · 빈 칸 클릭: 추가/Off 지정 · 블록 클릭: 시간 수정/삭제</span>
+    <span><i style="background:var(--opening)"></i>${SHIFT_LABEL.opening}</span>
+    <span><i style="background:var(--helper)"></i>${SHIFT_LABEL.helper}</span>
+    <span><i style="background:var(--closing1)"></i>${SHIFT_LABEL.closing1}</span>
+    <span><i style="background:var(--closing2)"></i>${SHIFT_LABEL.closing2}</span>
+    <span><i style="background:var(--sushi1)"></i>${SHIFT_LABEL.sushi1}</span>
+    <span><i style="background:var(--sushi2)"></i>${SHIFT_LABEL.sushi2}</span>
+    <span><i style="background:var(--sushi3)"></i>${SHIFT_LABEL.sushi3}</span>
+    <span><i style="background:var(--c-opening)"></i>${SHIFT_LABEL.c_opening}</span>
+    <span><i style="background:var(--c-helper)"></i>${SHIFT_LABEL.c_helper}</span>
+    <span><i style="background:var(--c-closing1)"></i>${SHIFT_LABEL.c_closing1}</span>
+    <span><i style="background:var(--c-closing2)"></i>${SHIFT_LABEL.c_closing2}</span>
+    <span><i style="background:var(--management)"></i>${SHIFT_LABEL.management}</span>
+    <span><i style="background:var(--management-cashier)"></i>${SHIFT_LABEL.management_cashier}</span>
+    <span><i style="background:var(--training)"></i>${SHIFT_LABEL.training}</span>
+    <span><i style="background:var(--off-bg); border:1px solid var(--border);"></i>${t("legend_off")}</span>
+    <span style="margin-left:auto; color:var(--text-muted);">${t("legend_hint")}</span>
   `;
   output.appendChild(legend);
 
   output.appendChild(buildCalendarGrid());
   document.getElementById("save-manual-btn").style.display = currentAssignments.length ? "inline-block" : "none";
+  document.getElementById("reset-schedule-btn").style.display = currentAssignments.length ? "inline-block" : "none";
 
   if (result.diagnostics && result.diagnostics.length) {
     const list = document.createElement("ul");
@@ -1172,27 +2281,71 @@ function renderSchedule(result) {
   }
 }
 
+function isLeaveDay(emp, day) {
+  if (!emp || !emp.leave_requests || !emp.leave_requests.length) return false;
+  const dayIndex = DAYS.indexOf(day);
+  if (dayIndex < 0) return false;
+  const theDate = addDaysToKey(currentWeekKey, dayIndex);
+  return emp.leave_requests.some(lr => theDate >= lr.start_date && theDate <= lr.end_date);
+}
+
+const BREAK_HOURS = 1; // 근무 9시간이든 8시간이든, 실제 근무는 이 시간만큼 뺀 값으로 집계합니다.
+
+function assignmentDurationHours(a) {
+  const [defStart, defEnd] = SHIFT_TIME[a.shift_type].split("-");
+  const start = a.custom_start || defStart;
+  const end = a.custom_end || defEnd;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let minutes = (eh * 60 + em) - (sh * 60 + sm);
+  if (minutes < 0) minutes += 24 * 60; // 자정을 넘어가는 근무 대비
+  return Math.max(0, minutes / 60 - BREAK_HOURS);
+}
+
+function totalHoursForDay(day) {
+  return currentAssignments
+    .filter(a => a.day === day)
+    .reduce((sum, a) => sum + assignmentDurationHours(a), 0);
+}
+
+function makeDayHeaderCell(day) {
+  const div = document.createElement("div");
+  div.className = "cal-head";
+  const hours = totalHoursForDay(day);
+  div.innerHTML = `${DAY_LABEL[day]}<span class="cal-head-hours">${hours.toFixed(1)}h</span>`;
+  return div;
+}
+
 function buildCalendarGrid() {
   const wrap = document.createElement("div");
   wrap.className = "cal-wrap";
   const grid = document.createElement("div");
   grid.className = "cal-grid";
 
-  grid.appendChild(makeCalCell("", "cal-head"));
-  DAYS.forEach(d => grid.appendChild(makeCalCell(DAY_LABEL[d], "cal-head")));
+  grid.appendChild(makeCalCell(t("name_col"), "cal-head"));
+  DAYS.forEach(d => grid.appendChild(makeDayHeaderCell(d)));
 
   const allEmployees = window._employees || [];
   const empIds = [...new Set([...allEmployees.map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
   const empNames = {};
   const empById = {};
-  allEmployees.forEach(e => { empNames[e.id] = e.name; empById[e.id] = e; });
-  currentAssignments.forEach(a => { if (!empNames[a.employee_id]) empNames[a.employee_id] = a.employee_name; });
-  empIds.sort((a, b) => (empNames[a] || "").localeCompare(empNames[b] || ""));
+  const empDeptById = {};
+  allEmployees.forEach(e => { empNames[e.id] = e.name; empById[e.id] = e; empDeptById[e.id] = e.department || "kitchen"; });
+  currentAssignments.forEach(a => {
+    if (!empNames[a.employee_id]) empNames[a.employee_id] = a.employee_name;
+    if (!empDeptById[a.employee_id]) empDeptById[a.employee_id] = "kitchen";
+  });
+  empIds.sort((a, b) => {
+    const da = DEPARTMENTS.indexOf(empDeptById[a] || "kitchen");
+    const db = DEPARTMENTS.indexOf(empDeptById[b] || "kitchen");
+    if (da !== db) return da - db;
+    return (empNames[a] || "").localeCompare(empNames[b] || "");
+  });
 
   if (empIds.length === 0) {
     const hint = document.createElement("p");
     hint.className = "empty-hint";
-    hint.textContent = "직원을 먼저 등록하면 여기에 캘린더가 표시됩니다.";
+    hint.textContent = t("empty_no_employees");
     wrap.appendChild(hint);
     return wrap;
   }
@@ -1210,49 +2363,80 @@ function buildCalendarGrid() {
       cell.dataset.employeeId = empId;
       cell.dataset.day = day;
 
-      const isForcedOff = ((window._weekOffDays || {})[empId] || []).includes(day);
+      const isWeekOff = ((window._weekOffDays || {})[empId] || []).includes(day);
+      const isLeaveOff = !isWeekOff && isLeaveDay(emp, day);
+      const isForcedOff = isWeekOff || isLeaveOff;
 
-      if (isForcedOff) {
+      if (isLeaveOff) {
+        const leaveBlock = document.createElement("div");
+        leaveBlock.className = "off-block";
+        leaveBlock.style.background = "var(--closing2-bg)";
+        leaveBlock.style.color = "var(--closing2)";
+        leaveBlock.style.borderStyle = "solid";
+        leaveBlock.textContent = t("leave_label");
+        leaveBlock.title = "";
+        leaveBlock.style.cursor = "default";
+        cell.appendChild(leaveBlock);
+      } else if (isForcedOff) {
         const offBlock = document.createElement("div");
         offBlock.className = "off-block";
-        offBlock.textContent = "OFF ✕";
-        offBlock.title = "클릭하면 휴무 지정을 해제합니다";
-        offBlock.onclick = (ev) => {
-          ev.stopPropagation();
-          toggleForcedOff(empId, day, false);
-        };
+        offBlock.textContent = t("off_label");
+        offBlock.title = weekLocked ? "" : t("off_tooltip");
+        if (!weekLocked) {
+          offBlock.onclick = (ev) => {
+            ev.stopPropagation();
+            toggleForcedOff(empId, day, false);
+          };
+        } else {
+          offBlock.style.cursor = "not-allowed";
+        }
         cell.appendChild(offBlock);
       } else {
-        cell.addEventListener("dragover", (ev) => { ev.preventDefault(); cell.classList.add("dragover"); });
-        cell.addEventListener("dragleave", () => cell.classList.remove("dragover"));
-        cell.addEventListener("drop", (ev) => {
-          ev.preventDefault();
-          cell.classList.remove("dragover");
-          const srcIdx = Number(ev.dataTransfer.getData("text/plain"));
-          swapAssignment(srcIdx, empId, day);
-        });
-        cell.addEventListener("click", (ev) => {
-          if (ev.target === cell) {
-            openAddAssignmentModal(empId, empNames[empId] || empId, day);
-          }
-        });
+        if (!weekLocked) {
+          cell.addEventListener("dragover", (ev) => { ev.preventDefault(); cell.classList.add("dragover"); });
+          cell.addEventListener("dragleave", () => cell.classList.remove("dragover"));
+          cell.addEventListener("drop", (ev) => {
+            ev.preventDefault();
+            cell.classList.remove("dragover");
+            const srcIdx = Number(ev.dataTransfer.getData("text/plain"));
+            swapAssignment(srcIdx, empId, day);
+          });
+          cell.addEventListener("click", (ev) => {
+            if (ev.target === cell) {
+              openAddAssignmentModal(empId, empNames[empId] || empId, day);
+            }
+          });
+        } else {
+          cell.style.cursor = "not-allowed";
+        }
 
         currentAssignments.forEach((a, idx) => {
           if (a.employee_id === empId && a.day === day) {
             const block = document.createElement("div");
             block.className = "shift-block " + a.shift_type;
-            block.draggable = true;
+            block.draggable = !weekLocked;
             const timeLabel = (a.custom_start && a.custom_end) ? `${a.custom_start}-${a.custom_end}` : SHIFT_TIME[a.shift_type];
-            block.innerHTML = `${SHIFT_LABEL[a.shift_type]}<span class="shift-time">${timeLabel}</span>`;
-            block.addEventListener("dragstart", (ev) => {
-              ev.dataTransfer.setData("text/plain", String(idx));
-              setTimeout(() => block.classList.add("dragging"), 0);
-            });
-            block.addEventListener("dragend", () => block.classList.remove("dragging"));
-            block.addEventListener("click", (ev) => {
-              ev.stopPropagation();
-              openEditTimeModal(idx);
-            });
+            const sourceLabel = a.source === "manual" ? t("manual_placed") : t("auto_placed");
+            const freqWindow = window._weekdayFrequencyWindow || 8;
+            const freqCount = ((window._weekdayFrequency || {})[empId] || {})[day] || 0;
+            const freqHigh = freqCount >= (window._weekdayFrequencyThreshold || 5);
+            block.innerHTML = `
+              <span class="freq-badge${freqHigh ? " high" : ""}" title="${t("freq_badge_tooltip")}">${freqCount}/${freqWindow}</span>
+              ${SHIFT_LABEL[a.shift_type]}<span class="shift-time">${timeLabel}</span><span class="shift-source">${sourceLabel}</span>
+            `;
+            if (!weekLocked) {
+              block.addEventListener("dragstart", (ev) => {
+                ev.dataTransfer.setData("text/plain", String(idx));
+                setTimeout(() => block.classList.add("dragging"), 0);
+              });
+              block.addEventListener("dragend", () => block.classList.remove("dragging"));
+              block.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                openEditTimeModal(idx);
+              });
+            } else {
+              block.style.cursor = "not-allowed";
+            }
             cell.appendChild(block);
           }
         });
@@ -1267,6 +2451,7 @@ function buildCalendarGrid() {
 }
 
 async function toggleForcedOff(employeeId, day, setOff) {
+  if (weekLocked) return;
   let offDays = [...((window._weekOffDays || {})[employeeId] || [])];
   if (setOff) {
     if (!offDays.includes(day)) offDays.push(day);
@@ -1283,6 +2468,7 @@ async function toggleForcedOff(employeeId, day, setOff) {
 }
 
 function openAddAssignmentModal(employeeId, employeeName, day) {
+  if (weekLocked) return;
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
@@ -1291,33 +2477,55 @@ function openAddAssignmentModal(employeeId, employeeName, day) {
   box.className = "modal-box info";
 
   const h = document.createElement("h3");
-  h.textContent = `${employeeName} · ${DAY_LABEL[day]}요일`;
+  h.textContent = `${employeeName} · ${DAY_LABEL[day]}`;
   box.appendChild(h);
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = "근무를 추가하거나 Off(휴무)로 지정하세요.";
+  sub.textContent = t("modal_add_sub");
   box.appendChild(sub);
 
-  SHIFT_TYPES.forEach(shift => {
+  const emp = (window._employees || []).find(x => x.id === employeeId);
+  const ownDept = emp ? (emp.department || "kitchen") : null;
+  const otherDepts = DEPARTMENTS.filter(d => d !== ownDept);
+
+  const renderShiftOption = (shift) => {
     const item = document.createElement("div");
     item.className = "modal-item";
     item.style.cursor = "pointer";
     item.innerHTML = `<div class="modal-item-title">${SHIFT_LABEL[shift]}</div><div class="modal-item-detail">${SHIFT_TIME[shift]}</div>`;
     item.onclick = () => {
-      currentAssignments.push({employee_id: employeeId, employee_name: employeeName, day: day, shift_type: shift});
+      currentAssignments.push({employee_id: employeeId, employee_name: employeeName, day: day, shift_type: shift, source: "manual"});
       scheduleGenerated = true;
       overlay.remove();
       renderCalendarArea();
-      showMessageModal("배치 완료", `${employeeName}님을 ${DAY_LABEL[day]}요일 ${SHIFT_LABEL[shift]}에 임의 추가 배치했습니다.`, false);
+      showMessageModal(t("modal_add_placed_title"), `${employeeName} · ${DAY_LABEL[day]} · ${SHIFT_LABEL[shift]}`, false);
     };
-    box.appendChild(item);
-  });
+    return item;
+  };
+
+  if (ownDept) {
+    const ownLabel = document.createElement("div");
+    ownLabel.style.cssText = "font-size:11px; color:var(--cyan); font-family:'JetBrains Mono',monospace; margin:10px 0 4px;";
+    ownLabel.textContent = `${DEPARTMENT_LABEL[ownDept] || ownDept} ${t("modal_add_own_dept")}`;
+    box.appendChild(ownLabel);
+    (DEPARTMENT_SHIFTS[ownDept] || []).forEach(shift => box.appendChild(renderShiftOption(shift)));
+
+    otherDepts.forEach(dept => {
+      const otherLabel = document.createElement("div");
+      otherLabel.style.cssText = "font-size:11px; color:var(--text-muted); font-family:'JetBrains Mono',monospace; margin:14px 0 4px;";
+      otherLabel.textContent = `${DEPARTMENT_LABEL[dept] || dept} ${t("modal_add_other_dept")}`;
+      box.appendChild(otherLabel);
+      (DEPARTMENT_SHIFTS[dept] || []).forEach(shift => box.appendChild(renderShiftOption(shift)));
+    });
+  } else {
+    SHIFT_TYPES.forEach(shift => box.appendChild(renderShiftOption(shift)));
+  }
 
   const offItem = document.createElement("div");
   offItem.className = "modal-item";
   offItem.style.cursor = "pointer";
-  offItem.innerHTML = `<div class="modal-item-title">Off (휴무로 지정)</div><div class="modal-item-detail">자동 생성 시 이 날은 절대 배정되지 않습니다.</div>`;
+  offItem.innerHTML = `<div class="modal-item-title">${t("modal_add_title_off")}</div><div class="modal-item-detail">${t("modal_add_off_detail")}</div>`;
   offItem.onclick = async () => {
     overlay.remove();
     await toggleForcedOff(employeeId, day, true);
@@ -1328,7 +2536,7 @@ function openAddAssignmentModal(employeeId, employeeName, day) {
   closeRow.className = "modal-close-row";
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn-ghost";
-  closeBtn.textContent = "취소";
+  closeBtn.textContent = t("btn_cancel");
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
@@ -1338,6 +2546,7 @@ function openAddAssignmentModal(employeeId, employeeName, day) {
 }
 
 function openEditTimeModal(idx) {
+  if (weekLocked) return;
   const a = currentAssignments[idx];
   if (!a) return;
   const defaultRange = SHIFT_TIME[a.shift_type].split("-");
@@ -1350,12 +2559,12 @@ function openEditTimeModal(idx) {
   box.className = "modal-box info";
 
   const h = document.createElement("h3");
-  h.textContent = `${a.employee_name} · ${DAY_LABEL[a.day]}요일 ${SHIFT_LABEL[a.shift_type]}`;
+  h.textContent = `${a.employee_name} · ${DAY_LABEL[a.day]} ${SHIFT_LABEL[a.shift_type]}`;
   box.appendChild(h);
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = "출퇴근 시간을 수동으로 변경할 수 있습니다.";
+  sub.textContent = t("modal_edit_time_sub");
   box.appendChild(sub);
 
   const row = document.createElement("div");
@@ -1363,11 +2572,13 @@ function openEditTimeModal(idx) {
   const startInput = document.createElement("input");
   startInput.type = "time";
   startInput.value = a.custom_start || defaultRange[0];
+  enableClickToOpenDatePicker(startInput);
   const dash = document.createElement("span");
   dash.textContent = "~";
   const endInput = document.createElement("input");
   endInput.type = "time";
   endInput.value = a.custom_end || defaultRange[1];
+  enableClickToOpenDatePicker(endInput);
   row.appendChild(startInput); row.appendChild(dash); row.appendChild(endInput);
   box.appendChild(row);
 
@@ -1378,7 +2589,7 @@ function openEditTimeModal(idx) {
 
   const deleteBtn = document.createElement("button");
   deleteBtn.className = "btn-danger";
-  deleteBtn.textContent = "이 배치 삭제";
+  deleteBtn.textContent = t("btn_delete_this");
   deleteBtn.onclick = () => {
     currentAssignments.splice(idx, 1);
     overlay.remove();
@@ -1388,14 +2599,14 @@ function openEditTimeModal(idx) {
   const rightBtns = document.createElement("div");
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn-ghost";
-  cancelBtn.textContent = "취소";
+  cancelBtn.textContent = t("btn_cancel");
   cancelBtn.style.marginRight = "6px";
   cancelBtn.onclick = () => overlay.remove();
   const saveBtn = document.createElement("button");
   saveBtn.className = "btn-primary";
-  saveBtn.textContent = "저장";
+  saveBtn.textContent = t("btn_save");
   saveBtn.onclick = () => {
-    currentAssignments[idx] = {...a, custom_start: startInput.value, custom_end: endInput.value};
+    currentAssignments[idx] = {...a, custom_start: startInput.value, custom_end: endInput.value, source: "manual"};
     overlay.remove();
     renderCalendarArea();
   };
@@ -1410,6 +2621,7 @@ function openEditTimeModal(idx) {
 }
 
 function swapAssignment(srcIdx, newEmployeeId, newDay) {
+  if (weekLocked) return;
   const src = currentAssignments[srcIdx];
   if (!src) return;
   if (src.employee_id === newEmployeeId && src.day === newDay) return;
@@ -1423,23 +2635,43 @@ function swapAssignment(srcIdx, newEmployeeId, newDay) {
   if (targetIdx >= 0) {
     const target = currentAssignments[targetIdx];
     currentAssignments[targetIdx] = {
-      ...target, employee_id: srcOriginal.employee_id, employee_name: srcOriginal.employee_name, day: srcOriginal.day,
+      ...target, employee_id: srcOriginal.employee_id, employee_name: srcOriginal.employee_name, day: srcOriginal.day, source: "manual",
     };
   }
 
   const newEmpName = (window._employees.find(e => e.id === newEmployeeId) || {}).name || src.employee_name;
-  currentAssignments[srcIdx] = {...src, employee_id: newEmployeeId, employee_name: newEmpName, day: newDay};
+  currentAssignments[srcIdx] = {...src, employee_id: newEmployeeId, employee_name: newEmpName, day: newDay, source: "manual"};
 
   renderCalendarArea();
 }
 
 async function saveManualAdjustments() {
+  if (weekLocked) return;
   await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({assignments: currentAssignments})
   });
-  showMessageModal("저장 완료", "변경사항이 저장되었습니다.", false);
+  await refreshWeekdayFrequency();
+  renderCalendarArea();
+  showMessageModal(t("modal_save_done"), t("modal_saved_toast"), false);
+}
+
+async function resetWeekSchedule() {
+  if (weekLocked) return;
+  const confirmed = await showConfirmModal(
+    t("confirm_reset_title"), t("confirm_reset_msg"), t("confirm_reset_yes"), t("confirm_reset_no")
+  );
+  if (!confirmed) return;
+
+  await api(`/api/weeks/${currentWeekKey}/reset-schedule`, {method: "POST"});
+  scheduleGenerated = false;
+  currentAssignments = [];
+  seenAssignmentSets = [];
+  document.getElementById("regenerate-btn").style.display = "none";
+  await refreshWeekdayFrequency();
+  renderCalendarArea();
+  showMessageModal(t("modal_reset_done_title"), t("modal_reset_done_msg"), false);
 }
 
 function makeCalCell(text, cls) {
@@ -1450,9 +2682,17 @@ function makeCalCell(text, cls) {
 }
 
 (async () => {
+  Object.assign(DAY_LABEL, DAY_LABEL_I18N[currentLang]);
+  Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[currentLang]);
+  Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[currentLang]);
+  applyI18nStatic();
+  enableClickToOpenDatePicker(document.getElementById("week-date-picker"));
+  enableClickToOpenDatePicker(document.getElementById("ph-date"));
   window._weekOffDays = {};
   currentWeekKey = mondayKeyFromDate(new Date());
+  await loadShiftTimeSettings();
   await loadEmployees();
+  await loadPublicHolidays();
   await loadWeek();
 })();
 </script>
