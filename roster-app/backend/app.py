@@ -27,8 +27,33 @@ FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 
+# ---------------------------------------------------------------------------
+# 데이터 저장소
+# 환경변수 UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN 이 설정되어 있으면
+# Upstash(무료, 영구 저장)에 저장합니다. 설정이 없으면(예: 로컬 개발) 예전처럼
+# 로컬 파일(data/state.json)에 저장합니다.
+# ---------------------------------------------------------------------------
+
+UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
+UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+STATE_KEY = "roster_state"
+
+_upstash_redis = None
+if UPSTASH_URL and UPSTASH_TOKEN:
+    from upstash_redis import Redis as _UpstashRedis
+    _upstash_redis = _UpstashRedis(url=UPSTASH_URL, token=UPSTASH_TOKEN)
+
 
 def load_state():
+    if _upstash_redis is not None:
+        raw = _upstash_redis.get(STATE_KEY)
+        if not raw:
+            return {"employees": [], "weeks": {}}
+        state = json.loads(raw)
+        state.setdefault("employees", [])
+        state.setdefault("weeks", {})
+        return state
+
     if not os.path.exists(DATA_PATH):
         return {"employees": [], "weeks": {}}
     with open(DATA_PATH, "r", encoding="utf-8") as f:
@@ -39,6 +64,10 @@ def load_state():
 
 
 def save_state(state):
+    if _upstash_redis is not None:
+        _upstash_redis.set(STATE_KEY, json.dumps(state, ensure_ascii=False))
+        return
+
     os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
     with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
@@ -374,5 +403,7 @@ def get_pattern_suggestions():
 
 
 if __name__ == "__main__":
+    # PORT 환경변수는 Render 같은 클라우드 호스팅이 실행 시 자동으로 지정해줍니다.
+    # 로컬에서 그냥 python app.py로 실행하면 여전히 5000번 포트를 씁니다.
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=False, host="0.0.0.0", port=port)
