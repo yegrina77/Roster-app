@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>직원 로스터 관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #0a0e14;
+    --void-soft: #101620;
+    --panel: rgba(22, 29, 41, 0.68);
+    --panel-solid: #141b27;
+    --line: rgba(148, 178, 214, 0.14);
+    --line-strong: rgba(148, 178, 214, 0.28);
+    --text: #e7ecf3;
+    --text-muted: #8792a3;
+    --cyan: #4fd8e0;
+    --cyan-dim: rgba(79, 216, 224, 0.14);
+    --violet: #9a8cf5;
+    --violet-dim: rgba(154, 140, 245, 0.14);
+    --accent: #4fd8e0;
+    --accent-light: rgba(79, 216, 224, 0.12);
+    --danger: #f0776a;
+    --danger-light: rgba(240, 119, 106, 0.14);
+    --radius: 12px;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 20px 48px rgba(0, 0, 0, 0.5);
+    --shadow-glow: 0 0 0 1px rgba(79, 216, 224, 0.25), 0 0 24px rgba(79, 216, 224, 0.12);
+    --opening: #e8b64f; --opening-bg: rgba(232, 182, 79, 0.14);
+    --helper: #52d9a0; --helper-bg: rgba(82, 217, 160, 0.14);
+    --closing1: #ef8f5f; --closing1-bg: rgba(239, 143, 95, 0.14);
+    --closing2: #c98bf0; --closing2-bg: rgba(201, 139, 240, 0.14);
+    --off-bg: rgba(148, 178, 214, 0.10); --off-text: #7c8798;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--void); }
+  body {
+    margin: 0;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(ellipse 900px 500px at 12% -8%, rgba(79, 216, 224, 0.10), transparent 60%),
+      radial-gradient(ellipse 800px 600px at 100% 0%, rgba(154, 140, 245, 0.09), transparent 55%),
+      var(--void);
+    background-attachment: fixed;
+    color: var(--text);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  h1, h2, h3 { font-family: "Space Grotesk", "Inter", sans-serif; }
+  code, .mono { font-family: "JetBrains Mono", monospace; }
+
+  header {
+    padding: 30px 36px 26px;
+    background: linear-gradient(180deg, rgba(16, 22, 32, 0.9) 0%, rgba(10, 14, 20, 0.6) 100%);
+    color: var(--text);
+    border-bottom: 1px solid var(--line-strong);
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(90deg, rgba(148,178,214,0.06) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(148,178,214,0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(180deg, black, transparent);
+    pointer-events: none;
+  }
+  header::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+    background: linear-gradient(90deg, var(--cyan), var(--violet) 60%, transparent);
+    box-shadow: 0 0 12px rgba(79, 216, 224, 0.6);
+  }
+  header h1 {
+    margin: 0; font-size: 25px; font-weight: 600; letter-spacing: 0.005em; color: #f4f7fb;
+    position: relative;
+  }
+  header .eyebrow {
+    font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--cyan); font-weight: 500; margin: 0 0 8px; position: relative;
+    display: flex; align-items: center; gap: 8px;
+  }
+  header .eyebrow::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan); display: inline-block;
+  }
+  header p { margin: 6px 0 0; color: var(--text-muted); font-size: 13.5px; max-width: 640px; position: relative; }
+
+  main { max-width: 1300px; margin: 0 auto; padding: 32px 32px 72px; display: flex; flex-direction: column; gap: 22px; }
+
+  section {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 26px;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  section h2 {
+    margin: 0 0 3px; font-size: 17px; font-weight: 600; color: var(--text);
+    display: flex; align-items: center; gap: 9px;
+  }
+  section h2::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 2px; background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan); transform: rotate(45deg);
+  }
+  section .desc { margin: 0 0 18px; font-size: 13px; color: var(--text-muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th {
+    color: var(--text-muted); font-weight: 600; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    font-family: "JetBrains Mono", monospace;
+  }
+  tbody tr:hover { background: rgba(79, 216, 224, 0.05); }
+
+  .row-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 18px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 11px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.02em; }
+  input, select {
+    font-size: 13px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 7px;
+    background: rgba(10, 14, 20, 0.55); color: var(--text); min-width: 100px; font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input::placeholder { color: #566274; }
+  input:focus, select:focus {
+    outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(79, 216, 224, 0.16);
+  }
+  select option { background: var(--panel-solid); color: var(--text); }
+  button {
+    font-size: 13px; padding: 8px 16px; border-radius: 7px; border: none; cursor: pointer; font-weight: 600;
+    font-family: inherit; transition: opacity 0.15s, transform 0.05s, box-shadow 0.15s;
+  }
+  button:active { transform: translateY(1px); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--cyan), #37b8c2); color: #06171a;
+    box-shadow: 0 0 0 1px rgba(79,216,224,0.4), 0 4px 16px rgba(79, 216, 224, 0.22);
+  }
+  .btn-primary:hover { box-shadow: 0 0 0 1px rgba(79,216,224,0.6), 0 4px 20px rgba(79, 216, 224, 0.35); }
+  .btn-danger { background: var(--danger-light); color: var(--danger); border: 1px solid rgba(240,119,106,0.3); }
+  .btn-ghost { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }
+  .btn-ghost:hover { background: rgba(79, 216, 224, 0.06); border-color: var(--cyan); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 5px 11px;
+    border-radius: 999px; border: 1px solid var(--line-strong); background: rgba(10,14,20,0.4); cursor: pointer;
+    margin: 0 4px 4px 0; user-select: none; font-weight: 500; transition: all 0.15s; color: var(--text-muted);
+  }
+  .chip.active { color: #06171a; border-color: transparent; }
+  .chip.opening.active { background: var(--opening); box-shadow: 0 0 12px rgba(232,182,79,0.4); }
+  .chip.helper.active { background: var(--helper); box-shadow: 0 0 12px rgba(82,217,160,0.4); }
+  .chip.closing1.active { background: var(--closing1); box-shadow: 0 0 12px rgba(239,143,95,0.4); }
+  .chip.closing2.active { background: var(--closing2); box-shadow: 0 0 12px rgba(201,139,240,0.4); }
+
+  .rules-panel {
+    background: rgba(10, 14, 20, 0.5); border: 1px solid var(--line); border-radius: 9px;
+    padding: 16px 18px; margin-top: 6px;
+  }
+  .rules-panel h4 {
+    margin: 0 0 9px; font-size: 10.5px; color: var(--cyan); font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; font-family: "JetBrains Mono", monospace;
+  }
+  .rules-block { margin-bottom: 16px; }
+
+  .status-banner { padding: 11px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 18px; font-weight: 500; border: 1px solid transparent; }
+  .status-ok { background: var(--accent-light); color: var(--cyan); border-color: rgba(79,216,224,0.25); }
+  .status-warn { background: var(--danger-light); color: var(--danger); border-color: rgba(240,119,106,0.25); }
+
+  .cal-wrap { overflow-x: auto; border-radius: 9px; }
+  .cal-grid {
+    display: grid; grid-template-columns: 150px repeat(7, minmax(120px, 1fr)); gap: 1px;
+    background: var(--line); border: 1px solid var(--line-strong); border-radius: 9px;
+    overflow: hidden; font-size: 12px; min-width: 900px;
+  }
+  .cal-cell { background: rgba(16, 22, 32, 0.7); padding: 6px; min-height: 58px; cursor: pointer; transition: background 0.12s; }
+  .cal-cell:hover { background: rgba(79, 216, 224, 0.08); }
+  .cal-head {
+    background: var(--void-soft); color: var(--cyan); font-weight: 600; text-align: center; padding: 11px 6px;
+    cursor: default; font-size: 11px; letter-spacing: 0.08em; font-family: "JetBrains Mono", monospace;
+  }
+  .cal-emp-cell {
+    background: var(--void-soft); display: flex; align-items: center; font-weight: 600; padding: 8px 10px;
+    cursor: default; font-size: 12.5px; border-right: 2px solid rgba(79,216,224,0.2); color: var(--text);
+  }
+  .cal-cell.dragover { background: rgba(79, 216, 224, 0.14); outline: 2px dashed var(--cyan); outline-offset: -2px; }
+  .shift-block {
+    display: block; font-size: 11px; border-radius: 5px; padding: 5px 7px; margin-bottom: 3px;
+    cursor: grab; border-left: 3px solid transparent; font-weight: 500; box-shadow: var(--shadow-sm);
+  }
+  .shift-block.opening { background: var(--opening-bg); border-left-color: var(--opening); color: var(--opening); }
+  .shift-block.helper { background: var(--helper-bg); border-left-color: var(--helper); color: var(--helper); }
+  .shift-block.closing1 { background: var(--closing1-bg); border-left-color: var(--closing1); color: var(--closing1); }
+  .shift-block.closing2 { background: var(--closing2-bg); border-left-color: var(--closing2); color: var(--closing2); }
+  .shift-block.dragging { opacity: 0.4; }
+  .shift-block .shift-time { display: block; font-size: 10px; opacity: 0.75; font-family: "JetBrains Mono", monospace; }
+  .off-block {
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+    border-radius: 5px; padding: 6px; background: var(--off-bg); color: var(--off-text); cursor: pointer;
+    letter-spacing: 0.06em; font-family: "JetBrains Mono", monospace; border: 1px dashed var(--line-strong);
+  }
+  .empty-hint { color: var(--text-muted); font-size: 13px; padding: 18px 0; text-align: center; }
+  .diag-list { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--text-muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(5, 8, 12, 0.72); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(3px); }
+  .modal-box {
+    background: var(--panel-solid); border-radius: 12px; padding: 26px 30px; max-width: 560px; width: 90%;
+    max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-md), var(--shadow-glow); border: 1px solid var(--line-strong);
+  }
+  .modal-box h3 { margin: 0 0 4px; font-size: 18px; font-weight: 600; color: var(--danger); }
+  .modal-box.info h3 { color: var(--cyan); }
+  .modal-box .modal-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+  .modal-item { border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; margin-bottom: 10px; font-size: 13px; transition: border-color 0.15s; background: rgba(10,14,20,0.4); }
+  .modal-item:hover { border-color: var(--cyan); }
+  .modal-item .modal-item-title { font-weight: 600; margin-bottom: 4px; color: var(--text); }
+  .modal-item .modal-item-detail { color: var(--text-muted); font-size: 12px; }
+  .modal-close-row { text-align: right; margin-top: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">SYS · KITCHEN ROSTER</p>
+  <h1>직원 로스터 관리</h1>
+  <p>직원과 근무 요건을 등록하면, 아래 캘린더에서 바로 휴무를 지정하거나 스케줄을 자동 생성할 수 있습니다.</p>
+</header>
+
+<main>
+
+  <section>
+    <h2>직원</h2>
+    <p class="desc">이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.</p>
+
+    <div class="row-form">
+      <div class="field"><label>ID</label><input id="emp-id" placeholder="e001"></div>
+      <div class="field"><label>이름</label><input id="emp-name" placeholder="홍길동"></div>
+      <div class="field"><label>주당 최소시간</label>
+        <select id="emp-min-hours">
+          <option value="5">5시간</option>
+          <option value="30" selected>30시간</option>
+          <option value="40">40시간</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>주간 근무일수 (권장)</label>
+        <div style="display:flex; align-items:center; gap:6px; height:34px;">
+          <input id="emp-target-days" type="number" min="0" max="7" placeholder="예: 3" style="width:70px">
+          <label style="display:flex; align-items:center; gap:3px; font-size:12px; color:var(--text-muted); white-space:nowrap;">
+            <input type="checkbox" id="emp-target-days-any" onchange="toggleTargetDaysAny()"> 상관없음
+          </label>
+        </div>
+      </div>
+      <button class="btn-primary" id="emp-submit-btn" onclick="submitEmployee()">직원 추가</button>
+      <button class="btn-ghost" id="emp-cancel-btn" onclick="cancelEditEmployee()" style="display:none;">취소</button>
+    </div>
+
+    <table id="employee-table">
+      <thead>
+        <tr><th>ID</th><th>이름</th><th>최소시간/주</th><th>목표근무일</th><th style="width:260px">규칙</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>근무 요건</h2>
+    <p class="desc">각 칸에 필요 인원 수를 직접 입력하세요 (0 또는 빈칸이면 그 요건 없음). 숫자만 바꾸면 바로 수정되는 방식입니다 — 다 입력하신 후 "저장" 한 번만 누르면 됩니다.</p>
+
+    <div id="requirement-grid-wrap" style="overflow-x:auto;"></div>
+    <div style="margin-top:12px;">
+      <button class="btn-primary" onclick="saveRequirementGrid()">저장</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>스케줄</h2>
+    <div id="week-nav" style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+      <button class="btn-ghost btn-sm" onclick="navigateWeek(-7)">◀ 이전 주</button>
+      <div id="week-label" style="font-weight:600; font-size:14px;"></div>
+      <button class="btn-ghost btn-sm" onclick="navigateWeek(7)">다음 주 ▶</button>
+      <input type="date" id="week-date-picker" onchange="jumpToDate(this.value)" style="margin-left:8px;">
+    </div>
+    <p class="desc">
+      빈 칸을 클릭해 근무(Opening/Helper/Closing1/Closing2)를 추가하거나 <b>Off(휴무)</b>로 지정할 수 있습니다.
+      Off로 지정하면 자동 생성 시 그 직원은 그날 절대 배정되지 않습니다. 준비가 되면 자동 생성을 눌러주세요.
+      휴무 지정과 근무 요건은 <b>주차별로 따로</b> 저장됩니다.
+    </p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn-primary" onclick="generateSchedule()">스케줄 자동 생성</button>
+      <button class="btn-ghost" id="regenerate-btn" onclick="regenerateSchedule()" style="display:none;">🔄 다른 조합으로 다시 생성</button>
+      <button class="btn-ghost" id="save-manual-btn" onclick="saveManualAdjustments()" style="display:none;">변경사항 저장</button>
+      <button class="btn-ghost" onclick="checkPatternSuggestions()" style="margin-left:auto;">📊 지난 수정 패턴에서 규칙 제안 보기</button>
+    </div>
+    <div id="schedule-output" style="margin-top:20px;"></div>
+  </section>
+
+</main>
+
+<script>
+const DAYS = ["mon","tue","wed","thu","fri","sat","sun"];
+const DAY_LABEL = {mon:"월", tue:"화", wed:"수", thu:"목", fri:"금", sat:"토", sun:"일"};
+const SHIFT_TYPES = ["opening","helper","closing1","closing2"];
+const SHIFT_LABEL = {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2"};
+const SHIFT_TIME = {opening:"06:00-15:00", helper:"08:00-17:00", closing1:"11:00-20:30", closing2:"11:30-20:30"};
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({error: res.statusText}));
+    showMessageModal("요청을 처리하지 못했습니다", err.error || res.statusText, true);
+    throw new Error(err.error);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function showMessageModal(title, message, isError) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box" + (isError ? "" : " info");
+  const h = document.createElement("h3");
+  h.textContent = title;
+  box.appendChild(h);
+  const p = document.createElement("div");
+  p.className = "modal-sub";
+  p.style.marginBottom = "0";
+  p.textContent = message;
+  box.appendChild(p);
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const btn = document.createElement("button");
+  btn.className = "btn-primary";
+  btn.textContent = "확인";
+  btn.onclick = () => overlay.remove();
+  closeRow.appendChild(btn);
+  box.appendChild(closeRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+let openRulesPanelId = null;
+let rulesDraft = null;
+
+async function loadEmployees() {
+  const employees = await api("/api/employees");
+  window._employees = employees;
+  const tbody = document.querySelector("#employee-table tbody");
+  tbody.innerHTML = "";
+  employees.forEach(e => {
+    const tr = document.createElement("tr");
+    const ruleSummary = summarizeRules(e);
+    tr.innerHTML = `
+      <td>${e.id}</td>
+      <td>${e.name}</td>
+      <td>${e.min_hours_per_week}</td>
+      <td>${e.target_days_per_week != null ? e.target_days_per_week + "일" : "-"}</td>
+      <td>
+        <div style="font-size:11px; color: var(--text-muted); margin-bottom:4px;">${ruleSummary}</div>
+        <button class="btn-ghost btn-sm" onclick="toggleRulesPanel('${e.id}')">규칙 설정</button>
+      </td>
+      <td>
+        <button class="btn-ghost btn-sm" onclick='startEditEmployee(${JSON.stringify(e)})'>수정</button>
+        <button class="btn-danger btn-sm" onclick="deleteEmployee('${e.id}')">삭제</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+
+    if (openRulesPanelId === e.id) {
+      const panelTr = document.createElement("tr");
+      const panelTd = document.createElement("td");
+      panelTd.colSpan = 6;
+      panelTd.appendChild(buildRulesPanel(e));
+      panelTr.appendChild(panelTd);
+      tbody.appendChild(panelTr);
+    }
+  });
+  renderCalendarArea();
+}
+
+function summarizeRules(e) {
+  const parts = [];
+  if (e.preferred_off_days && e.preferred_off_days.length) parts.push(`선호오프 ${e.preferred_off_days.length}일`);
+  if (e.day_off_pattern) parts.push(e.day_off_pattern === "consecutive" ? "연속휴무선호" : "분산휴무선호");
+  if (e.blocked_shift_types && e.blocked_shift_types.length) parts.push(`금지유형 ${e.blocked_shift_types.map(s=>SHIFT_LABEL[s]).join("/")}`);
+  if (e.preferred && e.preferred.length) parts.push(`선호 ${e.preferred.length}건`);
+  return parts.length ? parts.join(" · ") : "설정된 규칙 없음";
+}
+
+function toggleRulesPanel(id) {
+  if (openRulesPanelId === id) {
+    openRulesPanelId = null;
+  } else {
+    openRulesPanelId = id;
+    const e = window._employees.find(x => x.id === id);
+    rulesDraft = {
+      day_off_pattern: e.day_off_pattern || null,
+      preferred: (e.preferred || []).map(p => [...p]),
+      preferred_off_days: [...(e.preferred_off_days || [])],
+      blocked_shift_types: [...(e.blocked_shift_types || [])],
+    };
+  }
+  loadEmployees();
+}
+
+function buildRulesPanel(e) {
+  const wrap = document.createElement("div");
+  wrap.className = "rules-panel";
+
+  const prefOffBlock = document.createElement("div");
+  prefOffBlock.className = "rules-block";
+  prefOffBlock.innerHTML = `<h4>선호 오프요일 (2순위 — 필요인원 충족 다음으로 최대한 지켜집니다)</h4>`;
+  const prefOffWrap = document.createElement("div");
+  DAYS.forEach(day => {
+    const has = rulesDraft.preferred_off_days.includes(day);
+    const chip = document.createElement("span");
+    chip.className = "chip" + (has ? " active" : "");
+    if (has) { chip.style.background = "var(--cyan)"; chip.style.color = "#06171a"; chip.style.boxShadow = "0 0 12px rgba(79,216,224,0.4)"; }
+    chip.textContent = DAY_LABEL[day];
+    chip.onclick = () => {
+      const idx = rulesDraft.preferred_off_days.indexOf(day);
+      if (idx >= 0) rulesDraft.preferred_off_days.splice(idx, 1);
+      else rulesDraft.preferred_off_days.push(day);
+      loadEmployees();
+    };
+    prefOffWrap.appendChild(chip);
+  });
+  prefOffBlock.appendChild(prefOffWrap);
+  wrap.appendChild(prefOffBlock);
+
+  const prefBlock = document.createElement("div");
+  prefBlock.className = "rules-block";
+  prefBlock.innerHTML = `<h4>선호 근무 요일 · 근무유형 (중복 선택 가능)</h4>`;
+  const prefWrap = document.createElement("div");
+  DAYS.forEach(day => {
+    const row = document.createElement("div");
+    row.style.cssText = "margin-bottom:6px; display:flex; align-items:center; gap:4px; flex-wrap:wrap;";
+    const label = document.createElement("span");
+    label.style.cssText = "font-size:12px; width:22px; color:var(--text-muted);";
+    label.textContent = DAY_LABEL[day];
+    row.appendChild(label);
+    SHIFT_TYPES.forEach(shift => {
+      const has = rulesDraft.preferred.some(p => p[0] === day && p[1] === shift);
+      const chip = document.createElement("span");
+      chip.className = "chip " + shift + (has ? " active" : "");
+      chip.textContent = SHIFT_LABEL[shift];
+      chip.onclick = () => {
+        const idx = rulesDraft.preferred.findIndex(p => p[0] === day && p[1] === shift);
+        if (idx >= 0) rulesDraft.preferred.splice(idx, 1);
+        else rulesDraft.preferred.push([day, shift]);
+        loadEmployees();
+      };
+      row.appendChild(chip);
+    });
+    prefWrap.appendChild(row);
+  });
+  prefBlock.appendChild(prefWrap);
+  wrap.appendChild(prefBlock);
+
+  const blockBlock = document.createElement("div");
+  blockBlock.className = "rules-block";
+  blockBlock.innerHTML = `<h4>근무유형 전체 배정 금지 (모든 요일에서 해당 유형 절대 배정 안 함)</h4>`;
+  const blockWrap = document.createElement("div");
+  SHIFT_TYPES.forEach(shift => {
+    const has = rulesDraft.blocked_shift_types.includes(shift);
+    const chip = document.createElement("span");
+    chip.className = "chip " + shift + (has ? " active" : "");
+    chip.textContent = SHIFT_LABEL[shift] + ` (${SHIFT_TIME[shift]})`;
+    chip.onclick = () => {
+      const idx = rulesDraft.blocked_shift_types.indexOf(shift);
+      if (idx >= 0) rulesDraft.blocked_shift_types.splice(idx, 1);
+      else rulesDraft.blocked_shift_types.push(shift);
+      loadEmployees();
+    };
+    blockWrap.appendChild(chip);
+  });
+  blockBlock.appendChild(blockWrap);
+  wrap.appendChild(blockBlock);
+
+  const patternBlock = document.createElement("div");
+  patternBlock.className = "rules-block";
+  patternBlock.innerHTML = `<h4>휴무 패턴 (권장사항 - 최대한 지키려 하되 필요시 조정될 수 있음)</h4>`;
+  const patternSelect = document.createElement("select");
+  [["", "지정 안 함"], ["consecutive", "연속 휴무 (Consecutive)"], ["split", "분산 휴무 (Split)"]].forEach(([val, label]) => {
+    const opt = document.createElement("option");
+    opt.value = val;
+    opt.textContent = label;
+    if ((rulesDraft.day_off_pattern || "") === val) opt.selected = true;
+    patternSelect.appendChild(opt);
+  });
+  patternSelect.onchange = () => { rulesDraft.day_off_pattern = patternSelect.value || null; };
+  patternBlock.appendChild(patternSelect);
+  wrap.appendChild(patternBlock);
+
+  const btnRow = document.createElement("div");
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary btn-sm";
+  saveBtn.textContent = "규칙 저장";
+  saveBtn.onclick = async () => {
+    await api(`/api/employees/${e.id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(rulesDraft)
+    });
+    openRulesPanelId = null;
+    loadEmployees();
+  };
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost btn-sm";
+  closeBtn.textContent = "닫기";
+  closeBtn.style.marginLeft = "6px";
+  closeBtn.onclick = () => { openRulesPanelId = null; loadEmployees(); };
+  btnRow.appendChild(saveBtn); btnRow.appendChild(closeBtn);
+  wrap.appendChild(btnRow);
+
+  return wrap;
+}
+
+let editingEmployeeId = null;
+
+function toggleTargetDaysAny() {
+  const any = document.getElementById("emp-target-days-any").checked;
+  const input = document.getElementById("emp-target-days");
+  input.disabled = any;
+  if (any) input.value = "";
+}
+
+function startEditEmployee(e) {
+  editingEmployeeId = e.id;
+  document.getElementById("emp-id").value = e.id;
+  document.getElementById("emp-id").disabled = true;
+  document.getElementById("emp-name").value = e.name;
+  document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
+  const isAny = e.target_days_per_week == null;
+  document.getElementById("emp-target-days-any").checked = isAny;
+  document.getElementById("emp-target-days").disabled = isAny;
+  document.getElementById("emp-target-days").value = isAny ? "" : e.target_days_per_week;
+  document.getElementById("emp-submit-btn").textContent = "수정 저장";
+  document.getElementById("emp-cancel-btn").style.display = "inline-block";
+  document.getElementById("emp-name").focus();
+}
+
+function cancelEditEmployee() {
+  editingEmployeeId = null;
+  document.getElementById("emp-id").disabled = false;
+  document.getElementById("emp-id").value = "";
+  document.getElementById("emp-name").value = "";
+  document.getElementById("emp-min-hours").value = "30";
+  document.getElementById("emp-target-days").value = "";
+  document.getElementById("emp-target-days").disabled = false;
+  document.getElementById("emp-target-days-any").checked = false;
+  document.getElementById("emp-submit-btn").textContent = "직원 추가";
+  document.getElementById("emp-cancel-btn").style.display = "none";
+}
+
+async function submitEmployee() {
+  const id = document.getElementById("emp-id").value.trim();
+  const name = document.getElementById("emp-name").value.trim();
+  const min_hours_per_week = Number(document.getElementById("emp-min-hours").value) || 30;
+  const isAny = document.getElementById("emp-target-days-any").checked;
+  const targetDaysRaw = document.getElementById("emp-target-days").value;
+  const target_days_per_week = isAny || targetDaysRaw === "" ? null : Number(targetDaysRaw);
+  if (!id || !name) { showMessageModal("입력값을 확인해주세요", "ID와 이름은 필수입니다.", true); return; }
+
+  if (editingEmployeeId) {
+    await api(`/api/employees/${editingEmployeeId}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name, min_hours_per_week, target_days_per_week})
+    });
+  } else {
+    await api("/api/employees", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id, name, min_hours_per_week, target_days_per_week})
+    });
+  }
+  cancelEditEmployee();
+  loadEmployees();
+}
+
+async function deleteEmployee(id) {
+  await api(`/api/employees/${id}`, {method: "DELETE"});
+  loadEmployees();
+}
+
+// ---------------------------------------------------------------------------
+// 주차(week) 관리
+// ---------------------------------------------------------------------------
+
+let currentWeekKey = null; // "YYYY-MM-DD" (그 주 월요일)
+
+function formatDateKey(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function keyToDate(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function addDaysToKey(key, delta) {
+  const date = keyToDate(key);
+  date.setDate(date.getDate() + delta);
+  return formatDateKey(date);
+}
+
+function mondayKeyFromDate(date) {
+  const day = date.getDay(); // 0=일, 1=월 ... 6=토
+  const diff = (day === 0 ? -6 : 1) - day;
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate() + diff);
+  return formatDateKey(monday);
+}
+
+function updateWeekLabel() {
+  const mondayDate = keyToDate(currentWeekKey);
+  const sundayKey = addDaysToKey(currentWeekKey, 6);
+  const sundayDate = keyToDate(sundayKey);
+  const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+  document.getElementById("week-label").textContent =
+    `${fmt(mondayDate)}(월) ~ ${fmt(sundayDate)}(일)`;
+  document.getElementById("week-date-picker").value = currentWeekKey;
+}
+
+function navigateWeek(deltaDays) {
+  currentWeekKey = addDaysToKey(currentWeekKey, deltaDays);
+  loadWeek();
+}
+
+function jumpToDate(dateStr) {
+  if (!dateStr) return;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  currentWeekKey = mondayKeyFromDate(new Date(y, m - 1, d));
+  loadWeek();
+}
+
+function showNewWeekChoiceModal(weekLabel) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.onclick = (ev) => { if (ev.target === overlay) { overlay.remove(); resolve("cancel"); } };
+    const box = document.createElement("div");
+    box.className = "modal-box info";
+    const h = document.createElement("h3");
+    h.textContent = `새 주차 (${weekLabel})`;
+    box.appendChild(h);
+    const sub = document.createElement("div");
+    sub.className = "modal-sub";
+    sub.textContent = "이 주는 아직 데이터가 없습니다. 어떻게 시작할까요?";
+    box.appendChild(sub);
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn-ghost";
+    cancelBtn.textContent = "취소 (이전 화면으로)";
+    cancelBtn.onclick = () => { overlay.remove(); resolve("cancel"); };
+    const newBtn = document.createElement("button");
+    newBtn.className = "btn-ghost";
+    newBtn.textContent = "새로 시작";
+    newBtn.onclick = () => { overlay.remove(); resolve("new"); };
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "btn-primary";
+    copyBtn.textContent = "전주와 동일하게 시작";
+    copyBtn.onclick = () => { overlay.remove(); resolve("copy"); };
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(newBtn);
+    btnRow.appendChild(copyBtn);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  });
+}
+
+let lastLoadedWeekKey = null; // 취소 시 되돌아갈 "마지막으로 정상 로드된 주"
+
+async function loadWeek() {
+  updateWeekLabel();
+  let week = await api(`/api/weeks/${currentWeekKey}`);
+
+  if (week === null) {
+    const existingWeeks = await api("/api/weeks");
+    if (existingWeeks.length === 0) {
+      week = await api("/api/weeks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({week_key: currentWeekKey, copy_from: null})
+      });
+    } else {
+      const choice = await showNewWeekChoiceModal(document.getElementById("week-label").textContent);
+      if (choice === "cancel") {
+        currentWeekKey = lastLoadedWeekKey || currentWeekKey;
+        await loadWeek();
+        return;
+      }
+      const prevKey = addDaysToKey(currentWeekKey, -7);
+      week = await api("/api/weeks", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({week_key: currentWeekKey, copy_from: choice === "copy" ? prevKey : null})
+      });
+    }
+  }
+
+  window._weekOffDays = week.off_days || {};
+  window._requirements = week.requirements || [];
+  renderRequirementGrid();
+
+  seenAssignmentSets = [];
+  if (week.schedule) {
+    scheduleGenerated = true;
+    seenAssignmentSets = [(week.schedule.assignments || []).map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}))];
+    document.getElementById("regenerate-btn").style.display = "inline-block";
+    renderSchedule(week.schedule);
+  } else {
+    scheduleGenerated = false;
+    currentAssignments = [];
+    document.getElementById("regenerate-btn").style.display = "none";
+    renderCalendarArea();
+  }
+
+  lastLoadedWeekKey = currentWeekKey;
+}
+
+function renderRequirementGrid() {
+  const wrap = document.getElementById("requirement-grid-wrap");
+  const reqs = window._requirements || [];
+  const countOf = (day, shift) => {
+    const found = reqs.find(r => r.day === day && r.shift_type === shift);
+    return found ? found.required_count : "";
+  };
+
+  const table = document.createElement("table");
+  table.style.borderCollapse = "collapse";
+  table.style.minWidth = "700px";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headRow.appendChild(document.createElement("th"));
+  DAYS.forEach(d => {
+    const th = document.createElement("th");
+    th.textContent = DAY_LABEL[d];
+    th.style.textAlign = "center";
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  SHIFT_TYPES.forEach(shift => {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = SHIFT_LABEL[shift];
+    th.style.textAlign = "left";
+    th.style.whiteSpace = "nowrap";
+    tr.appendChild(th);
+    DAYS.forEach(day => {
+      const td = document.createElement("td");
+      td.style.textAlign = "center";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.style.width = "56px";
+      input.style.textAlign = "center";
+      input.value = countOf(day, shift);
+      input.dataset.day = day;
+      input.dataset.shift = shift;
+      input.className = "req-grid-input";
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  wrap.innerHTML = "";
+  wrap.appendChild(table);
+}
+
+async function saveRequirementGrid() {
+  const inputs = document.querySelectorAll(".req-grid-input");
+  const newRequirements = [];
+  inputs.forEach(input => {
+    const count = Number(input.value) || 0;
+    if (count > 0) {
+      newRequirements.push({day: input.dataset.day, shift_type: input.dataset.shift, required_count: count});
+    }
+  });
+  await api(`/api/weeks/${currentWeekKey}/requirements`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(newRequirements)
+  });
+  window._requirements = newRequirements;
+  showMessageModal("저장 완료", "이번 주 근무 요건이 저장되었습니다.", false);
+}
+
+let currentAssignments = [];
+let scheduleGenerated = false;
+let seenAssignmentSets = []; // "다시 생성" 시 반복 방지용 - 이 주에서 지금까지 본 조합들 (탭 새로고침하면 초기화)
+
+async function generateSchedule() {
+  // 이번 주에 스케줄이 아직 없고, 전주에 확정된 스케줄이 있으면 "전주와 동일하게?" 먼저 물어봅니다.
+  if (!scheduleGenerated) {
+    const prevKey = addDaysToKey(currentWeekKey, -7);
+    let prevWeek = null;
+    try { prevWeek = await api(`/api/weeks/${prevKey}`); } catch (e) { prevWeek = null; }
+    if (prevWeek && prevWeek.schedule && prevWeek.schedule.assignments && prevWeek.schedule.assignments.length) {
+      const wantCopy = await showCopyPreviousScheduleModal();
+      if (wantCopy) {
+        await copyPreviousWeekSchedule(prevWeek.schedule.assignments);
+        return;
+      }
+    }
+  }
+  await runAutoGenerate();
+}
+
+function showCopyPreviousScheduleModal() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const box = document.createElement("div");
+    box.className = "modal-box info";
+    const h = document.createElement("h3");
+    h.textContent = "전주와 동일하게 할까요?";
+    box.appendChild(h);
+    const sub = document.createElement("div");
+    sub.className = "modal-sub";
+    sub.textContent = "직전 주에 확정된 스케줄이 있습니다. 그대로 이번 주에도 복사해서 쓸 수 있어요. (요일 기준으로 그대로 복사되므로, 이번 주의 휴무 지정 등과 다를 수 있으니 복사 후 확인해주세요.)";
+    box.appendChild(sub);
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end;";
+    const noBtn = document.createElement("button");
+    noBtn.className = "btn-ghost";
+    noBtn.textContent = "아니요, 새로 생성";
+    noBtn.onclick = () => { overlay.remove(); resolve(false); };
+    const yesBtn = document.createElement("button");
+    yesBtn.className = "btn-primary";
+    yesBtn.textContent = "네, 동일하게";
+    yesBtn.onclick = () => { overlay.remove(); resolve(true); };
+    btnRow.appendChild(noBtn);
+    btnRow.appendChild(yesBtn);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  });
+}
+
+async function copyPreviousWeekSchedule(prevAssignments) {
+  const output = document.getElementById("schedule-output");
+  output.innerHTML = `<p class="empty-hint">전주 스케줄을 복사하는 중...</p>`;
+  const copied = prevAssignments.map(a => ({...a}));
+  const result = await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({assignments: copied})
+  });
+  scheduleGenerated = true;
+  seenAssignmentSets = [copied.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}))];
+  document.getElementById("regenerate-btn").style.display = "inline-block";
+  renderSchedule(result);
+  showMessageModal(
+    "복사 완료",
+    "전주와 동일한 스케줄로 설정했습니다. 필요하면 드래그로 조정하거나, '변경사항 저장'을 눌러 확정하세요.",
+    false
+  );
+}
+
+async function runAutoGenerate() {
+  const output = document.getElementById("schedule-output");
+  output.innerHTML = `<p class="empty-hint">계산 중...</p>`;
+  let result;
+  try {
+    result = await api(`/api/weeks/${currentWeekKey}/generate-schedule`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({exclude: []})
+    });
+  } catch (e) {
+    renderCalendarArea();
+    return;
+  }
+  scheduleGenerated = true;
+  seenAssignmentSets = [result.assignments.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}))];
+  document.getElementById("regenerate-btn").style.display = "inline-block";
+  renderSchedule(result);
+
+  const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
+  const hasDayCountIssue = result.day_count_issues && result.day_count_issues.length;
+  const hasPrefOffIssue = result.preferred_off_issues && result.preferred_off_issues.length;
+  if (hasUnmet || hasDayCountIssue || hasPrefOffIssue) {
+    showDiagnosticsModal(result);
+  }
+}
+
+async function regenerateSchedule() {
+  const output = document.getElementById("schedule-output");
+  output.innerHTML = `<p class="empty-hint">다른 조합을 찾는 중...</p>`;
+  let result;
+  try {
+    result = await api(`/api/weeks/${currentWeekKey}/generate-schedule`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({exclude: seenAssignmentSets})
+    });
+  } catch (e) {
+    renderCalendarArea();
+    return;
+  }
+  scheduleGenerated = true;
+  seenAssignmentSets.push(result.assignments.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type})));
+  if (seenAssignmentSets.length > 5) seenAssignmentSets = seenAssignmentSets.slice(-5);
+  renderSchedule(result);
+
+  const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
+  const hasDayCountIssue = result.day_count_issues && result.day_count_issues.length;
+  const hasPrefOffIssue = result.preferred_off_issues && result.preferred_off_issues.length;
+  if (hasUnmet || hasDayCountIssue || hasPrefOffIssue) {
+    showDiagnosticsModal(result);
+  }
+}
+
+async function checkPatternSuggestions() {
+  let suggestions;
+  try {
+    suggestions = await api("/api/pattern-suggestions");
+  } catch (e) {
+    return;
+  }
+  showPatternSuggestionsModal(suggestions);
+}
+
+function showPatternSuggestionsModal(suggestions) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box info";
+
+  const h = document.createElement("h3");
+  h.textContent = "지난 수정 패턴에서 찾은 규칙 제안";
+  box.appendChild(h);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = "자동 생성된 스케줄과 최종 저장된 스케줄을 비교해서, 3주 이상 반복된 수정 패턴만 제안합니다. 적용 여부는 직접 선택하세요.";
+  box.appendChild(sub);
+
+  if (!suggestions.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = "아직 반복된 수정 패턴이 발견되지 않았습니다. 몇 주 더 사용해보시고 다시 확인해보세요.";
+    box.appendChild(empty);
+  }
+
+  suggestions.forEach(s => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    let title = "", detail = "";
+    if (s.type === "preferred_off_day") {
+      title = `${s.employee_name} — ${DAY_LABEL[s.day]}요일에 자주 휴무로 바뀜`;
+      detail = `자동 생성에서는 근무로 배정됐지만, 최근 ${s.count}주 동안 최종 스케줄에서는 그 요일에 근무하지 않은 것으로 확인됩니다. "선호 오프요일"에 추가할까요?`;
+    } else if (s.type === "blocked_shift_type") {
+      title = `${s.employee_name} — ${SHIFT_LABEL[s.shift_type]} 근무에서 자주 제외됨`;
+      detail = `자동 생성에서 ${SHIFT_LABEL[s.shift_type]}로 배정됐지만, 최근 ${s.count}회 다른 사람으로 바뀌었습니다. "근무유형 전체 금지"에 추가할까요?`;
+    } else if (s.type === "preferred_shift") {
+      title = `${s.employee_name} — ${DAY_LABEL[s.day]}요일 ${SHIFT_LABEL[s.shift_type]}에 자주 수동 배치됨`;
+      detail = `자동 생성엔 없었는데, 최근 ${s.count}주 동안 직접 이 자리에 넣으셨습니다. "선호 근무"에 추가할까요?`;
+    }
+    const applyBtn = document.createElement("button");
+    applyBtn.className = "btn-primary btn-sm";
+    applyBtn.textContent = "적용하기";
+    applyBtn.style.marginTop = "8px";
+    applyBtn.onclick = async () => {
+      await applyPatternSuggestion(s);
+      item.style.opacity = "0.4";
+      applyBtn.textContent = "적용됨";
+      applyBtn.disabled = true;
+    };
+    item.innerHTML = `<div class="modal-item-title">${title}</div><div class="modal-item-detail">${detail}</div>`;
+    item.appendChild(applyBtn);
+    box.appendChild(item);
+  });
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = "닫기";
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function applyPatternSuggestion(s) {
+  const emp = (window._employees || []).find(e => e.id === s.employee_id);
+  if (!emp) return;
+
+  if (s.type === "preferred_off_day") {
+    const updated = [...(emp.preferred_off_days || [])];
+    if (!updated.includes(s.day)) updated.push(s.day);
+    await api(`/api/employees/${s.employee_id}`, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({preferred_off_days: updated})
+    });
+  } else if (s.type === "blocked_shift_type") {
+    const updated = [...(emp.blocked_shift_types || [])];
+    if (!updated.includes(s.shift_type)) updated.push(s.shift_type);
+    await api(`/api/employees/${s.employee_id}`, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({blocked_shift_types: updated})
+    });
+  } else if (s.type === "preferred_shift") {
+    const updated = [...(emp.preferred || [])];
+    if (!updated.some(p => p[0] === s.day && p[1] === s.shift_type)) updated.push([s.day, s.shift_type]);
+    await api(`/api/employees/${s.employee_id}`, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({preferred: updated})
+    });
+  }
+  await loadEmployees();
+}
+
+function showDiagnosticsModal(result) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const title = document.createElement("h3");
+  title.textContent = "확인이 필요한 사항이 있습니다";
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = "아래 내용을 확인하고 규칙을 조정해보세요.";
+  box.appendChild(sub);
+
+  const unmet = result.unmet_requirements || [];
+  unmet.forEach(u => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    const reasonParts = Object.entries(u.reasons || {}).map(([k, v]) => `${k} ${v}명`);
+    item.innerHTML = `
+      <div class="modal-item-title">${DAY_LABEL[u.day]}요일 ${SHIFT_LABEL[u.shift_type]} — ${u.missing_count}명 부족</div>
+      <div class="modal-item-detail">
+        전체 직원 ${u.pool_size}명 중 ${u.blocked_count}명이 규칙으로 배정 불가
+        ${reasonParts.length ? " (" + reasonParts.join(", ") + ")" : ""}
+      </div>
+    `;
+    box.appendChild(item);
+  });
+
+  const dayIssues = result.day_count_issues || [];
+  dayIssues.forEach(d => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.innerHTML = `
+      <div class="modal-item-title">${d.employee_name} — 목표 근무일수 미충족</div>
+      <div class="modal-item-detail">목표 ${d.target}일 중 실제로는 ${d.actual}일 배정되었습니다.</div>
+    `;
+    box.appendChild(item);
+  });
+
+  const prefOffIssues = result.preferred_off_issues || [];
+  prefOffIssues.forEach(p => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.innerHTML = `
+      <div class="modal-item-title">${p.employee_name} — 선호 오프요일에 배정됨</div>
+      <div class="modal-item-detail">${DAY_LABEL[p.day]}요일은 쉬고 싶다고 하셨지만, 필요인원을 채우기 위해 이번엔 배정되었습니다.</div>
+    `;
+    box.appendChild(item);
+  });
+
+  if (!unmet.length && !dayIssues.length && !prefOffIssues.length && result.diagnostics) {
+    result.diagnostics.forEach(d => {
+      const item = document.createElement("div");
+      item.className = "modal-item";
+      item.textContent = d;
+      box.appendChild(item);
+    });
+  }
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-primary";
+  closeBtn.textContent = "확인";
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function renderCalendarArea() {
+  renderSchedule({
+    status: scheduleGenerated ? "MANUAL" : "EMPTY",
+    assignments: currentAssignments,
+    unmet_requirements: [],
+    diagnostics: [],
+    day_count_issues: [],
+  });
+}
+
+function renderSchedule(result) {
+  const output = document.getElementById("schedule-output");
+  output.innerHTML = "";
+  currentAssignments = (result.assignments || []).map(a => ({...a}));
+
+  if (result.status !== "EMPTY") {
+    const banner = document.createElement("div");
+    const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
+    if (hasUnmet) {
+      banner.className = "status-banner status-warn";
+      banner.textContent = "일부 요건을 충족하지 못했습니다. 팝업 또는 아래 진단 내용을 확인하세요.";
+    } else if (result.status === "MANUAL") {
+      banner.className = "status-banner status-ok";
+      banner.textContent = "수동으로 조정된 스케줄입니다.";
+    } else {
+      banner.className = "status-banner status-ok";
+      banner.textContent = "모든 요건을 충족하는 스케줄을 생성했습니다.";
+    }
+    output.appendChild(banner);
+  }
+
+  const legend = document.createElement("div");
+  legend.className = "legend";
+  legend.innerHTML = `
+    <span><i style="background:var(--opening)"></i>Opening</span>
+    <span><i style="background:var(--helper)"></i>Helper</span>
+    <span><i style="background:var(--closing1)"></i>Closing1</span>
+    <span><i style="background:var(--closing2)"></i>Closing2</span>
+    <span><i style="background:var(--off-bg); border:1px solid var(--border);"></i>Off(휴무)</span>
+    <span style="margin-left:auto; color:var(--text-muted);">드래그: 스왑 · 빈 칸 클릭: 추가/Off 지정 · 블록 클릭: 시간 수정/삭제</span>
+  `;
+  output.appendChild(legend);
+
+  output.appendChild(buildCalendarGrid());
+  document.getElementById("save-manual-btn").style.display = currentAssignments.length ? "inline-block" : "none";
+
+  if (result.diagnostics && result.diagnostics.length) {
+    const list = document.createElement("ul");
+    list.className = "diag-list";
+    result.diagnostics.forEach(d => {
+      const li = document.createElement("li");
+      li.textContent = d;
+      list.appendChild(li);
+    });
+    output.appendChild(list);
+  }
+}
+
+function buildCalendarGrid() {
+  const wrap = document.createElement("div");
+  wrap.className = "cal-wrap";
+  const grid = document.createElement("div");
+  grid.className = "cal-grid";
+
+  grid.appendChild(makeCalCell("", "cal-head"));
+  DAYS.forEach(d => grid.appendChild(makeCalCell(DAY_LABEL[d], "cal-head")));
+
+  const allEmployees = window._employees || [];
+  const empIds = [...new Set([...allEmployees.map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
+  const empNames = {};
+  const empById = {};
+  allEmployees.forEach(e => { empNames[e.id] = e.name; empById[e.id] = e; });
+  currentAssignments.forEach(a => { if (!empNames[a.employee_id]) empNames[a.employee_id] = a.employee_name; });
+  empIds.sort((a, b) => (empNames[a] || "").localeCompare(empNames[b] || ""));
+
+  if (empIds.length === 0) {
+    const hint = document.createElement("p");
+    hint.className = "empty-hint";
+    hint.textContent = "직원을 먼저 등록하면 여기에 캘린더가 표시됩니다.";
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  empIds.forEach(empId => {
+    const emp = empById[empId];
+    const empCell = document.createElement("div");
+    empCell.className = "cal-cell cal-emp-cell";
+    empCell.textContent = empNames[empId] || empId;
+    grid.appendChild(empCell);
+
+    DAYS.forEach(day => {
+      const cell = document.createElement("div");
+      cell.className = "cal-cell";
+      cell.dataset.employeeId = empId;
+      cell.dataset.day = day;
+
+      const isForcedOff = ((window._weekOffDays || {})[empId] || []).includes(day);
+
+      if (isForcedOff) {
+        const offBlock = document.createElement("div");
+        offBlock.className = "off-block";
+        offBlock.textContent = "OFF ✕";
+        offBlock.title = "클릭하면 휴무 지정을 해제합니다";
+        offBlock.onclick = (ev) => {
+          ev.stopPropagation();
+          toggleForcedOff(empId, day, false);
+        };
+        cell.appendChild(offBlock);
+      } else {
+        cell.addEventListener("dragover", (ev) => { ev.preventDefault(); cell.classList.add("dragover"); });
+        cell.addEventListener("dragleave", () => cell.classList.remove("dragover"));
+        cell.addEventListener("drop", (ev) => {
+          ev.preventDefault();
+          cell.classList.remove("dragover");
+          const srcIdx = Number(ev.dataTransfer.getData("text/plain"));
+          swapAssignment(srcIdx, empId, day);
+        });
+        cell.addEventListener("click", (ev) => {
+          if (ev.target === cell) {
+            openAddAssignmentModal(empId, empNames[empId] || empId, day);
+          }
+        });
+
+        currentAssignments.forEach((a, idx) => {
+          if (a.employee_id === empId && a.day === day) {
+            const block = document.createElement("div");
+            block.className = "shift-block " + a.shift_type;
+            block.draggable = true;
+            const timeLabel = (a.custom_start && a.custom_end) ? `${a.custom_start}-${a.custom_end}` : SHIFT_TIME[a.shift_type];
+            block.innerHTML = `${SHIFT_LABEL[a.shift_type]}<span class="shift-time">${timeLabel}</span>`;
+            block.addEventListener("dragstart", (ev) => {
+              ev.dataTransfer.setData("text/plain", String(idx));
+              setTimeout(() => block.classList.add("dragging"), 0);
+            });
+            block.addEventListener("dragend", () => block.classList.remove("dragging"));
+            block.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              openEditTimeModal(idx);
+            });
+            cell.appendChild(block);
+          }
+        });
+      }
+
+      grid.appendChild(cell);
+    });
+  });
+
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+async function toggleForcedOff(employeeId, day, setOff) {
+  let offDays = [...((window._weekOffDays || {})[employeeId] || [])];
+  if (setOff) {
+    if (!offDays.includes(day)) offDays.push(day);
+  } else {
+    offDays = offDays.filter(d => d !== day);
+  }
+  const updated = await api(`/api/weeks/${currentWeekKey}/off-days`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({employee_id: employeeId, off_days: offDays})
+  });
+  window._weekOffDays = updated;
+  renderCalendarArea();
+}
+
+function openAddAssignmentModal(employeeId, employeeName, day) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box info";
+
+  const h = document.createElement("h3");
+  h.textContent = `${employeeName} · ${DAY_LABEL[day]}요일`;
+  box.appendChild(h);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = "근무를 추가하거나 Off(휴무)로 지정하세요.";
+  box.appendChild(sub);
+
+  SHIFT_TYPES.forEach(shift => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.style.cursor = "pointer";
+    item.innerHTML = `<div class="modal-item-title">${SHIFT_LABEL[shift]}</div><div class="modal-item-detail">${SHIFT_TIME[shift]}</div>`;
+    item.onclick = () => {
+      currentAssignments.push({employee_id: employeeId, employee_name: employeeName, day: day, shift_type: shift});
+      scheduleGenerated = true;
+      overlay.remove();
+      renderCalendarArea();
+      showMessageModal("배치 완료", `${employeeName}님을 ${DAY_LABEL[day]}요일 ${SHIFT_LABEL[shift]}에 임의 추가 배치했습니다.`, false);
+    };
+    box.appendChild(item);
+  });
+
+  const offItem = document.createElement("div");
+  offItem.className = "modal-item";
+  offItem.style.cursor = "pointer";
+  offItem.innerHTML = `<div class="modal-item-title">Off (휴무로 지정)</div><div class="modal-item-detail">자동 생성 시 이 날은 절대 배정되지 않습니다.</div>`;
+  offItem.onclick = async () => {
+    overlay.remove();
+    await toggleForcedOff(employeeId, day, true);
+  };
+  box.appendChild(offItem);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = "취소";
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function openEditTimeModal(idx) {
+  const a = currentAssignments[idx];
+  if (!a) return;
+  const defaultRange = SHIFT_TIME[a.shift_type].split("-");
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box info";
+
+  const h = document.createElement("h3");
+  h.textContent = `${a.employee_name} · ${DAY_LABEL[a.day]}요일 ${SHIFT_LABEL[a.shift_type]}`;
+  box.appendChild(h);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = "출퇴근 시간을 수동으로 변경할 수 있습니다.";
+  box.appendChild(sub);
+
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex; gap:10px; align-items:center; margin-bottom:14px;";
+  const startInput = document.createElement("input");
+  startInput.type = "time";
+  startInput.value = a.custom_start || defaultRange[0];
+  const dash = document.createElement("span");
+  dash.textContent = "~";
+  const endInput = document.createElement("input");
+  endInput.type = "time";
+  endInput.value = a.custom_end || defaultRange[1];
+  row.appendChild(startInput); row.appendChild(dash); row.appendChild(endInput);
+  box.appendChild(row);
+
+  const btnRow = document.createElement("div");
+  btnRow.className = "modal-close-row";
+  btnRow.style.display = "flex";
+  btnRow.style.justifyContent = "space-between";
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "btn-danger";
+  deleteBtn.textContent = "이 배치 삭제";
+  deleteBtn.onclick = () => {
+    currentAssignments.splice(idx, 1);
+    overlay.remove();
+    renderCalendarArea();
+  };
+
+  const rightBtns = document.createElement("div");
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = "취소";
+  cancelBtn.style.marginRight = "6px";
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = "저장";
+  saveBtn.onclick = () => {
+    currentAssignments[idx] = {...a, custom_start: startInput.value, custom_end: endInput.value};
+    overlay.remove();
+    renderCalendarArea();
+  };
+  rightBtns.appendChild(cancelBtn); rightBtns.appendChild(saveBtn);
+
+  btnRow.appendChild(deleteBtn);
+  btnRow.appendChild(rightBtns);
+  box.appendChild(btnRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function swapAssignment(srcIdx, newEmployeeId, newDay) {
+  const src = currentAssignments[srcIdx];
+  if (!src) return;
+  if (src.employee_id === newEmployeeId && src.day === newDay) return;
+
+  const targetIdx = currentAssignments.findIndex(
+    (a, idx) => idx !== srcIdx && a.employee_id === newEmployeeId && a.day === newDay
+  );
+
+  const srcOriginal = {employee_id: src.employee_id, employee_name: src.employee_name, day: src.day};
+
+  if (targetIdx >= 0) {
+    const target = currentAssignments[targetIdx];
+    currentAssignments[targetIdx] = {
+      ...target, employee_id: srcOriginal.employee_id, employee_name: srcOriginal.employee_name, day: srcOriginal.day,
+    };
+  }
+
+  const newEmpName = (window._employees.find(e => e.id === newEmployeeId) || {}).name || src.employee_name;
+  currentAssignments[srcIdx] = {...src, employee_id: newEmployeeId, employee_name: newEmpName, day: newDay};
+
+  renderCalendarArea();
+}
+
+async function saveManualAdjustments() {
+  await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({assignments: currentAssignments})
+  });
+  showMessageModal("저장 완료", "변경사항이 저장되었습니다.", false);
+}
+
+function makeCalCell(text, cls) {
+  const div = document.createElement("div");
+  div.className = cls;
+  div.textContent = text;
+  return div;
+}
+
+(async () => {
+  window._weekOffDays = {};
+  currentWeekKey = mondayKeyFromDate(new Date());
+  await loadEmployees();
+  await loadWeek();
+})();
+</script>
+
+</body>
+</html>

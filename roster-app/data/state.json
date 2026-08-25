@@ -1,0 +1,1477 @@
+{
+  "employees": [
+    {
+      "id": "1",
+      "name": "Johnny",
+      "min_hours_per_week": 40,
+      "target_days_per_week": null,
+      "blocked_shift_types": [
+        "closing1",
+        "closing2",
+        "helper"
+      ],
+      "day_off_pattern": "split",
+      "preferred": [
+        [
+          "mon",
+          "opening"
+        ],
+        [
+          "tue",
+          "opening"
+        ],
+        [
+          "wed",
+          "opening"
+        ],
+        [
+          "thu",
+          "opening"
+        ],
+        [
+          "fri",
+          "opening"
+        ],
+        [
+          "sat",
+          "opening"
+        ],
+        [
+          "sun",
+          "opening"
+        ]
+      ],
+      "recent_night_count": 0,
+      "recent_weekend_count": 0,
+      "preferred_off_days": []
+    },
+    {
+      "id": "2",
+      "name": "Hojun Lee",
+      "min_hours_per_week": 5,
+      "target_days_per_week": 1,
+      "blocked_shift_types": [],
+      "day_off_pattern": null,
+      "preferred": [],
+      "recent_night_count": 0,
+      "recent_weekend_count": 0
+    },
+    {
+      "id": "3",
+      "name": "Hyunjin Oh",
+      "min_hours_per_week": 30,
+      "target_days_per_week": null,
+      "blocked_shift_types": [],
+      "day_off_pattern": null,
+      "preferred": [],
+      "recent_night_count": 0,
+      "recent_weekend_count": 0,
+      "preferred_off_days": []
+    },
+    {
+      "id": "4",
+      "name": "Junhyuk Jang",
+      "min_hours_per_week": 30,
+      "target_days_per_week": null,
+      "blocked_shift_types": [],
+      "day_off_pattern": null,
+      "preferred": [],
+      "recent_night_count": 0,
+      "recent_weekend_count": 0,
+      "preferred_off_days": []
+    },
+    {
+      "id": "5",
+      "name": "Hayul Jung",
+      "min_hours_per_week": 30,
+      "target_days_per_week": null,
+      "blocked_shift_types": [
+        "opening"
+      ],
+      "day_off_pattern": null,
+      "preferred": [],
+      "recent_night_count": 0,
+      "recent_weekend_count": 0,
+      "preferred_off_days": []
+    },
+    {
+      "id": "6",
+      "name": "Shinya Teresaka",
+      "min_hours_per_week": 30,
+      "target_days_per_week": null,
+      "blocked_shift_types": [],
+      "day_off_pattern": null,
+      "preferred": [
+        [
+          "mon",
+          "opening"
+        ],
+        [
+          "tue",
+          "opening"
+        ],
+        [
+          "wed",
+          "opening"
+        ],
+        [
+          "thu",
+          "opening"
+        ],
+        [
+          "fri",
+          "opening"
+        ],
+        [
+          "sat",
+          "opening"
+        ],
+        [
+          "sun",
+          "opening"
+        ]
+      ],
+      "recent_night_count": 0,
+      "recent_weekend_count": 0,
+      "preferred_off_days": []
+    },
+    {
+      "id": "7",
+      "name": "Kenta Shinya",
+      "min_hours_per_week": 30,
+      "target_days_per_week": null,
+      "blocked_shift_types": [
+        "opening"
+      ],
+      "day_off_pattern": null,
+      "preferred": [],
+      "recent_night_count": 0,
+      "recent_weekend_count": 0
+    }
+  ],
+  "weeks": {
+    "2026-08-17": {
+      "requirements": [
+        {
+          "day": "mon",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "closing2",
+          "required_count": 1
+        }
+      ],
+      "off_days": {},
+      "schedule": {
+        "status": "MANUAL",
+        "assignments": [
+          {
+            "day": "mon",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "tue",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "thu",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "fri",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "sat",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "sun",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "mon",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "helper"
+          },
+          {
+            "day": "sun",
+            "employee_id": "2",
+            "employee_name": "Hojun Lee",
+            "shift_type": "helper"
+          },
+          {
+            "day": "mon",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "fri",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "helper"
+          },
+          {
+            "day": "sat",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "helper"
+          },
+          {
+            "day": "sun",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "wed",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "thu",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "fri",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "sat",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "tue",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "helper"
+          },
+          {
+            "day": "wed",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "helper"
+          },
+          {
+            "day": "thu",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "helper"
+          },
+          {
+            "day": "sat",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "tue",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "opening"
+          },
+          {
+            "day": "wed",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "opening"
+          },
+          {
+            "day": "fri",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "sun",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "mon",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "tue",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "wed",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "thu",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing1"
+          }
+        ],
+        "unmet_requirements": [],
+        "diagnostics": [
+          "수동으로 재배치된 스케줄입니다."
+        ],
+        "day_count_issues": []
+      }
+    },
+    "2026-08-24": {
+      "requirements": [
+        {
+          "day": "mon",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "closing2",
+          "required_count": 1
+        }
+      ],
+      "off_days": {
+        "3": [],
+        "6": []
+      },
+      "schedule": {
+        "status": "MANUAL",
+        "assignments": [
+          {
+            "day": "mon",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "tue",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "wed",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "thu",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "sat",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "opening"
+          },
+          {
+            "day": "sun",
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "shift_type": "opening"
+          },
+          {
+            "day": "thu",
+            "employee_id": "2",
+            "employee_name": "Hojun Lee",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "wed",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "fri",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "sat",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "sun",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "mon",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "fri",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "sat",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "sun",
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "mon",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "helper"
+          },
+          {
+            "day": "tue",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "fri",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "helper"
+          },
+          {
+            "day": "sat",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "helper"
+          },
+          {
+            "day": "sun",
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "shift_type": "helper"
+          },
+          {
+            "day": "tue",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "helper"
+          },
+          {
+            "day": "wed",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "helper"
+          },
+          {
+            "day": "thu",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "helper"
+          },
+          {
+            "day": "fri",
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "shift_type": "opening"
+          },
+          {
+            "day": "mon",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing1"
+          },
+          {
+            "day": "tue",
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "wed",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing2"
+          },
+          {
+            "day": "thu",
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "shift_type": "closing1"
+          }
+        ],
+        "unmet_requirements": [],
+        "diagnostics": [
+          "수동으로 재배치된 스케줄입니다."
+        ],
+        "day_count_issues": [],
+        "preferred_off_issues": []
+      },
+      "auto_assignments": [
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "mon",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "tue",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "wed",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "thu",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "sat",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "sun",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "2",
+          "employee_name": "Hojun Lee",
+          "day": "thu",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "wed",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "fri",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "sat",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "sun",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "mon",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "fri",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "sat",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "sun",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "mon",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "tue",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "fri",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "sat",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "sun",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "tue",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "wed",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "thu",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "fri",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "mon",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "tue",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "wed",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "thu",
+          "shift_type": "closing1"
+        }
+      ]
+    },
+    "2026-08-10": {
+      "requirements": [],
+      "off_days": {},
+      "schedule": null
+    },
+    "2026-08-31": {
+      "requirements": [
+        {
+          "day": "mon",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "opening",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "helper",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "closing1",
+          "required_count": 1
+        },
+        {
+          "day": "mon",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "tue",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "wed",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "thu",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "fri",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "sat",
+          "shift_type": "closing2",
+          "required_count": 1
+        },
+        {
+          "day": "sun",
+          "shift_type": "closing2",
+          "required_count": 1
+        }
+      ],
+      "off_days": {
+        "1": [],
+        "6": [],
+        "3": []
+      },
+      "schedule": {
+        "status": "MANUAL",
+        "assignments": [
+          {
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "day": "mon",
+            "shift_type": "helper"
+          },
+          {
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "day": "fri",
+            "shift_type": "helper"
+          },
+          {
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "day": "sat",
+            "shift_type": "helper"
+          },
+          {
+            "employee_id": "5",
+            "employee_name": "Hayul Jung",
+            "day": "sun",
+            "shift_type": "helper"
+          },
+          {
+            "employee_id": "2",
+            "employee_name": "Hojun Lee",
+            "day": "thu",
+            "shift_type": "closing2"
+          },
+          {
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "day": "tue",
+            "shift_type": "closing2"
+          },
+          {
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "day": "wed",
+            "shift_type": "closing1"
+          },
+          {
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "day": "fri",
+            "shift_type": "closing2"
+          },
+          {
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "day": "sat",
+            "shift_type": "closing2"
+          },
+          {
+            "employee_id": "3",
+            "employee_name": "Hyunjin Oh",
+            "day": "sun",
+            "shift_type": "closing2"
+          },
+          {
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "day": "mon",
+            "shift_type": "opening"
+          },
+          {
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "day": "tue",
+            "shift_type": "opening"
+          },
+          {
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "day": "wed",
+            "shift_type": "opening"
+          },
+          {
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "day": "thu",
+            "shift_type": "opening"
+          },
+          {
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "day": "mon",
+            "shift_type": "closing2"
+          },
+          {
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "day": "mon",
+            "shift_type": "closing1"
+          },
+          {
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "day": "tue",
+            "shift_type": "closing1"
+          },
+          {
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "day": "wed",
+            "shift_type": "closing2"
+          },
+          {
+            "employee_id": "7",
+            "employee_name": "Kenta Shinya",
+            "day": "thu",
+            "shift_type": "closing1"
+          },
+          {
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "day": "tue",
+            "shift_type": "helper"
+          },
+          {
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "day": "wed",
+            "shift_type": "helper"
+          },
+          {
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "day": "thu",
+            "shift_type": "helper"
+          },
+          {
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "day": "fri",
+            "shift_type": "opening"
+          },
+          {
+            "employee_id": "6",
+            "employee_name": "Shinya Teresaka",
+            "day": "sat",
+            "shift_type": "opening"
+          },
+          {
+            "employee_id": "1",
+            "employee_name": "Johnny",
+            "day": "sun",
+            "shift_type": "opening"
+          },
+          {
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "day": "fri",
+            "shift_type": "closing1"
+          },
+          {
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "day": "sat",
+            "shift_type": "closing1"
+          },
+          {
+            "employee_id": "4",
+            "employee_name": "Junhyuk Jang",
+            "day": "sun",
+            "shift_type": "closing1"
+          }
+        ],
+        "unmet_requirements": [],
+        "diagnostics": [
+          "수동으로 재배치된 스케줄입니다."
+        ],
+        "day_count_issues": [],
+        "preferred_off_issues": []
+      },
+      "auto_assignments": [
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "tue",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "wed",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "fri",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "sat",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "1",
+          "employee_name": "Johnny",
+          "day": "sun",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "2",
+          "employee_name": "Hojun Lee",
+          "day": "sun",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "mon",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "thu",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "fri",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "sat",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "3",
+          "employee_name": "Hyunjin Oh",
+          "day": "sun",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "thu",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "fri",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "sat",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "4",
+          "employee_name": "Junhyuk Jang",
+          "day": "sun",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "mon",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "tue",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "wed",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "fri",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "5",
+          "employee_name": "Hayul Jung",
+          "day": "sat",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "mon",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "tue",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "wed",
+          "shift_type": "helper"
+        },
+        {
+          "employee_id": "6",
+          "employee_name": "Shinya Teresaka",
+          "day": "thu",
+          "shift_type": "opening"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "mon",
+          "shift_type": "closing1"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "tue",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "wed",
+          "shift_type": "closing2"
+        },
+        {
+          "employee_id": "7",
+          "employee_name": "Kenta Shinya",
+          "day": "thu",
+          "shift_type": "closing1"
+        }
+      ]
+    }
+  }
+}
