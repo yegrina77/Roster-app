@@ -20,8 +20,11 @@
 
 우선순위 기반 단계별(lexicographic) 최적화:
   1단계: 필요인원 최대한 채우기 (shortfall 최소화) — 항상 최우선
-  2단계: 선호 오프요일 최대한 지키기 — 1단계 결과를 해치지 않는 선에서 최적화
-  3단계: 나머지(목표근무일수·휴무패턴·근무선호도·공정성) — 1·2단계 결과를 해치지 않는 선에서
+  2단계: 연속근무 7일 제한 최대한 지키기 — 전주에서 넘어온 연속근무일수(carry_in_streak)까지
+         포함해서 계산합니다. 1단계 결과를 해치지 않는 선에서 최적화 (완전한 하드는 아님 —
+         인력이 정말 부족하면 예외적으로 뚫릴 수 있고, 그 경우 진단에 안내됩니다)
+  3단계: 선호 오프요일 최대한 지키기 — 1·2단계 결과를 해치지 않는 선에서 최적화
+  4단계: 나머지(목표근무일수·휴무패턴·근무선호도·공정성) — 1·2·3단계 결과를 해치지 않는 선에서
          기존 가중치 방식으로 최적화
 
 세밀한 조정은 생성 후 화면에서 드래그(스왑) · 빈 칸 클릭(추가/휴무 지정) ·
@@ -89,6 +92,9 @@ FORBIDDEN_CONSECUTIVE = {
     for nxt in SHIFT_TYPES if SHIFT_DEFS[nxt]["blocked_after_closing"]
 }
 
+# 연속근무 최대 일수 (2단계 소프트 규칙 — 인력이 정말 부족하면 예외적으로 뚫릴 수 있음)
+MAX_CONSECUTIVE_DAYS = 7
+
 
 @dataclass
 class Employee:
@@ -101,7 +107,8 @@ class Employee:
     blocked_shift_types: list[str] = field(default_factory=list)  # 하드
     day_off_pattern: Optional[str] = None  # "consecutive" | "split" | None (소프트, 3단계)
     preferred: list[tuple[str, str]] = field(default_factory=list)  # 소프트(3단계): (day, shift_type)
-    preferred_off_days: list[str] = field(default_factory=list)  # 소프트(2단계, 최우선급): 선호 오프요일
+    preferred_off_days: list[str] = field(default_factory=list)  # 소프트(3단계, 최우선급): 선호 오프요일
+    carry_in_streak: int = 0  # 전주 끝자락부터 이어져온 연속 근무일수 (2단계 계산의 시작점)
     recent_night_count: int = 0
     recent_weekend_count: int = 0
 
@@ -121,6 +128,10 @@ class ScheduleResult:
     diagnostics: list[str]
     day_count_issues: list[dict] = field(default_factory=list)
     preferred_off_issues: list[dict] = field(default_factory=list)
+    pattern_issues: list[dict] = field(default_factory=list)
+    preference_issues: list[dict] = field(default_factory=list)
+    fairness_issues: list[dict] = field(default_factory=list)
+    consecutive_issues: list[dict] = field(default_factory=list)
 
 
 def _explain_shortfall(req: "ShiftRequirement", employees: list["Employee"]) -> dict:
@@ -231,7 +242,37 @@ def solve_schedule(
         model.Add(sum(eligible) + shortfall[idx] >= req.required_count)
         model.Add(sum(eligible) <= req.required_count)
 
-    # ---- 2단계용: 선호 오프요일 위반 여부 ----
+    # ---- 2단계용: 연속근무 7일 제한 (전주에서 이어져온 연속근무일수 포함) ----
+    worked_vars = {}
+    streak_vars = {}
+    consecutive_viol_vars = {}
+    for e in employees:
+        worked_vars[e.id] = {}
+        streak_vars[e.id] = {}
+        consecutive_viol_vars[e.id] = {}
+        for i, day in enumerate(DAYS):
+            worked = model.NewBoolVar(f"worked_{e.id}_{day}")
+            model.Add(sum(x[(e.id, day, s)] for s in SHIFT_TYPES) == worked)
+            worked_vars[e.id][day] = worked
+
+            streak = model.NewIntVar(0, MAX_CONSECUTIVE_DAYS + len(DAYS), f"streak_{e.id}_{day}")
+            model.Add(streak == 0).OnlyEnforceIf(worked.Not())
+            if i == 0:
+                model.Add(streak == e.carry_in_streak + 1).OnlyEnforceIf(worked)
+            else:
+                model.Add(streak == streak_vars[e.id][DAYS[i - 1]] + 1).OnlyEnforceIf(worked)
+            streak_vars[e.id][day] = streak
+
+            viol = model.NewBoolVar(f"streakviol_{e.id}_{day}")
+            model.Add(streak > MAX_CONSECUTIVE_DAYS).OnlyEnforceIf(viol)
+            model.Add(streak <= MAX_CONSECUTIVE_DAYS).OnlyEnforceIf(viol.Not())
+            consecutive_viol_vars[e.id][day] = viol
+
+    total_consecutive_violation = sum(
+        v for byday in consecutive_viol_vars.values() for v in byday.values()
+    )
+
+    # ---- 3단계용: 선호 오프요일 위반 여부 ----
     pref_off_violation_terms = []
     for e in employees:
         for day in e.preferred_off_days:
@@ -248,8 +289,10 @@ def solve_schedule(
 
     fairness_penalty_terms = []
     for e in employees:
+        # "힘든 근무"는 부서·이름이 아니라 근무유형 속성(is_closing)으로 판단합니다.
+        # 이러면 Kitchen뿐 아니라 Cashier 등 마감이 있는 모든 부서에 공평하게 적용됩니다.
         closing_assignments = sum(
-            x[(e.id, day, s)] for day in DAYS for s in ("helper", "closing1", "closing2")
+            x[(e.id, day, s)] for day in DAYS for s in SHIFT_TYPES if SHIFT_DEFS[s]["is_closing"]
         )
         weekend_assignments = sum(
             x[(e.id, day, s)] for day in ["sat", "sun"] for s in SHIFT_TYPES
@@ -266,6 +309,7 @@ def solve_schedule(
             day_count_dev_vars[e.id] = dev
 
     pattern_violation_vars = []
+    pattern_violation_by_employee = {}
     for e in employees:
         if e.day_off_pattern in ("consecutive", "split"):
             off_vars_local = {}
@@ -274,11 +318,13 @@ def solve_schedule(
                 model.Add(sum(x[(e.id, day, s)] for s in SHIFT_TYPES) + off == 1)
                 off_vars_local[day] = off
 
+            emp_pattern_vars = []
             if e.day_off_pattern == "split":
                 for i in range(len(DAYS) - 1):
                     viol = model.NewBoolVar(f"splitviol_{e.id}_{i}")
                     model.Add(off_vars_local[DAYS[i]] + off_vars_local[DAYS[i + 1]] - 1 <= viol)
                     pattern_violation_vars.append(viol)
+                    emp_pattern_vars.append(viol)
             else:  # consecutive
                 starts = [off_vars_local[DAYS[0]]]
                 for i in range(1, len(DAYS)):
@@ -292,6 +338,9 @@ def solve_schedule(
                 extra_blocks = model.NewIntVar(0, 7, f"extrablocks_{e.id}")
                 model.Add(extra_blocks >= sum(starts) - 1)
                 pattern_violation_vars.append(extra_blocks)
+                emp_pattern_vars.append(extra_blocks)
+
+            pattern_violation_by_employee[e.id] = emp_pattern_vars
 
     total_shortfall = sum(shortfall.values())
     total_pref_off_violation = sum(pref_off_violation_terms) if pref_off_violation_terms else 0
@@ -326,27 +375,36 @@ def solve_schedule(
     shortfall_min = solver.Value(total_shortfall)
     model.Add(total_shortfall <= shortfall_min)
 
-    # ---- 2단계: 선호 오프요일 최대한 지키기 (1단계 결과는 그대로 유지) ----
-    if pref_off_violation_terms:
-        model.Minimize(total_pref_off_violation)
+    # ---- 2단계: 연속근무 7일 제한 최대한 지키기 (1단계 결과는 그대로 유지) ----
+    if consecutive_viol_vars:
+        model.Minimize(total_consecutive_violation)
         status2 = solver.Solve(model)
         if status2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             status_name = solver.StatusName(status2)
-            pref_off_min = solver.Value(total_pref_off_violation)
-            model.Add(total_pref_off_violation <= pref_off_min)
+            consecutive_min = solver.Value(total_consecutive_violation)
+            model.Add(total_consecutive_violation <= consecutive_min)
         # 2단계가 실패해도(이론상 거의 없음) 1단계 결과는 이미 하드로 고정되어 있어 안전합니다.
 
-    # ---- 3단계: 나머지 소프트 규칙 (1·2단계 결과는 그대로 유지) ----
+    # ---- 3단계: 선호 오프요일 최대한 지키기 (1·2단계 결과는 그대로 유지) ----
+    if pref_off_violation_terms:
+        model.Minimize(total_pref_off_violation)
+        status3a = solver.Solve(model)
+        if status3a in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            status_name = solver.StatusName(status3a)
+            pref_off_min = solver.Value(total_pref_off_violation)
+            model.Add(total_pref_off_violation <= pref_off_min)
+
+    # ---- 4단계: 나머지 소프트 규칙 (1·2·3단계 결과는 그대로 유지) ----
     model.Minimize(
         total_day_count_penalty * day_count_weight
         + total_pattern_penalty * pattern_weight
         - total_preference * preference_weight
         + total_fairness_penalty * fairness_weight
     )
-    status3 = solver.Solve(model)
-    if status3 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        status_name = solver.StatusName(status3)
-    # 3단계가 실패해도 1·2단계에서 이미 찾은 값이 model에 마지막으로 반영된 해로 남아있으므로
+    status4 = solver.Solve(model)
+    if status4 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        status_name = solver.StatusName(status4)
+    # 이 단계가 실패해도 이전 단계에서 이미 찾은 값이 model에 마지막으로 반영된 해로 남아있으므로
     # solver.Value(...)는 계속 그 직전 최선의 해를 반환합니다.
 
     assignments = []
@@ -400,6 +458,63 @@ def solve_schedule(
                     "employee_id": e.id, "employee_name": e.name, "day": day,
                 })
 
+    consecutive_issues = []
+    for e in employees:
+        max_streak = 0
+        for day in DAYS:
+            val = solver.Value(streak_vars[e.id][day])
+            if val > max_streak:
+                max_streak = val
+        if max_streak > MAX_CONSECUTIVE_DAYS:
+            consecutive_issues.append({
+                "employee_id": e.id, "employee_name": e.name,
+                "streak_days": max_streak, "carry_in": e.carry_in_streak,
+            })
+
+    pattern_issues = []
+    for e in employees:
+        if e.id in pattern_violation_by_employee:
+            total_viol = sum(solver.Value(v) for v in pattern_violation_by_employee[e.id])
+            if total_viol > 0:
+                pattern_issues.append({
+                    "employee_id": e.id, "employee_name": e.name,
+                    "pattern": e.day_off_pattern,
+                })
+
+    preference_issues = []
+    for e in employees:
+        if e.preferred:
+            fulfilled = sum(
+                1 for (day, shift) in e.preferred
+                if (e.id, day, shift) in x and solver.Value(x[(e.id, day, shift)]) == 1
+            )
+            total_pref = len(e.preferred)
+            if fulfilled < total_pref:
+                preference_issues.append({
+                    "employee_id": e.id, "employee_name": e.name,
+                    "fulfilled": fulfilled, "total": total_pref,
+                })
+
+    fairness_issues = []
+    FAIRNESS_ALERT_THRESHOLD = 3  # 최근 집계 중 이 값(포함) 이상이면 "몰림" 경고 대상
+    for e in employees:
+        got_closing = any(
+            a["employee_id"] == e.id and SHIFT_DEFS[a["shift_type"]]["is_closing"] for a in assignments
+        )
+        got_weekend = any(
+            a["employee_id"] == e.id and a["day"] in ("sat", "sun") for a in assignments
+        )
+        if got_closing and e.recent_night_count >= FAIRNESS_ALERT_THRESHOLD:
+            fairness_issues.append({
+                "employee_id": e.id, "employee_name": e.name,
+                "type": "night", "recent_count": e.recent_night_count,
+            })
+        if got_weekend and e.recent_weekend_count >= FAIRNESS_ALERT_THRESHOLD:
+            fairness_issues.append({
+                "employee_id": e.id, "employee_name": e.name,
+                "type": "weekend", "recent_count": e.recent_weekend_count,
+            })
+
     if not diagnostics:
         diagnostics.append("모든 필수 인원 요건을 충족했습니다.")
 
@@ -410,4 +525,8 @@ def solve_schedule(
         diagnostics=diagnostics,
         day_count_issues=day_count_issues,
         preferred_off_issues=preferred_off_issues,
+        pattern_issues=pattern_issues,
+        preference_issues=preference_issues,
+        fairness_issues=fairness_issues,
+        consecutive_issues=consecutive_issues,
     )

@@ -23,6 +23,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from scheduler import (
     Employee, ShiftRequirement, solve_schedule, DAYS, SHIFT_TYPES,
     DEPARTMENTS, DEPARTMENT_LABEL_KO, DEPARTMENT_SHIFTS, SHIFT_LABEL_KO, SHIFT_TIME_RANGES,
+    SHIFT_DEFS, MAX_CONSECUTIVE_DAYS,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -422,8 +423,10 @@ def generate_week_schedule(week_key):
 
     off_days_map = week.get("off_days", {})
 
-    employees = [
-        Employee(
+    employees = []
+    for e in state["employees"]:
+        night_count, weekend_count = _recent_shift_counts(state, e["id"], week_key)
+        employees.append(Employee(
             id=e["id"],
             name=e["name"],
             department=e.get("department", "kitchen"),
@@ -436,11 +439,10 @@ def generate_week_schedule(week_key):
             day_off_pattern=e.get("day_off_pattern"),
             preferred=[tuple(p) for p in e.get("preferred", [])],
             preferred_off_days=e.get("preferred_off_days", []),
-            recent_night_count=e.get("recent_night_count", 0),
-            recent_weekend_count=e.get("recent_weekend_count", 0),
-        )
-        for e in state["employees"]
-    ]
+            carry_in_streak=_carry_in_streak(state, e["id"], week_key),
+            recent_night_count=night_count,
+            recent_weekend_count=weekend_count,
+        ))
 
     requirements = [
         ShiftRequirement(day=r["day"], shift_type=r["shift_type"], required_count=r["required_count"])
@@ -474,6 +476,10 @@ def generate_week_schedule(week_key):
         "diagnostics": result.diagnostics,
         "day_count_issues": result.day_count_issues,
         "preferred_off_issues": result.preferred_off_issues,
+        "pattern_issues": result.pattern_issues,
+        "preference_issues": result.preference_issues,
+        "fairness_issues": result.fairness_issues,
+        "consecutive_issues": result.consecutive_issues,
     }
 
     state["weeks"][week_key]["schedule"] = result_dict
@@ -494,7 +500,8 @@ def manual_adjust_week(week_key):
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
     schedule = state["weeks"][week_key]["schedule"] or {
-        "status": "MANUAL", "assignments": [], "unmet_requirements": [], "diagnostics": [], "day_count_issues": [], "preferred_off_issues": []
+        "status": "MANUAL", "assignments": [], "unmet_requirements": [], "diagnostics": [], "day_count_issues": [], "preferred_off_issues": [],
+        "pattern_issues": [], "preference_issues": [], "fairness_issues": [], "consecutive_issues": []
     }
     schedule["assignments"] = payload.get("assignments", [])
     schedule["status"] = "MANUAL"
@@ -636,6 +643,57 @@ def _worked_that_weekday(state, employee_id, day, week_key):
         return False
     assignments = (week.get("schedule") or {}).get("assignments") or []
     return any(a["employee_id"] == employee_id and a["day"] == day for a in assignments)
+
+
+CARRY_IN_LOOKBACK_DAYS = 14  # 전주 끝자락부터 최대 이만큼(2주)까지만 거슬러 올라가며 연속근무를 셉니다.
+
+
+def _carry_in_streak(state, employee_id, week_key):
+    """이 주(week_key)가 시작되기 바로 전날부터 거꾸로 하루씩 확인하며, 쉬지 않고
+    연속으로 근무한 날 수를 셉니다. 쉰 날(또는 기록이 없는 날)을 만나면 그 즉시 멈춥니다.
+    최대 MAX_CONSECUTIVE_DAYS만큼만 셉니다(그 이상 정확히 셀 필요가 없으므로)."""
+    y, m, d = map(int, week_key.split("-"))
+    monday = date(y, m, d)
+    streak = 0
+    cursor = monday - timedelta(days=1)
+    for _ in range(CARRY_IN_LOOKBACK_DAYS):
+        cursor_monday = cursor - timedelta(days=cursor.weekday())
+        cursor_week_key = cursor_monday.isoformat()
+        day_name = DAYS[cursor.weekday()]
+        if _worked_that_weekday(state, employee_id, day_name, cursor_week_key):
+            streak += 1
+            if streak >= MAX_CONSECUTIVE_DAYS:
+                break
+            cursor -= timedelta(days=1)
+        else:
+            break
+    return streak
+
+
+RECENT_FAIRNESS_WINDOW_WEEKS = 4  # 공정성 판단에 참고하는 "최근" 기간
+
+
+def _recent_shift_counts(state, employee_id, week_key, window=RECENT_FAIRNESS_WINDOW_WEEKS):
+    """이 주(week_key) 이전 최근 window주 동안, 이 직원이 마감(is_closing) 근무를 몇 번,
+    주말(토/일) 근무를 몇 번 했는지 셉니다. 이번 주 자체는 포함하지 않습니다(아직 계산 전이므로)."""
+    y, m, d = map(int, week_key.split("-"))
+    base_monday = date(y, m, d)
+    night_count = 0
+    weekend_count = 0
+    for i in range(1, window + 1):
+        wk_key = (base_monday - timedelta(weeks=i)).isoformat()
+        week = state["weeks"].get(wk_key)
+        if not week:
+            continue
+        assignments = (week.get("schedule") or {}).get("assignments") or []
+        for a in assignments:
+            if a["employee_id"] != employee_id:
+                continue
+            if SHIFT_DEFS.get(a["shift_type"], {}).get("is_closing"):
+                night_count += 1
+            if a["day"] in ("sat", "sun"):
+                weekend_count += 1
+    return night_count, weekend_count
 
 
 @app.route("/api/weeks/<week_key>/weekday-frequency", methods=["GET"])
