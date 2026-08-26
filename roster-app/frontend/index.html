@@ -501,6 +501,15 @@ const I18N = {
     diag_daycount_title: "— 목표 근무일수 미충족", diag_daycount_detail1: "목표 ", diag_daycount_detail2: "일 중 실제로는 ", diag_daycount_detail3: "일 배정되었습니다.",
     diag_prefoff_title: "— 선호 오프요일에 배정됨",
     diag_prefoff_detail1: "요일은 쉬고 싶다고 하셨지만, 필요인원을 채우기 위해 이번엔 배정되었습니다.",
+    diag_consecutive_title: "— 연속근무 7일 초과",
+    diag_consecutive_detail: "전주에서 이어진 근무를 포함해 {days}일 연속으로 배정되었습니다. 인력 부족 등으로 다른 방법을 찾지 못했습니다.",
+    diag_pattern_title: "— 휴무 패턴 미반영",
+    diag_pattern_detail: "{pattern}을(를) 선호하셨지만, 이번 주엔 다른 방식으로 휴무가 배정되었습니다.",
+    diag_preference_title: "— 선호 근무 일부만 반영",
+    diag_preference_detail: "선호하신 근무 {total}건 중 {fulfilled}건만 반영되었습니다.",
+    diag_fairness_title: "— 근무 쏠림 가능성",
+    diag_fairness_detail: "최근 {type} 근무가 {n}회로 많은 편인데, 이번 주에도 배정되었습니다.",
+    fairness_type_night: "마감", fairness_type_weekend: "주말",
     pattern_modal_title: "지난 수정 패턴에서 찾은 규칙 제안",
     pattern_modal_sub: "자동 생성된 스케줄과 최종 저장된 스케줄을 비교해서, 3주 이상 반복된 수정 패턴만 제안합니다. 적용 여부는 직접 선택하세요.",
     pattern_empty: "아직 반복된 수정 패턴이 발견되지 않았습니다. 몇 주 더 사용해보시고 다시 확인해보세요.",
@@ -610,6 +619,15 @@ const I18N = {
     diag_daycount_title: "— 目標勤務日数未達成", diag_daycount_detail1: "目標 ", diag_daycount_detail2: "日中、実際には ", diag_daycount_detail3: "日配置されました。",
     diag_prefoff_title: "— 希望休に配置されました",
     diag_prefoff_detail1: "曜日は休みたいとのことでしたが、必要人数を満たすため今回は配置されました。",
+    diag_consecutive_title: "— 連続勤務7日超過",
+    diag_consecutive_detail: "前週から続く勤務を含めて{days}日連続で配置されました。人員不足などで他の方法が見つかりませんでした。",
+    diag_pattern_title: "— 休みパターン未反映",
+    diag_pattern_detail: "{pattern}を希望されましたが、今週は別の形で休みが配置されました。",
+    diag_preference_title: "— 希望勤務の一部のみ反映",
+    diag_preference_detail: "希望された勤務{total}件中{fulfilled}件のみ反映されました。",
+    diag_fairness_title: "— 勤務の偏りの可能性",
+    diag_fairness_detail: "直近の{type}勤務が{n}回と多めですが、今週も配置されました。",
+    fairness_type_night: "クローズ", fairness_type_weekend: "週末",
     pattern_modal_title: "過去の修正パターンから見つかったルール提案",
     pattern_modal_sub: "自動生成されたスケジュールと最終保存されたスケジュールを比較し、3週間以上繰り返された修正パターンのみ提案します。適用するかどうかはご自身で選択してください。",
     pattern_empty: "まだ繰り返された修正パターンは見つかっていません。数週間ご利用の上、再度ご確認ください。",
@@ -719,6 +737,15 @@ const I18N = {
     diag_daycount_title: "— target days not met", diag_daycount_detail1: "Target: ", diag_daycount_detail2: " days, actually scheduled: ", diag_daycount_detail3: " days.",
     diag_prefoff_title: "— scheduled on a preferred day off",
     diag_prefoff_detail1: "requested this day off, but was scheduled anyway to meet required headcount.",
+    diag_consecutive_title: "— exceeded 7 consecutive work days",
+    diag_consecutive_detail: "Scheduled for {days} consecutive days including the streak carried over from last week. No other option was found, likely due to short staffing.",
+    diag_pattern_title: "— day-off pattern not honored",
+    diag_pattern_detail: "Preferred {pattern}, but days off were arranged differently this week.",
+    diag_preference_title: "— only some preferred shifts honored",
+    diag_preference_detail: "Only {fulfilled} of {total} preferred shifts were honored.",
+    diag_fairness_title: "— possible workload imbalance",
+    diag_fairness_detail: "Has had a high number of recent {type} shifts ({n}), and was assigned one again this week.",
+    fairness_type_night: "closing", fairness_type_weekend: "weekend",
     pattern_modal_title: "Rule suggestions from past edits",
     pattern_modal_sub: "Comparing auto-generated schedules against what was finally saved, only patterns repeated 3+ weeks are suggested. You choose whether to apply each one.",
     pattern_empty: "No repeated edit patterns found yet. Use the app for a few more weeks and check again.",
@@ -1970,10 +1997,7 @@ async function runAutoGenerate() {
   await refreshWeekdayFrequency();
   renderSchedule(result);
 
-  const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
-  const hasDayCountIssue = result.day_count_issues && result.day_count_issues.length;
-  const hasPrefOffIssue = result.preferred_off_issues && result.preferred_off_issues.length;
-  if (hasUnmet || hasDayCountIssue || hasPrefOffIssue) {
+  if (_resultHasAnyIssue(result)) {
     showDiagnosticsModal(result);
   }
 }
@@ -2073,10 +2097,7 @@ async function regenerateSchedule() {
   await refreshWeekdayFrequency();
   renderSchedule(result);
 
-  const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
-  const hasDayCountIssue = result.day_count_issues && result.day_count_issues.length;
-  const hasPrefOffIssue = result.preferred_off_issues && result.preferred_off_issues.length;
-  if (hasUnmet || hasDayCountIssue || hasPrefOffIssue) {
+  if (_resultHasAnyIssue(result)) {
     showDiagnosticsModal(result);
   }
 }
@@ -2191,6 +2212,19 @@ function translateReason(rawKey) {
   return map[rawKey] ? t(map[rawKey]) : rawKey;
 }
 
+function _resultHasAnyIssue(result) {
+  return !!(
+    (result.status === "INFEASIBLE") ||
+    (result.unmet_requirements && result.unmet_requirements.length) ||
+    (result.day_count_issues && result.day_count_issues.length) ||
+    (result.preferred_off_issues && result.preferred_off_issues.length) ||
+    (result.consecutive_issues && result.consecutive_issues.length) ||
+    (result.pattern_issues && result.pattern_issues.length) ||
+    (result.preference_issues && result.preference_issues.length) ||
+    (result.fairness_issues && result.fairness_issues.length)
+  );
+}
+
 function showDiagnosticsModal(result) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -2245,7 +2279,56 @@ function showDiagnosticsModal(result) {
     box.appendChild(item);
   });
 
-  if (!unmet.length && !dayIssues.length && !prefOffIssues.length && result.diagnostics) {
+  const consecutiveIssues = result.consecutive_issues || [];
+  consecutiveIssues.forEach(c => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.innerHTML = `
+      <div class="modal-item-title">${c.employee_name} ${t("diag_consecutive_title")}</div>
+      <div class="modal-item-detail">${tf("diag_consecutive_detail", {days: c.streak_days})}</div>
+    `;
+    box.appendChild(item);
+  });
+
+  const patternIssues = result.pattern_issues || [];
+  patternIssues.forEach(p => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    const patternLabel = p.pattern === "consecutive" ? t("pattern_consecutive") : t("pattern_split");
+    item.innerHTML = `
+      <div class="modal-item-title">${p.employee_name} ${t("diag_pattern_title")}</div>
+      <div class="modal-item-detail">${tf("diag_pattern_detail", {pattern: patternLabel})}</div>
+    `;
+    box.appendChild(item);
+  });
+
+  const preferenceIssues = result.preference_issues || [];
+  preferenceIssues.forEach(p => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.innerHTML = `
+      <div class="modal-item-title">${p.employee_name} ${t("diag_preference_title")}</div>
+      <div class="modal-item-detail">${tf("diag_preference_detail", {fulfilled: p.fulfilled, total: p.total})}</div>
+    `;
+    box.appendChild(item);
+  });
+
+  const fairnessIssues = result.fairness_issues || [];
+  fairnessIssues.forEach(f => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    const typeLabel = f.type === "night" ? t("fairness_type_night") : t("fairness_type_weekend");
+    item.innerHTML = `
+      <div class="modal-item-title">${f.employee_name} ${t("diag_fairness_title")}</div>
+      <div class="modal-item-detail">${tf("diag_fairness_detail", {type: typeLabel, n: f.recent_count})}</div>
+    `;
+    box.appendChild(item);
+  });
+
+  const hasAnyIssue = unmet.length || dayIssues.length || prefOffIssues.length
+    || consecutiveIssues.length || patternIssues.length || preferenceIssues.length || fairnessIssues.length;
+
+  if (!hasAnyIssue && result.diagnostics) {
     result.diagnostics.forEach(d => {
       const item = document.createElement("div");
       item.className = "modal-item";
