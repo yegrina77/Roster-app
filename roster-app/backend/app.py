@@ -285,7 +285,11 @@ def list_weeks():
 
 @app.route("/api/weeks", methods=["POST"])
 def create_week():
-    """새 주차를 만듭니다. copy_from에 기존 주차 키를 주면 그 주의 근무요건/휴무지정을 복사합니다."""
+    """새 주차를 만듭니다.
+    근무요건은 선택(copy_from)과 상관없이, 캘린더 기준 바로 전주 데이터가 있으면
+    항상 자동으로 이어받습니다 (매주 똑같은 근무요건을 반복 입력하는 번거로움을 없애기 위함).
+    휴무(Off) 지정은 copy_from을 넘긴 경우에만(즉 "전주와 동일하게 시작"을 선택한 경우에만)
+    그 주로부터 복사됩니다."""
     state = load_state()
     payload = request.get_json()
     week_key = payload.get("week_key")
@@ -297,10 +301,17 @@ def create_week():
     if week_key in state["weeks"]:
         return jsonify(state["weeks"][week_key])
 
+    y, m, d = map(int, week_key.split("-"))
+    immediate_prev_key = (date(y, m, d) - timedelta(days=7)).isoformat()
+    immediate_prev_week = state["weeks"].get(immediate_prev_key)
+    carried_requirements = (
+        [dict(r) for r in immediate_prev_week["requirements"]] if immediate_prev_week else []
+    )
+
     if copy_from and copy_from in state["weeks"]:
         source = state["weeks"][copy_from]
         new_week = {
-            "requirements": [dict(r) for r in source["requirements"]],
+            "requirements": carried_requirements,
             "off_days": {k: list(v) for k, v in source["off_days"].items()},
             "schedule": None,
             "auto_assignments": [],
@@ -308,6 +319,7 @@ def create_week():
         }
     else:
         new_week = empty_week()
+        new_week["requirements"] = carried_requirements
 
     state["weeks"][week_key] = new_week
     save_state(state)
