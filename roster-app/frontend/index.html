@@ -392,6 +392,7 @@
       <button class="btn-ghost" id="lock-btn" onclick="toggleWeekLock()" style="display:none;">🔒</button>
       <button class="btn-ghost" id="save-manual-btn" onclick="saveManualAdjustments()" style="display:none;" data-i18n="btn_save_changes">변경사항 저장</button>
       <button class="btn-ghost" id="reset-schedule-btn" onclick="resetWeekSchedule()" style="display:none;" data-i18n="btn_reset_schedule">🗑️ 스케줄 초기화</button>
+      <button class="btn-ghost" id="ph-detail-btn" onclick="showPublicHolidayDetail()" style="display:none;" data-i18n="btn_ph_detail">🎌 Public Holiday 확인</button>
       <button class="btn-ghost" onclick="checkPatternSuggestions()" style="margin-left:auto;" data-i18n="btn_pattern">📊 지난 수정 패턴에서 규칙 제안 보기</button>
     </div>
     <div id="schedule-output" style="margin-top:20px;"></div>
@@ -486,8 +487,8 @@ const I18N = {
     modal_computing: "계산 중...", modal_regenerating: "다른 조합을 찾는 중...",
     modal_copying: "전주 스케줄을 복사하는 중...",
     modal_copy_done_msg: "전주와 동일한 스케줄로 설정했습니다. 필요하면 드래그로 조정하거나, '변경사항 저장'을 눌러 확정하세요.",
-    modal_new_week_title: "새 주차", modal_new_week_msg: "이 주는 아직 데이터가 없습니다. 어떻게 시작할까요?",
-    modal_new_week_cancel: "취소 (이전 화면으로)", modal_new_week_new: "새로 시작", modal_new_week_copy: "전주와 동일하게 시작",
+    modal_new_week_title: "새 주차", modal_new_week_msg: "근무요건은 전주 것이 자동으로 이어받아집니다. 휴무(Off) 지정도 전주와 동일하게 가져올까요?",
+    modal_new_week_cancel: "취소 (이전 화면으로)", modal_new_week_new: "아니요, 휴무 새로 지정", modal_new_week_copy: "네, 휴무도 동일하게",
     modal_saved_toast: "변경사항이 저장되었습니다.",
     modal_add_placed_title: "배치 완료",
     modal_add_title_off: "Off (휴무로 지정)", modal_add_off_detail: "자동 생성 시 이 날은 절대 배정되지 않습니다.",
@@ -526,6 +527,8 @@ const I18N = {
     ph_cat3: "1.5배 급여만 (Lieu Day 없음)", ph_cat4: "해당 없음",
     ph_usual_day: "평소 근무 요일 (최근 8주 중 {n}주)", ph_not_usual_day: "평소 근무 요일 아님 (최근 8주 중 {n}주)",
     ph_worked: "이번 공휴일 근무함", ph_not_worked: "이번 공휴일 근무 안 함",
+    btn_ph_detail: "🎌 Public Holiday 확인",
+    modal_ph_simple_sub: "아래 날짜가 이번 주에 포함되어 있습니다. 스케줄을 완성하고 \"변경사항 저장\"을 누르면, 그때 직원별 노동법 적용 항목을 계산해서 보여드립니다. 궁금할 때는 이 옆의 \"Public Holiday 확인\" 버튼으로 언제든 다시 볼 수 있습니다.",
     shift_time_title: "근무유형 기본 시간",
     shift_time_desc: "바쁜 시기가 아닐 때는 시작을 30분 늦추거나 종료를 30분 앞당기는 식으로, 근무유형별 기본 시작/종료 시간을 상황에 맞게 조정할 수 있습니다. 여기서 바꾸면 새로 생성되는 스케줄과 아직 개별 수정하지 않은 기존 배치 모두에 반영됩니다 (블록을 개별적으로 수정해둔 시간은 그대로 유지됩니다).",
     shift_time_modified: "수정됨", btn_reset_default: "기본값으로",
@@ -593,8 +596,8 @@ const I18N = {
     modal_computing: "計算中...", modal_regenerating: "別の組み合わせを検索中...",
     modal_copying: "前週のスケジュールをコピー中...",
     modal_copy_done_msg: "前週と同じスケジュールに設定しました。必要に応じてドラッグで調整するか、「変更を保存」を押して確定してください。",
-    modal_new_week_title: "新しい週", modal_new_week_msg: "この週はまだデータがありません。どのように始めますか?",
-    modal_new_week_cancel: "キャンセル (前の画面へ)", modal_new_week_new: "新規作成", modal_new_week_copy: "前週と同じで開始",
+    modal_new_week_title: "新しい週", modal_new_week_msg: "勤務要件は前週のものが自動的に引き継がれます。休み(Off)指定も前週と同じにしますか?",
+    modal_new_week_cancel: "キャンセル (前の画面へ)", modal_new_week_new: "いいえ、休みは新規設定", modal_new_week_copy: "はい、休みも同じにする",
     modal_saved_toast: "変更内容が保存されました。",
     modal_add_placed_title: "配置完了",
     modal_add_title_off: "Off (休みに指定)", modal_add_off_detail: "自動生成時、この日は絶対に配置されません。",
@@ -633,6 +636,8 @@ const I18N = {
     ph_cat3: "1.5倍給与のみ(Lieu Dayなし)", ph_cat4: "該当なし",
     ph_usual_day: "通常勤務曜日(直近8週中{n}週)", ph_not_usual_day: "通常勤務曜日ではない(直近8週中{n}週)",
     ph_worked: "この祝日に勤務した", ph_not_worked: "この祝日に勤務していない",
+    btn_ph_detail: "🎌 Public Holidayを確認",
+    modal_ph_simple_sub: "以下の日付が今週に含まれています。スケジュールを完成させて「変更を保存」を押すと、その時点でスタッフごとの労働法適用項目を計算してお見せします。気になるときは横の「Public Holidayを確認」ボタンでいつでも再確認できます。",
     shift_time_title: "勤務タイプの基本時間",
     shift_time_desc: "繁忙期でない時は開始を30分遅らせたり終了を30分早めたりと、勤務タイプごとの基本開始・終了時間を状況に合わせて調整できます。ここで変更すると、新しく生成されるスケジュールと、まだ個別修正していない既存の配置の両方に反映されます(ブロックを個別に修正した時間はそのまま維持されます)。",
     shift_time_modified: "変更済み", btn_reset_default: "デフォルトに戻す",
@@ -700,8 +705,8 @@ const I18N = {
     modal_computing: "Calculating...", modal_regenerating: "Looking for another combination...",
     modal_copying: "Copying last week's schedule...",
     modal_copy_done_msg: "The schedule has been set to match last week. Adjust with drag-and-drop if needed, or click 'Save Changes' to confirm.",
-    modal_new_week_title: "New Week", modal_new_week_msg: "This week has no data yet. How would you like to start?",
-    modal_new_week_cancel: "Cancel (go back)", modal_new_week_new: "Start fresh", modal_new_week_copy: "Start same as last week",
+    modal_new_week_title: "New Week", modal_new_week_msg: "Shift requirements are automatically carried over from last week. Would you like the day-off (Off) marks copied from last week too?",
+    modal_new_week_cancel: "Cancel (go back)", modal_new_week_new: "No, set Off fresh", modal_new_week_copy: "Yes, copy Off too",
     modal_saved_toast: "Your changes have been saved.",
     modal_add_placed_title: "Placement Complete",
     modal_add_title_off: "Off (mark day off)", modal_add_off_detail: "This day will never be scheduled during auto-generation.",
@@ -740,6 +745,8 @@ const I18N = {
     ph_cat3: "1.5x pay only (no Lieu Day)", ph_cat4: "Not entitled",
     ph_usual_day: "Usual working day ({n}/8 recent weeks)", ph_not_usual_day: "Not a usual working day ({n}/8 recent weeks)",
     ph_worked: "Worked this holiday", ph_not_worked: "Did not work this holiday",
+    btn_ph_detail: "🎌 View Public Holiday Info",
+    modal_ph_simple_sub: "The date(s) below fall within this week. Once you finish the schedule and click \"Save Changes\", we\'ll calculate and show each employee\'s labour law entitlement. You can re-check anytime with the \"View Public Holiday Info\" button next to it.",
     shift_time_title: "Default Shift Times",
     shift_time_desc: "During quieter periods you can adjust each shift type's default start/end time - e.g. starting 30 minutes later or ending 30 minutes earlier. Changes here apply to newly generated schedules and any existing block that hasn't been individually edited (blocks you've customized keep their own time).",
     shift_time_modified: "Modified", btn_reset_default: "Reset to default",
@@ -1453,6 +1460,61 @@ async function deletePublicHoliday(dateVal) {
 }
 
 async function checkPublicHolidayForWeek() {
+  let info;
+  try {
+    info = await api(`/api/weeks/${currentWeekKey}/public-holiday-info`);
+  } catch (e) {
+    document.getElementById("ph-detail-btn").style.display = "none";
+    return;
+  }
+  window._weekHolidays = info.holidays || [];
+  const btn = document.getElementById("ph-detail-btn");
+  if (window._weekHolidays.length) {
+    btn.style.display = "inline-block";
+    showPublicHolidaySimpleNotice(window._weekHolidays);
+  } else {
+    btn.style.display = "none";
+  }
+}
+
+function showPublicHolidaySimpleNotice(holidays) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const title = document.createElement("h3");
+  title.textContent = t("modal_ph_week_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("modal_ph_simple_sub");
+  box.appendChild(sub);
+
+  holidays.forEach(holiday => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.innerHTML = `<div class="modal-item-title">${DAY_LABEL[holiday.day]} · ${holiday.date}${holiday.name ? " · " + holiday.name : ""}</div>`;
+    box.appendChild(item);
+  });
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-primary";
+  closeBtn.textContent = t("btn_confirm");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showPublicHolidayDetail() {
   let info;
   try {
     info = await api(`/api/weeks/${currentWeekKey}/public-holiday-info`);
@@ -2654,7 +2716,13 @@ async function saveManualAdjustments() {
   });
   await refreshWeekdayFrequency();
   renderCalendarArea();
-  showMessageModal(t("modal_save_done"), t("modal_saved_toast"), false);
+
+  if (window._weekHolidays && window._weekHolidays.length) {
+    // 이 주에 공휴일이 있으면, 방금 저장한 최신 배치를 기준으로 노동법 적용 항목을 다시 계산해서 보여줍니다.
+    await showPublicHolidayDetail();
+  } else {
+    showMessageModal(t("modal_save_done"), t("modal_saved_toast"), false);
+  }
 }
 
 async function resetWeekSchedule() {
