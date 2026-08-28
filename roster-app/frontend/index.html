@@ -285,7 +285,7 @@
 <body>
 
 <div id="auth-screen" style="display:none; position:fixed; inset:0; z-index:2000; background:var(--void); display:flex; align-items:center; justify-content:center; padding:20px;">
-  <div style="max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
+  <div id="auth-login-box" style="max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
     <p class="eyebrow" style="margin-bottom:4px;">SYS · KITCHEN ROSTER</p>
     <h1 style="font-size:22px; margin:0 0 6px;" data-i18n="header_title">직원 로스터 관리</h1>
     <p style="font-size:13px; color:var(--text-muted); margin:0 0 22px;" data-i18n="auth_intro">회사(매장) 계정으로 로그인하거나, 새로 등록하세요.</p>
@@ -312,6 +312,37 @@
 
     <button class="btn-primary" id="auth-submit-btn" onclick="submitAuth()" style="width:100%; padding:11px;" data-i18n="auth_tab_login">로그인</button>
     <div id="auth-error" style="color:var(--danger); font-size:12px; margin-top:12px; display:none;"></div>
+    <div id="auth-success" style="color:var(--cyan); font-size:12px; margin-top:12px; display:none;"></div>
+
+    <div id="auth-forgot-link-row" style="margin-top:14px; text-align:center;">
+      <a href="#" onclick="showForgotPasswordForm(); return false;" style="color:var(--text-muted); font-size:12px; text-decoration:underline;" data-i18n="auth_forgot_link">비밀번호를 잊으셨나요?</a>
+    </div>
+  </div>
+
+  <div id="auth-forgot-box" style="display:none; max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
+    <h1 style="font-size:20px; margin:0 0 6px;" data-i18n="auth_forgot_title">비밀번호 재설정</h1>
+    <p style="font-size:13px; color:var(--text-muted); margin:0 0 22px;" data-i18n="auth_forgot_intro">가입하신 이메일을 입력하시면, 재설정 링크를 보내드립니다.</p>
+    <div class="field" style="margin-bottom:16px; width:100%;">
+      <label data-i18n="auth_email">이메일</label>
+      <input id="forgot-email" type="email" style="width:100%;" placeholder="owner@example.com">
+    </div>
+    <button class="btn-primary" onclick="submitForgotPassword()" style="width:100%; padding:11px;" data-i18n="auth_forgot_submit">재설정 링크 받기</button>
+    <div id="forgot-error" style="color:var(--danger); font-size:12px; margin-top:12px; display:none;"></div>
+    <div id="forgot-success" style="color:var(--cyan); font-size:12px; margin-top:12px; display:none;"></div>
+    <div style="margin-top:14px; text-align:center;">
+      <a href="#" onclick="hideForgotPasswordForm(); return false;" style="color:var(--text-muted); font-size:12px; text-decoration:underline;" data-i18n="auth_back_to_login">로그인으로 돌아가기</a>
+    </div>
+  </div>
+
+  <div id="auth-reset-box" style="display:none; max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
+    <h1 style="font-size:20px; margin:0 0 6px;" data-i18n="auth_reset_title">새 비밀번호 설정</h1>
+    <p style="font-size:13px; color:var(--text-muted); margin:0 0 22px;" data-i18n="auth_reset_intro">새로 사용하실 비밀번호를 입력해주세요.</p>
+    <div class="field" style="margin-bottom:16px; width:100%;">
+      <label data-i18n="auth_reset_new_password">새 비밀번호 (8자 이상)</label>
+      <input id="reset-password" type="password" style="width:100%;" placeholder="••••••••">
+    </div>
+    <button class="btn-primary" onclick="submitResetPassword()" style="width:100%; padding:11px;" data-i18n="auth_reset_submit">비밀번호 변경</button>
+    <div id="reset-error" style="color:var(--danger); font-size:12px; margin-top:12px; display:none;"></div>
   </div>
 </div>
 
@@ -583,6 +614,21 @@ const I18N = {
     auth_tab_login: "로그인", auth_tab_register: "회원가입",
     auth_company_name: "회사(매장) 이름", auth_email: "이메일", auth_password: "비밀번호",
     auth_logout: "로그아웃", auth_fill_all: "모든 항목을 입력해주세요.",
+    auth_invalid_email: "이메일 형식이 올바르지 않습니다.",
+    auth_password_too_short: "비밀번호는 8자 이상이어야 합니다.",
+    auth_network_error: "네트워크 연결을 확인해주세요.",
+    modal_network_error: "네트워크 연결을 확인하고 다시 시도해주세요.",
+    auth_forgot_link: "비밀번호를 잊으셨나요?",
+    auth_forgot_title: "비밀번호 재설정",
+    auth_forgot_intro: "가입하신 이메일을 입력하시면, 재설정 링크를 보내드립니다.",
+    auth_forgot_submit: "재설정 링크 받기",
+    auth_forgot_sent: "입력하신 이메일로 재설정 링크를 보냈습니다 (등록된 이메일인 경우). 메일함을 확인해주세요.",
+    auth_back_to_login: "로그인으로 돌아가기",
+    auth_reset_title: "새 비밀번호 설정",
+    auth_reset_intro: "새로 사용하실 비밀번호를 입력해주세요.",
+    auth_reset_new_password: "새 비밀번호 (8자 이상)",
+    auth_reset_submit: "비밀번호 변경",
+    auth_reset_done: "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해주세요.",
     btn_reset_schedule: "🗑️ 스케줄 초기화",
     confirm_reset_title: "이번 주 스케줄을 초기화할까요?",
     confirm_reset_msg: "이번 주에 배정된 모든 근무(자동·수동 포함)가 지워지고, 스케줄을 아예 생성하지 않은 상태로 돌아갑니다. 근무요건과 이미 지정한 Off(휴무), Leave Request는 그대로 유지됩니다. 되돌릴 수 없습니다.",
@@ -705,6 +751,21 @@ const I18N = {
     auth_tab_login: "ログイン", auth_tab_register: "新規登録",
     auth_company_name: "会社(店舗)名", auth_email: "メールアドレス", auth_password: "パスワード",
     auth_logout: "ログアウト", auth_fill_all: "すべての項目を入力してください。",
+    auth_invalid_email: "メールアドレスの形式が正しくありません。",
+    auth_password_too_short: "パスワードは8文字以上にしてください。",
+    auth_network_error: "ネットワーク接続をご確認ください。",
+    modal_network_error: "ネットワーク接続を確認して、もう一度お試しください。",
+    auth_forgot_link: "パスワードをお忘れですか?",
+    auth_forgot_title: "パスワード再設定",
+    auth_forgot_intro: "登録されたメールアドレスを入力すると、再設定リンクをお送りします。",
+    auth_forgot_submit: "再設定リンクを送る",
+    auth_forgot_sent: "入力されたメールアドレスに再設定リンクを送信しました(登録されている場合)。メールをご確認ください。",
+    auth_back_to_login: "ログインに戻る",
+    auth_reset_title: "新しいパスワード設定",
+    auth_reset_intro: "新しく使用するパスワードを入力してください。",
+    auth_reset_new_password: "新しいパスワード(8文字以上)",
+    auth_reset_submit: "パスワードを変更",
+    auth_reset_done: "パスワードが変更されました。新しいパスワードでログインしてください。",
     btn_reset_schedule: "🗑️ スケジュールをリセット",
     confirm_reset_title: "今週のスケジュールをリセットしますか?",
     confirm_reset_msg: "今週配置されたすべての勤務(自動・手動含む)が消去され、スケジュールを全く生成していない状態に戻ります。勤務要件と、既に指定したOff(休み)、Leave Requestはそのまま維持されます。元に戻せません。",
@@ -827,6 +888,21 @@ const I18N = {
     auth_tab_login: "Log In", auth_tab_register: "Sign Up",
     auth_company_name: "Company (Store) Name", auth_email: "Email", auth_password: "Password",
     auth_logout: "Log Out", auth_fill_all: "Please fill in all fields.",
+    auth_invalid_email: "Please enter a valid email address.",
+    auth_password_too_short: "Password must be at least 8 characters.",
+    auth_network_error: "Please check your network connection.",
+    modal_network_error: "Please check your network connection and try again.",
+    auth_forgot_link: "Forgot your password?",
+    auth_forgot_title: "Reset Password",
+    auth_forgot_intro: "Enter your registered email and we'll send you a reset link.",
+    auth_forgot_submit: "Send Reset Link",
+    auth_forgot_sent: "If that email is registered, a reset link has been sent. Please check your inbox.",
+    auth_back_to_login: "Back to Login",
+    auth_reset_title: "Set New Password",
+    auth_reset_intro: "Enter the new password you'd like to use.",
+    auth_reset_new_password: "New Password (8+ characters)",
+    auth_reset_submit: "Change Password",
+    auth_reset_done: "Your password has been changed. Please log in with your new password.",
     btn_reset_schedule: "🗑️ Reset Schedule",
     confirm_reset_title: "Reset this week's schedule?",
     confirm_reset_msg: "All shifts assigned this week (auto and manual) will be cleared, returning to a state as if no schedule was ever generated. Shift requirements, existing Off marks, and Leave Requests are kept. This cannot be undone.",
@@ -905,6 +981,7 @@ function switchAuthMode(mode) {
   document.getElementById("auth-register-fields").style.display = mode === "register" ? "block" : "none";
   document.getElementById("auth-submit-btn").textContent = mode === "login" ? t("auth_tab_login") : t("auth_tab_register");
   document.getElementById("auth-error").style.display = "none";
+  document.getElementById("auth-success").style.display = "none";
 }
 
 function showAuthScreen() {
@@ -920,6 +997,14 @@ function hideAuthScreen() {
 }
 
 async function checkAuthAndInit() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("reset_token")) {
+    // 비밀번호 재설정 링크로 들어온 경우 - 로그인 여부와 상관없이 재설정 화면부터 보여줍니다.
+    showAuthScreen();
+    showResetPasswordForm();
+    return;
+  }
+
   let me;
   try {
     const res = await fetch("/api/auth/me", {credentials: "same-origin"});
@@ -939,7 +1024,9 @@ async function checkAuthAndInit() {
 
 async function submitAuth() {
   const errBox = document.getElementById("auth-error");
+  const okBox = document.getElementById("auth-success");
   errBox.style.display = "none";
+  okBox.style.display = "none";
   const email = document.getElementById("auth-email").value.trim();
   const password = document.getElementById("auth-password").value;
   const name = document.getElementById("auth-name").value.trim();
@@ -949,23 +1036,39 @@ async function submitAuth() {
     errBox.style.display = "block";
     return;
   }
+  if (!email.includes("@") || !email.includes(".")) {
+    errBox.textContent = t("auth_invalid_email");
+    errBox.style.display = "block";
+    return;
+  }
+  if (authMode === "register" && password.length < 8) {
+    errBox.textContent = t("auth_password_too_short");
+    errBox.style.display = "block";
+    return;
+  }
 
   const url = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
   const body = authMode === "login" ? {email, password} : {email, password, name};
 
+  let res, data;
   try {
-    const res = await fetch(url, {
+    res = await fetch(url, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       credentials: "same-origin",
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    if (!res.ok) {
-      errBox.textContent = data.error || t("modal_request_failed");
-      errBox.style.display = "block";
-      return;
-    }
+    data = await res.json();
+  } catch (e) {
+    errBox.textContent = t("auth_network_error");
+    errBox.style.display = "block";
+    return;
+  }
+  if (!res.ok) {
+    errBox.textContent = data.error || t("modal_request_failed");
+    errBox.style.display = "block";
+    return;
+  }
     currentCompany = data;
     document.getElementById("auth-company-name").textContent = data.name;
     document.getElementById("auth-email").value = "";
@@ -973,10 +1076,6 @@ async function submitAuth() {
     document.getElementById("auth-name").value = "";
     hideAuthScreen();
     await initAppData();
-  } catch (e) {
-    errBox.textContent = t("modal_request_failed");
-    errBox.style.display = "block";
-  }
 }
 
 async function logoutUser() {
@@ -987,9 +1086,105 @@ async function logoutUser() {
   showAuthScreen();
 }
 
+function showForgotPasswordForm() {
+  document.getElementById("auth-login-box").style.display = "none";
+  document.getElementById("auth-forgot-box").style.display = "block";
+  document.getElementById("forgot-error").style.display = "none";
+  document.getElementById("forgot-success").style.display = "none";
+}
+
+function hideForgotPasswordForm() {
+  document.getElementById("auth-forgot-box").style.display = "none";
+  document.getElementById("auth-login-box").style.display = "block";
+}
+
+async function submitForgotPassword() {
+  const errBox = document.getElementById("forgot-error");
+  const okBox = document.getElementById("forgot-success");
+  errBox.style.display = "none";
+  okBox.style.display = "none";
+
+  const email = document.getElementById("forgot-email").value.trim();
+  if (!email || !email.includes("@")) {
+    errBox.textContent = t("auth_invalid_email");
+    errBox.style.display = "block";
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      credentials: "same-origin",
+      body: JSON.stringify({email}),
+    });
+    if (!res.ok) throw new Error("failed");
+    okBox.textContent = t("auth_forgot_sent");
+    okBox.style.display = "block";
+  } catch (e) {
+    errBox.textContent = t("auth_network_error");
+    errBox.style.display = "block";
+  }
+}
+
+function showResetPasswordForm() {
+  document.getElementById("auth-login-box").style.display = "none";
+  document.getElementById("auth-forgot-box").style.display = "none";
+  document.getElementById("auth-reset-box").style.display = "block";
+}
+
+async function submitResetPassword() {
+  const errBox = document.getElementById("reset-error");
+  errBox.style.display = "none";
+
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("reset_token");
+  const password = document.getElementById("reset-password").value;
+
+  if (password.length < 8) {
+    errBox.textContent = t("auth_password_too_short");
+    errBox.style.display = "block";
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      credentials: "same-origin",
+      body: JSON.stringify({token, password}),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errBox.textContent = data.error || t("modal_request_failed");
+      errBox.style.display = "block";
+      return;
+    }
+    // 재설정 성공 - URL의 토큰을 지우고, 로그인 화면으로 돌아가서 새 비밀번호로 로그인하게 안내
+    const url = new URL(window.location.href);
+    url.searchParams.delete("reset_token");
+    window.history.replaceState({}, "", url.toString());
+    document.getElementById("auth-reset-box").style.display = "none";
+    document.getElementById("auth-login-box").style.display = "block";
+    switchAuthMode("login");
+    const okBox = document.getElementById("auth-success");
+    okBox.textContent = t("auth_reset_done");
+    okBox.style.display = "block";
+  } catch (e) {
+    errBox.textContent = t("auth_network_error");
+    errBox.style.display = "block";
+  }
+}
+
 async function api(path, opts) {
   const finalOpts = {...(opts || {}), credentials: "same-origin"};
-  const res = await fetch(path, finalOpts);
+  let res;
+  try {
+    res = await fetch(path, finalOpts);
+  } catch (e) {
+    showMessageModal(t("modal_request_failed"), t("modal_network_error"), true);
+    throw e;
+  }
   if (res.status === 401) {
     showAuthScreen();
     throw new Error("로그인이 필요합니다.");
