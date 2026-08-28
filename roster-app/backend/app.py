@@ -141,7 +141,7 @@ RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "onboarding@resend.dev")
 def _send_password_reset_email(to_email, reset_link):
     if not RESEND_API_KEY:
         print(f"[비밀번호 재설정 메일 - 발송 미설정, 콘솔에만 출력] {to_email} -> {reset_link}")
-        return True
+        return True, None
     try:
         resp = requests.post(
             "https://api.resend.com/emails",
@@ -159,9 +159,14 @@ def _send_password_reset_email(to_email, reset_link):
             },
             timeout=10,
         )
-        return resp.status_code < 300
-    except requests.RequestException:
-        return False
+        if resp.status_code < 300:
+            return True, None
+        # 실패 이유(Resend가 돌려준 에러 본문)를 서버 로그에 남겨서, Render Logs에서 바로 원인을 볼 수 있게 합니다.
+        print(f"[비밀번호 재설정 메일 발송 실패] status={resp.status_code} body={resp.text}")
+        return False, resp.text
+    except requests.RequestException as e:
+        print(f"[비밀번호 재설정 메일 발송 예외] {e}")
+        return False, str(e)
 
 
 def _hash_password(password, salt=None):
@@ -391,7 +396,11 @@ def forgot_password():
             token = _create_reset_token(auth, match["id"])
             save_auth(auth)
             reset_link = f"{request.host_url.rstrip('/')}/?reset_token={token}"
-            _send_password_reset_email(email, reset_link)
+            sent, err = _send_password_reset_email(email, reset_link)
+            if not sent:
+                print(f"[비밀번호 재설정] {email} 에게 메일 발송 실패 - {err}")
+        else:
+            print(f"[비밀번호 재설정] 등록되지 않은 이메일로 요청됨: {email}")
 
     return jsonify({"status": "ok"})
 
