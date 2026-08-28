@@ -1,24 +1,29 @@
 """
-로스터 관리 웹앱 - Flask 백엔드
+로스터 관리 웹앱 - Flask 백엔드 (멀티테넌시 / 로그인 지원)
 
 실행 방법:
-    pip install flask ortools
+    pip install flask ortools upstash-redis
     python app.py
     -> http://localhost:5000 접속
 
-데이터 구조:
-- employees: 직원 정보(이름, 최소시간, 목표근무일, 선호도 등) - 여러 주에 걸쳐 공통으로 재사용되는 정보
-- weeks: { "YYYY-MM-DD"(그 주 월요일 날짜): { requirements, off_days, schedule } } - 주차별로 따로 관리되는 정보
-  - requirements: 그 주의 요일×근무유형별 필요인원
-  - off_days: { employee_id: [day, ...] } - 그 주에 한해 적용되는 휴무 지정 (캘린더에서 클릭)
-  - schedule: 그 주의 생성/수동조정된 스케줄 결과
+데이터 구조 (회사 계정별로 완전히 분리됨):
+- roster_auth_companies: 로그인 계정(회사) 목록 - {company_id: {name, email, password_hash, created_at}}
+- roster_state:<company_id>: 그 회사(매장) 하나의 데이터
+  - employees: 직원 정보(이름, 최소시간, 목표근무일, 선호도 등) - 여러 주에 걸쳐 공통으로 재사용되는 정보
+  - weeks: { "YYYY-MM-DD"(그 주 월요일 날짜): { requirements, off_days, schedule } } - 주차별로 따로 관리되는 정보
+  - public_holidays, shift_time_overrides: 회사 전체에 적용되는 설정
 """
 
+import hashlib
+import hmac
 import json
 import os
 import random
+import re
+import secrets
 from datetime import date, timedelta
-from flask import Flask, request, jsonify, send_from_directory
+from functools import wraps
+from flask import Flask, request, jsonify, send_from_directory, session
 
 from scheduler import (
     Employee, ShiftRequirement, solve_schedule, DAYS, SHIFT_TYPES,
@@ -27,21 +32,28 @@ from scheduler import (
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "..", "data", "state.json")
+DATA_DIR = os.path.join(BASE_DIR, "..", "data")
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
+# SECRET_KEY는 로그인 세션(쿠키)을 암호학적으로 서명하는 데 씁니다. 실제 운영 환경에서는
+# 반드시 환경변수로 별도 지정해주세요(Render 환경변수에 SECRET_KEY 추가). 로컬 개발 중에는
+# 지정 안 해도 임시값으로 자동 동작합니다.
+app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me-in-production")
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("SECRET_KEY") is not None,  # 운영(SECRET_KEY 지정됨)에서는 HTTPS 전용 쿠키
+)
 
 # ---------------------------------------------------------------------------
-# 데이터 저장소
+# 원시 저장소 계층 (키-값 하나 읽기/쓰기)
 # 환경변수 UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN 이 설정되어 있으면
-# Upstash(무료, 영구 저장)에 저장합니다. 설정이 없으면(예: 로컬 개발) 예전처럼
-# 로컬 파일(data/state.json)에 저장합니다.
+# Upstash(무료, 영구 저장)에 저장합니다. 설정이 없으면(예: 로컬 개발) 로컬 파일
+# (data/<키이름>.json)에 저장합니다.
 # ---------------------------------------------------------------------------
 
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
-STATE_KEY = "roster_state"
 
 _upstash_redis = None
 if UPSTASH_URL and UPSTASH_TOKEN:
@@ -49,37 +61,89 @@ if UPSTASH_URL and UPSTASH_TOKEN:
     _upstash_redis = _UpstashRedis(url=UPSTASH_URL, token=UPSTASH_TOKEN)
 
 
-def load_state():
+def _raw_get(key):
     if _upstash_redis is not None:
-        raw = _upstash_redis.get(STATE_KEY)
-        if not raw:
-            return {"employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {}}
-        state = json.loads(raw)
-        state.setdefault("employees", [])
-        state.setdefault("weeks", {})
-        state.setdefault("public_holidays", [])
-        state.setdefault("shift_time_overrides", {})
-        return state
-
-    if not os.path.exists(DATA_PATH):
-        return {"employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {}}
-    with open(DATA_PATH, "r", encoding="utf-8") as f:
-        state = json.load(f)
-        state.setdefault("employees", [])
-        state.setdefault("weeks", {})
-        state.setdefault("public_holidays", [])
-        state.setdefault("shift_time_overrides", {})
-        return state
+        return _upstash_redis.get(key)
+    path = os.path.join(DATA_DIR, f"{key}.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
-def save_state(state):
+def _raw_set(key, value_str):
     if _upstash_redis is not None:
-        _upstash_redis.set(STATE_KEY, json.dumps(state, ensure_ascii=False))
+        _upstash_redis.set(key, value_str)
         return
+    os.makedirs(DATA_DIR, exist_ok=True)
+    path = os.path.join(DATA_DIR, f"{key}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(value_str)
 
-    os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
-    with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+
+AUTH_KEY = "roster_auth_companies"
+LEGACY_STATE_KEY = "roster_state"  # 로그인 기능 도입 이전, 단일 매장이던 시절의 데이터 (마이그레이션용)
+
+
+def load_auth():
+    raw = _raw_get(AUTH_KEY)
+    if not raw:
+        return {"companies": {}}
+    data = json.loads(raw)
+    data.setdefault("companies", {})
+    return data
+
+
+def save_auth(auth):
+    _raw_set(AUTH_KEY, json.dumps(auth, ensure_ascii=False))
+
+
+def _hash_password(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+    return f"{salt}${digest}"
+
+
+def _verify_password(password, stored_hash):
+    try:
+        salt, digest = stored_hash.split("$")
+    except (ValueError, AttributeError):
+        return False
+    check = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+    return hmac.compare_digest(check, digest)
+
+
+def _valid_email(email):
+    return bool(email) and re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
+
+
+def require_login(f):
+    """이 데코레이터가 붙은 API는 로그인(세션에 company_id가 있는지)을 먼저 확인하고,
+    통과하면 첫 번째 인자로 company_id를 넘겨줍니다. 이걸로 회사(매장)마다 데이터가
+    완전히 분리됩니다 — 로그인 안 하면 어떤 데이터도 못 보고 못 바꿉니다."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        company_id = session.get("company_id")
+        if not company_id:
+            return jsonify({"error": "로그인이 필요합니다."}), 401
+        return f(company_id, *args, **kwargs)
+    return wrapper
+
+
+def load_state(company_id):
+    raw = _raw_get(f"roster_state:{company_id}")
+    if not raw:
+        return {"employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {}}
+    state = json.loads(raw)
+    state.setdefault("employees", [])
+    state.setdefault("weeks", {})
+    state.setdefault("public_holidays", [])
+    state.setdefault("shift_time_overrides", {})
+    return state
+
+
+def save_state(company_id, state):
+    _raw_set(f"roster_state:{company_id}", json.dumps(state, ensure_ascii=False))
 
 
 def _effective_shift_times(state):
@@ -163,6 +227,91 @@ def get_meta():
 
 
 # ---------------------------------------------------------------------------
+# 인증 (회사/매장 단위 로그인 — 회사 하나당 계정 하나)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+
+    if not name or not email or not password:
+        return jsonify({"error": "회사(매장) 이름, 이메일, 비밀번호를 모두 입력해주세요."}), 400
+    if not _valid_email(email):
+        return jsonify({"error": "이메일 형식이 올바르지 않습니다."}), 400
+    if len(password) < 8:
+        return jsonify({"error": "비밀번호는 8자 이상이어야 합니다."}), 400
+
+    auth = load_auth()
+    if any(c["email"] == email for c in auth["companies"].values()):
+        return jsonify({"error": "이미 등록된 이메일입니다."}), 400
+
+    is_first_company = len(auth["companies"]) == 0
+    company_id = secrets.token_hex(8)
+    auth["companies"][company_id] = {
+        "id": company_id,
+        "name": name,
+        "email": email,
+        "password_hash": _hash_password(password),
+        "created_at": date.today().isoformat(),
+    }
+    save_auth(auth)
+
+    # 맨 처음 가입하는 회사에 한해서, 로그인 기능이 생기기 전 단일 매장이던 시절의
+    # 데이터를 그대로 이어받습니다 (사용자님의 기존 데이터가 사라지지 않도록).
+    if is_first_company:
+        legacy_raw = _raw_get(LEGACY_STATE_KEY)
+        if legacy_raw:
+            _raw_set(f"roster_state:{company_id}", legacy_raw)
+
+    session["company_id"] = company_id
+    session.permanent = True
+    return jsonify({"id": company_id, "name": name, "email": email}), 201
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+
+    auth = load_auth()
+    match = None
+    for c in auth["companies"].values():
+        if c["email"] == email:
+            match = c
+            break
+
+    if not match or not _verify_password(password, match["password_hash"]):
+        return jsonify({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+
+    session["company_id"] = match["id"]
+    session.permanent = True
+    return jsonify({"id": match["id"], "name": match["name"], "email": match["email"]})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def logout():
+    session.pop("company_id", None)
+    return "", 204
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def me():
+    company_id = session.get("company_id")
+    if not company_id:
+        return jsonify(None)
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        session.pop("company_id", None)
+        return jsonify(None)
+    return jsonify({"id": company["id"], "name": company["name"], "email": company["email"]})
+
+
+# ---------------------------------------------------------------------------
 # 직원 (여러 주 공통)
 # ---------------------------------------------------------------------------
 
@@ -173,8 +322,9 @@ def get_meta():
 # ---------------------------------------------------------------------------
 
 @app.route("/api/shift-time-settings", methods=["GET"])
-def get_shift_time_settings():
-    state = load_state()
+@require_login
+def get_shift_time_settings(company_id):
+    state = load_state(company_id)
     times = _effective_shift_times(state)
     overrides = state.get("shift_time_overrides", {})
     return jsonify({
@@ -184,9 +334,10 @@ def get_shift_time_settings():
 
 
 @app.route("/api/shift-time-settings", methods=["POST"])
-def set_shift_time_setting():
+@require_login
+def set_shift_time_setting(company_id):
     """body: {shift_type, start, end}"""
-    state = load_state()
+    state = load_state(company_id)
     payload = request.get_json()
     shift = payload.get("shift_type")
     start = payload.get("start")
@@ -196,23 +347,25 @@ def set_shift_time_setting():
     if not start or not end:
         return jsonify({"error": "start, end가 필요합니다."}), 400
     state.setdefault("shift_time_overrides", {})[shift] = {"start": start, "end": end}
-    save_state(state)
+    save_state(company_id, state)
     return jsonify({"shift_type": shift, "start": start, "end": end})
 
 
 @app.route("/api/shift-time-settings/<shift_type>", methods=["DELETE"])
-def reset_shift_time_setting(shift_type):
+@require_login
+def reset_shift_time_setting(company_id, shift_type):
     """이 근무유형의 시간을 코드에 정의된 원래 기본값으로 되돌립니다."""
-    state = load_state()
+    state = load_state(company_id)
     state.get("shift_time_overrides", {}).pop(shift_type, None)
-    save_state(state)
+    save_state(company_id, state)
     default_start, default_end = SHIFT_TIME_RANGES.get(shift_type, (None, None))
     return jsonify({"shift_type": shift_type, "start": default_start, "end": default_end})
 
 
 @app.route("/api/employees", methods=["GET"])
-def list_employees():
-    state = load_state()
+@require_login
+def list_employees(company_id):
+    state = load_state(company_id)
     out = []
     for e in state["employees"]:
         e2 = dict(e)
@@ -222,8 +375,9 @@ def list_employees():
 
 
 @app.route("/api/employees", methods=["POST"])
-def add_employee():
-    state = load_state()
+@require_login
+def add_employee(company_id):
+    state = load_state(company_id)
     payload = request.get_json()
 
     for f in ["id", "name"]:
@@ -248,29 +402,31 @@ def add_employee():
         "recent_weekend_count": payload.get("recent_weekend_count", 0),
     }
     state["employees"].append(employee)
-    save_state(state)
+    save_state(company_id, state)
     return jsonify(employee), 201
 
 
 @app.route("/api/employees/<employee_id>", methods=["PUT"])
-def update_employee(employee_id):
-    state = load_state()
+@require_login
+def update_employee(company_id, employee_id):
+    state = load_state(company_id)
     payload = request.get_json()
     if "leave_requests" in payload:
         payload["leave_requests"] = _prune_expired_leave_requests(payload["leave_requests"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             state["employees"][i].update(payload)
-            save_state(state)
+            save_state(company_id, state)
             return jsonify(state["employees"][i])
     return jsonify({"error": "직원을 찾을 수 없습니다."}), 404
 
 
 @app.route("/api/employees/<employee_id>", methods=["DELETE"])
-def delete_employee(employee_id):
-    state = load_state()
+@require_login
+def delete_employee(company_id, employee_id):
+    state = load_state(company_id)
     state["employees"] = [e for e in state["employees"] if e["id"] != employee_id]
-    save_state(state)
+    save_state(company_id, state)
     return "", 204
 
 
@@ -279,19 +435,21 @@ def delete_employee(employee_id):
 # ---------------------------------------------------------------------------
 
 @app.route("/api/weeks", methods=["GET"])
-def list_weeks():
-    state = load_state()
+@require_login
+def list_weeks(company_id):
+    state = load_state(company_id)
     return jsonify(sorted(state["weeks"].keys()))
 
 
 @app.route("/api/weeks", methods=["POST"])
-def create_week():
+@require_login
+def create_week(company_id):
     """새 주차를 만듭니다.
     근무요건은 선택(copy_from)과 상관없이, 캘린더 기준 바로 전주 데이터가 있으면
     항상 자동으로 이어받습니다 (매주 똑같은 근무요건을 반복 입력하는 번거로움을 없애기 위함).
     휴무(Off) 지정은 copy_from을 넘긴 경우에만(즉 "전주와 동일하게 시작"을 선택한 경우에만)
     그 주로부터 복사됩니다."""
-    state = load_state()
+    state = load_state(company_id)
     payload = request.get_json()
     week_key = payload.get("week_key")
     copy_from = payload.get("copy_from")
@@ -323,13 +481,14 @@ def create_week():
         new_week["requirements"] = carried_requirements
 
     state["weeks"][week_key] = new_week
-    save_state(state)
+    save_state(company_id, state)
     return jsonify(new_week), 201
 
 
 @app.route("/api/weeks/<week_key>", methods=["GET"])
-def get_week(week_key):
-    state = load_state()
+@require_login
+def get_week(company_id, week_key):
+    state = load_state(company_id)
     week = state["weeks"].get(week_key)
     if week is None:
         return jsonify(None)
@@ -337,23 +496,25 @@ def get_week(week_key):
 
 
 @app.route("/api/weeks/<week_key>", methods=["DELETE"])
-def delete_week(week_key):
-    state = load_state()
+@require_login
+def delete_week(company_id, week_key):
+    state = load_state(company_id)
     state["weeks"].pop(week_key, None)
-    save_state(state)
+    save_state(company_id, state)
     return "", 204
 
 
 @app.route("/api/weeks/<week_key>/lock", methods=["POST"])
-def set_week_lock(week_key):
+@require_login
+def set_week_lock(company_id, week_key):
     """body: {locked: true/false} - 이 주차를 잠그거나 풉니다. 잠긴 동안엔 이 주의
     근무요건/휴무지정/스케줄 생성·수동조정이 모두 서버에서도 거부됩니다."""
-    state = load_state()
+    state = load_state(company_id)
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json(silent=True) or {}
     state["weeks"][week_key]["locked"] = bool(payload.get("locked", False))
-    save_state(state)
+    save_state(company_id, state)
     return jsonify({"locked": state["weeks"][week_key]["locked"]})
 
 
@@ -367,8 +528,9 @@ def _week_locked(state, week_key):
 # ---------------------------------------------------------------------------
 
 @app.route("/api/weeks/<week_key>/requirements", methods=["POST"])
-def set_week_requirements(week_key):
-    state = load_state()
+@require_login
+def set_week_requirements(company_id, week_key):
+    state = load_state(company_id)
     if _week_locked(state, week_key):
         return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
     if week_key not in state["weeks"]:
@@ -377,7 +539,7 @@ def set_week_requirements(week_key):
     if not isinstance(payload, list):
         return jsonify({"error": "요건 목록은 배열이어야 합니다."}), 400
     state["weeks"][week_key]["requirements"] = payload
-    save_state(state)
+    save_state(company_id, state)
     return jsonify(state["weeks"][week_key]["requirements"])
 
 
@@ -386,9 +548,10 @@ def set_week_requirements(week_key):
 # ---------------------------------------------------------------------------
 
 @app.route("/api/weeks/<week_key>/off-days", methods=["POST"])
-def set_week_off_days(week_key):
+@require_login
+def set_week_off_days(company_id, week_key):
     """body: {employee_id, off_days: [day, ...]} - 그 직원의 그 주 휴무일 전체를 교체"""
-    state = load_state()
+    state = load_state(company_id)
     if _week_locked(state, week_key):
         return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
     if week_key not in state["weeks"]:
@@ -399,7 +562,7 @@ def set_week_off_days(week_key):
     if not employee_id:
         return jsonify({"error": "employee_id가 필요합니다."}), 400
     state["weeks"][week_key]["off_days"][employee_id] = off_days
-    save_state(state)
+    save_state(company_id, state)
     return jsonify(state["weeks"][week_key]["off_days"])
 
 
@@ -408,8 +571,9 @@ def set_week_off_days(week_key):
 # ---------------------------------------------------------------------------
 
 @app.route("/api/weeks/<week_key>/generate-schedule", methods=["POST"])
-def generate_week_schedule(week_key):
-    state = load_state()
+@require_login
+def generate_week_schedule(company_id, week_key):
+    state = load_state(company_id)
     week = state["weeks"].get(week_key)
     if week is None:
         return jsonify({"error": "존재하지 않는 주차입니다."}), 404
@@ -486,14 +650,15 @@ def generate_week_schedule(week_key):
     # auto_assignments는 "자동 생성 직후"의 원본 스냅샷입니다. 이후 수동 조정(manual-adjust)이
     # 있어도 이 값은 덮어쓰지 않아서, 나중에 "사람이 뭘 얼마나 고쳤는지" 비교할 수 있습니다.
     state["weeks"][week_key]["auto_assignments"] = result.assignments
-    save_state(state)
+    save_state(company_id, state)
 
     return jsonify(result_dict)
 
 
 @app.route("/api/weeks/<week_key>/manual-adjust", methods=["POST"])
-def manual_adjust_week(week_key):
-    state = load_state()
+@require_login
+def manual_adjust_week(company_id, week_key):
+    state = load_state(company_id)
     if _week_locked(state, week_key):
         return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
     if week_key not in state["weeks"]:
@@ -507,17 +672,18 @@ def manual_adjust_week(week_key):
     schedule["status"] = "MANUAL"
     schedule["diagnostics"] = ["수동으로 재배치된 스케줄입니다."]
     state["weeks"][week_key]["schedule"] = schedule
-    save_state(state)
+    save_state(company_id, state)
     return jsonify(schedule)
 
 
 @app.route("/api/weeks/<week_key>/reset-schedule", methods=["POST"])
-def reset_week_schedule(week_key):
+@require_login
+def reset_week_schedule(company_id, week_key):
     """이 주의 스케줄(자동 생성 결과 + 수동 조정 결과)만 완전히 초기화합니다.
     근무요건, 휴무(Off) 지정, 잠금 상태는 건드리지 않습니다. Leave Request는
     직원별 전역 데이터라 애초에 이 주차 데이터에 포함되지 않으므로 영향을 받지 않습니다.
     트레이닝 실습용으로 스케줄을 새로 시작하고 싶을 때 사용합니다."""
-    state = load_state()
+    state = load_state(company_id)
     if _week_locked(state, week_key):
         return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
     if week_key not in state["weeks"]:
@@ -525,7 +691,7 @@ def reset_week_schedule(week_key):
     else:
         state["weeks"][week_key]["schedule"] = None
         state["weeks"][week_key]["auto_assignments"] = []
-    save_state(state)
+    save_state(company_id, state)
     return jsonify({"status": "reset"})
 
 
@@ -600,14 +766,16 @@ def _analyze_edit_patterns(state):
 # ---------------------------------------------------------------------------
 
 @app.route("/api/public-holidays", methods=["GET"])
-def list_public_holidays():
-    state = load_state()
+@require_login
+def list_public_holidays(company_id):
+    state = load_state(company_id)
     return jsonify(sorted(state["public_holidays"], key=lambda h: h["date"]))
 
 
 @app.route("/api/public-holidays", methods=["POST"])
-def add_public_holiday():
-    state = load_state()
+@require_login
+def add_public_holiday(company_id):
+    state = load_state(company_id)
     payload = request.get_json()
     h_date = payload.get("date")
     name = payload.get("name", "")
@@ -617,15 +785,16 @@ def add_public_holiday():
         return jsonify({"error": "이미 등록된 날짜입니다."}), 400
     holiday = {"date": h_date, "name": name}
     state["public_holidays"].append(holiday)
-    save_state(state)
+    save_state(company_id, state)
     return jsonify(holiday), 201
 
 
 @app.route("/api/public-holidays/<h_date>", methods=["DELETE"])
-def delete_public_holiday(h_date):
-    state = load_state()
+@require_login
+def delete_public_holiday(company_id, h_date):
+    state = load_state(company_id)
     state["public_holidays"] = [h for h in state["public_holidays"] if h["date"] != h_date]
-    save_state(state)
+    save_state(company_id, state)
     return "", 204
 
 
@@ -697,13 +866,14 @@ def _recent_shift_counts(state, employee_id, week_key, window=RECENT_FAIRNESS_WI
 
 
 @app.route("/api/weeks/<week_key>/weekday-frequency", methods=["GET"])
-def get_weekday_frequency(week_key):
+@require_login
+def get_weekday_frequency(company_id, week_key):
     """이 주(week_key)를 기준으로, 각 직원이 각 요일에 "몇 주 연속으로" 근무했는지
     (근무유형은 상관없이) 셉니다. 이번 주부터 거슬러 올라가며 세다가, 그 요일에
     근무하지 않은(쉬거나 배정이 없는) 주를 만나면 그 즉시 스트릭이 끊깁니다.
     최대 8주까지만 셉니다. 순전히 참고용 정보이며, 스케줄 생성 로직에는 전혀
     영향을 주지 않습니다(하드 규칙도 소프트 규칙도 아님 — 화면에 숫자로만 표시)."""
-    state = load_state()
+    state = load_state(company_id)
     y, m, d = map(int, week_key.split("-"))
     base_monday = date(y, m, d)
 
@@ -745,7 +915,8 @@ def _weekday_total_count(state, employee_id, day, week_key, window=FREQUENCY_WIN
 
 
 @app.route("/api/weeks/<week_key>/public-holiday-info", methods=["GET"])
-def get_public_holiday_info(week_key):
+@require_login
+def get_public_holiday_info(company_id, week_key):
     """이 주(week_key)에 Public Holiday가 포함되어 있으면, 사용자가 정의한 뉴질랜드
     노동법 4가지 기준에 따라 직원별 적용 항목(1.5배+Lieu / 평소급여만 / 1.5배만 / 해당없음)을
     계산해서 돌려줍니다.
@@ -753,7 +924,7 @@ def get_public_holiday_info(week_key):
     기준: 지난 8주(이번 주 포함) 중 5주 이상 그 요일에 근무했으면 "평소 근무 요일"로 간주합니다.
     ⚠️ 이 계산은 사용자가 정의한 규칙을 그대로 옮긴 것으로, 실제 급여 지급 전에는
     회계/노무 담당자 확인을 권장합니다."""
-    state = load_state()
+    state = load_state(company_id)
     y, m, d = map(int, week_key.split("-"))
     monday = date(y, m, d)
     week_dates = [monday + timedelta(days=i) for i in range(7)]
@@ -803,8 +974,9 @@ def get_public_holiday_info(week_key):
 
 
 @app.route("/api/pattern-suggestions", methods=["GET"])
-def get_pattern_suggestions():
-    state = load_state()
+@require_login
+def get_pattern_suggestions(company_id):
+    state = load_state(company_id)
     return jsonify(_analyze_edit_patterns(state))
 
 
