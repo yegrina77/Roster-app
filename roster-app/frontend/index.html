@@ -171,6 +171,7 @@
   .btn-ghost { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }
   .btn-ghost:hover { background: rgba(79, 216, 224, 0.06); border-color: var(--cyan); }
   .lang-btn.active { background: var(--cyan); color: #06171a; border-color: transparent; font-weight: 700; }
+  #auth-tab-login.active, #auth-tab-register.active { background: var(--cyan); color: #06171a; border-color: transparent; font-weight: 700; }
   .lock-active { background: var(--danger-light); color: var(--danger); border-color: rgba(240,119,106,0.3); }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
   .btn-sm { padding: 5px 10px; font-size: 12px; }
@@ -283,6 +284,37 @@
 </head>
 <body>
 
+<div id="auth-screen" style="display:none; position:fixed; inset:0; z-index:2000; background:var(--void); display:flex; align-items:center; justify-content:center; padding:20px;">
+  <div style="max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
+    <p class="eyebrow" style="margin-bottom:4px;">SYS · KITCHEN ROSTER</p>
+    <h1 style="font-size:22px; margin:0 0 6px;" data-i18n="header_title">직원 로스터 관리</h1>
+    <p style="font-size:13px; color:var(--text-muted); margin:0 0 22px;" data-i18n="auth_intro">회사(매장) 계정으로 로그인하거나, 새로 등록하세요.</p>
+
+    <div style="display:flex; gap:6px; margin-bottom:18px;">
+      <button class="btn-ghost btn-sm" id="auth-tab-login" onclick="switchAuthMode('login')" data-i18n="auth_tab_login">로그인</button>
+      <button class="btn-ghost btn-sm" id="auth-tab-register" onclick="switchAuthMode('register')" data-i18n="auth_tab_register">회원가입</button>
+    </div>
+
+    <div id="auth-register-fields" style="display:none;">
+      <div class="field" style="margin-bottom:10px; width:100%;">
+        <label data-i18n="auth_company_name">회사(매장) 이름</label>
+        <input id="auth-name" style="width:100%;" placeholder="My Restaurant">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px; width:100%;">
+      <label data-i18n="auth_email">이메일</label>
+      <input id="auth-email" type="email" style="width:100%;" placeholder="owner@example.com">
+    </div>
+    <div class="field" style="margin-bottom:16px; width:100%;">
+      <label data-i18n="auth_password">비밀번호</label>
+      <input id="auth-password" type="password" style="width:100%;" placeholder="••••••••">
+    </div>
+
+    <button class="btn-primary" id="auth-submit-btn" onclick="submitAuth()" style="width:100%; padding:11px;" data-i18n="auth_tab_login">로그인</button>
+    <div id="auth-error" style="color:var(--danger); font-size:12px; margin-top:12px; display:none;"></div>
+  </div>
+</div>
+
 <header>
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap;">
     <div>
@@ -290,15 +322,21 @@
       <h1 data-i18n="header_title">직원 로스터 관리</h1>
       <p data-i18n="header_desc">직원과 근무 요건을 등록하면, 아래 캘린더에서 바로 휴무를 지정하거나 스케줄을 자동 생성할 수 있습니다.</p>
     </div>
-    <div id="lang-switcher" style="display:flex; gap:6px; flex-shrink:0;">
-      <button class="btn-ghost btn-sm lang-btn" data-lang="ko" onclick="setLanguage('ko')">한국어</button>
-      <button class="btn-ghost btn-sm lang-btn" data-lang="ja" onclick="setLanguage('ja')">日本語</button>
-      <button class="btn-ghost btn-sm lang-btn" data-lang="en" onclick="setLanguage('en')">English</button>
+    <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+      <div id="auth-company-info" style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
+        <span id="auth-company-name"></span>
+        <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
+      </div>
+      <div id="lang-switcher" style="display:flex; gap:6px; flex-shrink:0;">
+        <button class="btn-ghost btn-sm lang-btn" data-lang="ko" onclick="setLanguage('ko')">한국어</button>
+        <button class="btn-ghost btn-sm lang-btn" data-lang="ja" onclick="setLanguage('ja')">日本語</button>
+        <button class="btn-ghost btn-sm lang-btn" data-lang="en" onclick="setLanguage('en')">English</button>
+      </div>
     </div>
   </div>
 </header>
 
-<main>
+<main id="main-app" style="display:none;">
 
   <section>
     <h2 data-i18n="emp_title">직원</h2>
@@ -541,6 +579,10 @@ const I18N = {
     shift_time_title: "근무유형 기본 시간",
     shift_time_desc: "바쁜 시기가 아닐 때는 시작을 30분 늦추거나 종료를 30분 앞당기는 식으로, 근무유형별 기본 시작/종료 시간을 상황에 맞게 조정할 수 있습니다. 여기서 바꾸면 새로 생성되는 스케줄과 아직 개별 수정하지 않은 기존 배치 모두에 반영됩니다 (블록을 개별적으로 수정해둔 시간은 그대로 유지됩니다).",
     shift_time_modified: "수정됨", btn_reset_default: "기본값으로",
+    auth_intro: "회사(매장) 계정으로 로그인하거나, 새로 등록하세요.",
+    auth_tab_login: "로그인", auth_tab_register: "회원가입",
+    auth_company_name: "회사(매장) 이름", auth_email: "이메일", auth_password: "비밀번호",
+    auth_logout: "로그아웃", auth_fill_all: "모든 항목을 입력해주세요.",
     btn_reset_schedule: "🗑️ 스케줄 초기화",
     confirm_reset_title: "이번 주 스케줄을 초기화할까요?",
     confirm_reset_msg: "이번 주에 배정된 모든 근무(자동·수동 포함)가 지워지고, 스케줄을 아예 생성하지 않은 상태로 돌아갑니다. 근무요건과 이미 지정한 Off(휴무), Leave Request는 그대로 유지됩니다. 되돌릴 수 없습니다.",
@@ -659,6 +701,10 @@ const I18N = {
     shift_time_title: "勤務タイプの基本時間",
     shift_time_desc: "繁忙期でない時は開始を30分遅らせたり終了を30分早めたりと、勤務タイプごとの基本開始・終了時間を状況に合わせて調整できます。ここで変更すると、新しく生成されるスケジュールと、まだ個別修正していない既存の配置の両方に反映されます(ブロックを個別に修正した時間はそのまま維持されます)。",
     shift_time_modified: "変更済み", btn_reset_default: "デフォルトに戻す",
+    auth_intro: "会社(店舗)アカウントでログインするか、新規登録してください。",
+    auth_tab_login: "ログイン", auth_tab_register: "新規登録",
+    auth_company_name: "会社(店舗)名", auth_email: "メールアドレス", auth_password: "パスワード",
+    auth_logout: "ログアウト", auth_fill_all: "すべての項目を入力してください。",
     btn_reset_schedule: "🗑️ スケジュールをリセット",
     confirm_reset_title: "今週のスケジュールをリセットしますか?",
     confirm_reset_msg: "今週配置されたすべての勤務(自動・手動含む)が消去され、スケジュールを全く生成していない状態に戻ります。勤務要件と、既に指定したOff(休み)、Leave Requestはそのまま維持されます。元に戻せません。",
@@ -777,6 +823,10 @@ const I18N = {
     shift_time_title: "Default Shift Times",
     shift_time_desc: "During quieter periods you can adjust each shift type's default start/end time - e.g. starting 30 minutes later or ending 30 minutes earlier. Changes here apply to newly generated schedules and any existing block that hasn't been individually edited (blocks you've customized keep their own time).",
     shift_time_modified: "Modified", btn_reset_default: "Reset to default",
+    auth_intro: "Log in with your company (store) account, or register a new one.",
+    auth_tab_login: "Log In", auth_tab_register: "Sign Up",
+    auth_company_name: "Company (Store) Name", auth_email: "Email", auth_password: "Password",
+    auth_logout: "Log Out", auth_fill_all: "Please fill in all fields.",
     btn_reset_schedule: "🗑️ Reset Schedule",
     confirm_reset_title: "Reset this week's schedule?",
     confirm_reset_msg: "All shifts assigned this week (auto and manual) will be cleared, returning to a state as if no schedule was ever generated. Shift requirements, existing Off marks, and Leave Requests are kept. This cannot be undone.",
@@ -845,8 +895,105 @@ function setLanguage(lang) {
   renderCalendarArea();
 }
 
+let authMode = "login";
+let currentCompany = null;
+
+function switchAuthMode(mode) {
+  authMode = mode;
+  document.getElementById("auth-tab-login").classList.toggle("active", mode === "login");
+  document.getElementById("auth-tab-register").classList.toggle("active", mode === "register");
+  document.getElementById("auth-register-fields").style.display = mode === "register" ? "block" : "none";
+  document.getElementById("auth-submit-btn").textContent = mode === "login" ? t("auth_tab_login") : t("auth_tab_register");
+  document.getElementById("auth-error").style.display = "none";
+}
+
+function showAuthScreen() {
+  document.getElementById("main-app").style.display = "none";
+  document.getElementById("auth-company-info").style.display = "none";
+  document.getElementById("auth-screen").style.display = "flex";
+}
+
+function hideAuthScreen() {
+  document.getElementById("auth-screen").style.display = "none";
+  document.getElementById("main-app").style.display = "flex";
+  document.getElementById("auth-company-info").style.display = "flex";
+}
+
+async function checkAuthAndInit() {
+  let me;
+  try {
+    const res = await fetch("/api/auth/me", {credentials: "same-origin"});
+    me = await res.json();
+  } catch (e) {
+    me = null;
+  }
+  if (me) {
+    currentCompany = me;
+    document.getElementById("auth-company-name").textContent = me.name;
+    hideAuthScreen();
+    await initAppData();
+  } else {
+    showAuthScreen();
+  }
+}
+
+async function submitAuth() {
+  const errBox = document.getElementById("auth-error");
+  errBox.style.display = "none";
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
+  const name = document.getElementById("auth-name").value.trim();
+
+  if (!email || !password || (authMode === "register" && !name)) {
+    errBox.textContent = t("auth_fill_all");
+    errBox.style.display = "block";
+    return;
+  }
+
+  const url = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+  const body = authMode === "login" ? {email, password} : {email, password, name};
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errBox.textContent = data.error || t("modal_request_failed");
+      errBox.style.display = "block";
+      return;
+    }
+    currentCompany = data;
+    document.getElementById("auth-company-name").textContent = data.name;
+    document.getElementById("auth-email").value = "";
+    document.getElementById("auth-password").value = "";
+    document.getElementById("auth-name").value = "";
+    hideAuthScreen();
+    await initAppData();
+  } catch (e) {
+    errBox.textContent = t("modal_request_failed");
+    errBox.style.display = "block";
+  }
+}
+
+async function logoutUser() {
+  await fetch("/api/auth/logout", {method: "POST", credentials: "same-origin"});
+  currentCompany = null;
+  document.getElementById("auth-email").value = "";
+  document.getElementById("auth-password").value = "";
+  showAuthScreen();
+}
+
 async function api(path, opts) {
-  const res = await fetch(path, opts);
+  const finalOpts = {...(opts || {}), credentials: "same-origin"};
+  const res = await fetch(path, finalOpts);
+  if (res.status === 401) {
+    showAuthScreen();
+    throw new Error("로그인이 필요합니다.");
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({error: res.statusText}));
     showMessageModal(t("modal_request_failed"), err.error || res.statusText, true);
@@ -2832,19 +2979,24 @@ function makeCalCell(text, cls) {
   return div;
 }
 
-(async () => {
-  Object.assign(DAY_LABEL, DAY_LABEL_I18N[currentLang]);
-  Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[currentLang]);
-  Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[currentLang]);
-  applyI18nStatic();
-  enableClickToOpenDatePicker(document.getElementById("week-date-picker"));
-  enableClickToOpenDatePicker(document.getElementById("ph-date"));
+async function initAppData() {
   window._weekOffDays = {};
   currentWeekKey = mondayKeyFromDate(new Date());
   await loadShiftTimeSettings();
   await loadEmployees();
   await loadPublicHolidays();
   await loadWeek();
+}
+
+(async () => {
+  Object.assign(DAY_LABEL, DAY_LABEL_I18N[currentLang]);
+  Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[currentLang]);
+  Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[currentLang]);
+  applyI18nStatic();
+  switchAuthMode("login");
+  enableClickToOpenDatePicker(document.getElementById("week-date-picker"));
+  enableClickToOpenDatePicker(document.getElementById("ph-date"));
+  await checkAuthAndInit();
 })();
 </script>
 
