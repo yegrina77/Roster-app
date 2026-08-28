@@ -21,7 +21,8 @@ import os
 import random
 import re
 import secrets
-from datetime import date, timedelta
+import requests
+from datetime import date, timedelta, datetime, timezone
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, session
 
@@ -88,14 +89,79 @@ LEGACY_STATE_KEY = "roster_state"  # 로그인 기능 도입 이전, 단일 매�
 def load_auth():
     raw = _raw_get(AUTH_KEY)
     if not raw:
-        return {"companies": {}}
+        return {"companies": {}, "reset_tokens": {}}
     data = json.loads(raw)
     data.setdefault("companies", {})
+    data.setdefault("reset_tokens", {})
     return data
 
 
 def save_auth(auth):
     _raw_set(AUTH_KEY, json.dumps(auth, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------------------
+# 비밀번호 재설정 토큰 관리 (auth 저장소 안에 함께 보관)
+# ---------------------------------------------------------------------------
+
+RESET_TOKEN_VALID_MINUTES = 60
+
+
+def _create_reset_token(auth, company_id):
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_VALID_MINUTES)).isoformat()
+    auth.setdefault("reset_tokens", {})[token] = {"company_id": company_id, "expires_at": expires_at}
+    return token
+
+
+def _consume_reset_token(auth, token):
+    """토큰이 유효하면(존재하고 아직 안 만료됐으면) company_id를 반환하고, 토큰을 즉시 삭제합니다
+    (한 번 쓰면 재사용 불가). 유효하지 않으면 None을 반환합니다."""
+    entry = auth.get("reset_tokens", {}).pop(token, None)
+    if not entry:
+        return None
+    try:
+        expires_at = datetime.fromisoformat(entry["expires_at"])
+    except ValueError:
+        return None
+    if datetime.now(timezone.utc) > expires_at:
+        return None
+    return entry["company_id"]
+
+
+# ---------------------------------------------------------------------------
+# 이메일 발송 (Resend). RESEND_API_KEY 환경변수가 없으면 실제 발송 없이
+# 콘솔에만 링크를 출력합니다(로컬 개발 중에도 기능을 테스트할 수 있도록).
+# ---------------------------------------------------------------------------
+
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+
+
+def _send_password_reset_email(to_email, reset_link):
+    if not RESEND_API_KEY:
+        print(f"[비밀번호 재설정 메일 - 발송 미설정, 콘솔에만 출력] {to_email} -> {reset_link}")
+        return True
+    try:
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "from": RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": "비밀번호 재설정 안내",
+                "html": (
+                    f"<p>아래 링크를 눌러 비밀번호를 재설정해주세요. 이 링크는 "
+                    f"{RESET_TOKEN_VALID_MINUTES}분간만 유효합니다.</p>"
+                    f'<p><a href="{reset_link}">{reset_link}</a></p>'
+                    f"<p>본인이 요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.</p>"
+                ),
+            },
+            timeout=10,
+        )
+        return resp.status_code < 300
+    except requests.RequestException:
+        return False
 
 
 def _hash_password(password, salt=None):
@@ -309,6 +375,48 @@ def me():
         session.pop("company_id", None)
         return jsonify(None)
     return jsonify({"id": company["id"], "name": company["name"], "email": company["email"]})
+
+
+@app.route("/api/auth/forgot-password", methods=["POST"])
+def forgot_password():
+    """body: {email}. 보안상, 그 이메일이 실제로 등록되어 있는지 여부와 상관없이
+    항상 똑같은 성공 메시지를 돌려줍니다(등록된 이메일 목록을 외부에 노출하지 않기 위함)."""
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get("email") or "").strip().lower()
+
+    if email:
+        auth = load_auth()
+        match = next((c for c in auth["companies"].values() if c["email"] == email), None)
+        if match:
+            token = _create_reset_token(auth, match["id"])
+            save_auth(auth)
+            reset_link = f"{request.host_url.rstrip('/')}/?reset_token={token}"
+            _send_password_reset_email(email, reset_link)
+
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/auth/reset-password", methods=["POST"])
+def reset_password():
+    """body: {token, password}"""
+    payload = request.get_json(silent=True) or {}
+    token = payload.get("token") or ""
+    password = payload.get("password") or ""
+
+    if not token:
+        return jsonify({"error": "재설정 링크가 올바르지 않습니다."}), 400
+    if len(password) < 8:
+        return jsonify({"error": "비밀번호는 8자 이상이어야 합니다."}), 400
+
+    auth = load_auth()
+    company_id = _consume_reset_token(auth, token)
+    if not company_id or company_id not in auth["companies"]:
+        save_auth(auth)  # 만료/사용된 토큰은 정리해서 저장
+        return jsonify({"error": "재설정 링크가 만료되었거나 이미 사용되었습니다. 다시 요청해주세요."}), 400
+
+    auth["companies"][company_id]["password_hash"] = _hash_password(password)
+    save_auth(auth)
+    return jsonify({"status": "ok"})
 
 
 # ---------------------------------------------------------------------------
