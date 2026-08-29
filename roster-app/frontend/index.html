@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -978,6 +978,7 @@ function applyI18nStatic() {
 function setLanguage(lang) {
   currentLang = lang;
   localStorage.setItem("roster_lang", lang);
+  document.documentElement.lang = lang;
   Object.assign(DAY_LABEL, DAY_LABEL_I18N[lang]);
   Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[lang]);
   Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[lang]);
@@ -3275,6 +3276,7 @@ async function initAppData() {
 }
 
 (async () => {
+  document.documentElement.lang = currentLang;
   Object.assign(DAY_LABEL, DAY_LABEL_I18N[currentLang]);
   Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[currentLang]);
   Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[currentLang]);
