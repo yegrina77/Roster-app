@@ -14,6 +14,7 @@
   - public_holidays, shift_time_overrides: 회사 전체에 적용되는 설정
 """
 
+import sys
 import hashlib
 import hmac
 import json
@@ -35,6 +36,13 @@ from scheduler import (
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "..", "data")
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
+
+# Render 등 클라우드 호스팅에서 print() 로그가 실시간으로 안 보이고 쌓여있다가 늦게
+# 나오는 문제를 막기 위해, 표준출력을 줄 단위로 즉시 흘려보내도록 강제합니다.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+except AttributeError:
+    pass
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 # SECRET_KEY는 로그인 세션(쿠키)을 암호학적으로 서명하는 데 씁니다. 실제 운영 환경에서는
@@ -139,8 +147,10 @@ RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "onboarding@resend.dev")
 
 
 def _send_password_reset_email(to_email, reset_link):
+    key_status = f"길이={len(RESEND_API_KEY)}자, {RESEND_API_KEY[:6]}..." if RESEND_API_KEY else "설정 안 됨(비어있음)"
+    print(f"[비밀번호 재설정 디버그] RESEND_API_KEY 상태: {key_status}", flush=True)
     if not RESEND_API_KEY:
-        print(f"[비밀번호 재설정 메일 - 발송 미설정, 콘솔에만 출력] {to_email} -> {reset_link}")
+        print(f"[비밀번호 재설정 메일 - 발송 미설정, 콘솔에만 출력] {to_email} -> {reset_link}", flush=True)
         return True, None
     try:
         resp = requests.post(
@@ -159,13 +169,14 @@ def _send_password_reset_email(to_email, reset_link):
             },
             timeout=10,
         )
+        print(f"[비밀번호 재설정 디버그] Resend 응답: status={resp.status_code} body={resp.text[:300]}", flush=True)
         if resp.status_code < 300:
             return True, None
         # 실패 이유(Resend가 돌려준 에러 본문)를 서버 로그에 남겨서, Render Logs에서 바로 원인을 볼 수 있게 합니다.
-        print(f"[비밀번호 재설정 메일 발송 실패] status={resp.status_code} body={resp.text}")
+        print(f"[비밀번호 재설정 메일 발송 실패] status={resp.status_code} body={resp.text}", flush=True)
         return False, resp.text
     except requests.RequestException as e:
-        print(f"[비밀번호 재설정 메일 발송 예외] {e}")
+        print(f"[비밀번호 재설정 메일 발송 예외] {e}", flush=True)
         return False, str(e)
 
 
@@ -398,9 +409,9 @@ def forgot_password():
             reset_link = f"{request.host_url.rstrip('/')}/?reset_token={token}"
             sent, err = _send_password_reset_email(email, reset_link)
             if not sent:
-                print(f"[비밀번호 재설정] {email} 에게 메일 발송 실패 - {err}")
+                print(f"[비밀번호 재설정] {email} 에게 메일 발송 실패 - {err}", flush=True)
         else:
-            print(f"[비밀번호 재설정] 등록되지 않은 이메일로 요청됨: {email}")
+            print(f"[비밀번호 재설정] 등록되지 않은 이메일로 요청됨: {email}", flush=True)
 
     return jsonify({"status": "ok"})
 
