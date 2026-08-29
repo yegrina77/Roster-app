@@ -159,12 +159,12 @@ def _send_password_reset_email(to_email, reset_link):
             json={
                 "from": RESEND_FROM_EMAIL,
                 "to": [to_email],
-                "subject": "비밀번호 재설정 안내",
+                "subject": "Password Reset Request",
                 "html": (
-                    f"<p>아래 링크를 눌러 비밀번호를 재설정해주세요. 이 링크는 "
-                    f"{RESET_TOKEN_VALID_MINUTES}분간만 유효합니다.</p>"
+                    f"<p>Click the link below to reset your password. This link is valid "
+                    f"for {RESET_TOKEN_VALID_MINUTES} minutes.</p>"
                     f'<p><a href="{reset_link}">{reset_link}</a></p>'
-                    f"<p>본인이 요청하지 않으셨다면 이 메일을 무시하셔도 됩니다.</p>"
+                    f"<p>If you didn't request this, you can safely ignore this email.</p>"
                 ),
             },
             timeout=10,
@@ -199,6 +199,18 @@ def _valid_email(email):
     return bool(email) and re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
 
 
+def _password_error(password):
+    """비밀번호가 규칙(8자 이상, 숫자 포함, 특수문자 포함)을 만족하지 않으면 에러 메시지를,
+    통과하면 None을 돌려줍니다."""
+    if len(password) < 8:
+        return "Password must be at least 8 characters."
+    if not re.search(r"[0-9]", password):
+        return "Password must include at least one number."
+    if not re.search(r"[^A-Za-z0-9]", password):
+        return "Password must include at least one special character (e.g. !@#$%)."
+    return None
+
+
 def require_login(f):
     """이 데코레이터가 붙은 API는 로그인(세션에 company_id가 있는지)을 먼저 확인하고,
     통과하면 첫 번째 인자로 company_id를 넘겨줍니다. 이걸로 회사(매장)마다 데이터가
@@ -207,8 +219,24 @@ def require_login(f):
     def wrapper(*args, **kwargs):
         company_id = session.get("company_id")
         if not company_id:
-            return jsonify({"error": "로그인이 필요합니다."}), 401
+            return jsonify({"error": "Login required."}), 401
         return f(company_id, *args, **kwargs)
+    return wrapper
+
+
+def require_admin(f):
+    """관리자(맨 처음 가입한 계정)만 접근 가능한 API에 붙입니다. 다른 회사 데이터를
+    직접 다루지 않고, 가입자 통계만 볼 수 있게 하는 용도입니다."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        company_id = session.get("company_id")
+        if not company_id:
+            return jsonify({"error": "Login required."}), 401
+        auth = load_auth()
+        company = auth["companies"].get(company_id)
+        if not company or not company.get("is_admin"):
+            return jsonify({"error": "Admin access only."}), 403
+        return f(*args, **kwargs)
     return wrapper
 
 
@@ -295,6 +323,35 @@ def index():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 
+@app.route("/api/admin/companies", methods=["GET"])
+@require_admin
+def list_admin_companies():
+    """관리자 전용: 지금까지 가입한 회사(매장) 목록과, 각 회사의 등록 직원 수를 보여줍니다.
+    다른 회사의 직원/스케줄 데이터 자체는 절대 보여주지 않고, 딱 '몇 명 등록되어 있는지'
+    개수만 보여줍니다 (다른 회사의 개인정보를 침해하지 않기 위함)."""
+    auth = load_auth()
+    companies = []
+    for c in auth["companies"].values():
+        try:
+            state = load_state(c["id"])
+            employee_count = len(state.get("employees", []))
+            week_count = len(state.get("weeks", {}))
+        except Exception:
+            employee_count = 0
+            week_count = 0
+        companies.append({
+            "id": c["id"],
+            "name": c["name"],
+            "email": c["email"],
+            "created_at": c.get("created_at"),
+            "is_admin": bool(c.get("is_admin")),
+            "employee_count": employee_count,
+            "week_count": week_count,
+        })
+    companies.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+    return jsonify({"total": len(companies), "companies": companies})
+
+
 @app.route("/api/meta", methods=["GET"])
 def get_meta():
     return jsonify({
@@ -320,15 +377,16 @@ def register():
     password = payload.get("password") or ""
 
     if not name or not email or not password:
-        return jsonify({"error": "회사(매장) 이름, 이메일, 비밀번호를 모두 입력해주세요."}), 400
+        return jsonify({"error": "Please enter company/store name, email, and password."}), 400
     if not _valid_email(email):
-        return jsonify({"error": "이메일 형식이 올바르지 않습니다."}), 400
-    if len(password) < 8:
-        return jsonify({"error": "비밀번호는 8자 이상이어야 합니다."}), 400
+        return jsonify({"error": "Please enter a valid email address."}), 400
+    pw_error = _password_error(password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
 
     auth = load_auth()
     if any(c["email"] == email for c in auth["companies"].values()):
-        return jsonify({"error": "이미 등록된 이메일입니다."}), 400
+        return jsonify({"error": "This email is already registered."}), 400
 
     is_first_company = len(auth["companies"]) == 0
     company_id = secrets.token_hex(8)
@@ -338,6 +396,7 @@ def register():
         "email": email,
         "password_hash": _hash_password(password),
         "created_at": date.today().isoformat(),
+        "is_admin": is_first_company,  # 맨 처음 가입하는 계정(개발자 본인)을 자동으로 관리자로 지정합니다.
     }
     save_auth(auth)
 
@@ -350,7 +409,7 @@ def register():
 
     session["company_id"] = company_id
     session.permanent = True
-    return jsonify({"id": company_id, "name": name, "email": email}), 201
+    return jsonify({"id": company_id, "name": name, "email": email, "is_admin": is_first_company}), 201
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -367,11 +426,11 @@ def login():
             break
 
     if not match or not _verify_password(password, match["password_hash"]):
-        return jsonify({"error": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
+        return jsonify({"error": "Incorrect email or password."}), 401
 
     session["company_id"] = match["id"]
     session.permanent = True
-    return jsonify({"id": match["id"], "name": match["name"], "email": match["email"]})
+    return jsonify({"id": match["id"], "name": match["name"], "email": match["email"], "is_admin": bool(match.get("is_admin"))})
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -390,7 +449,7 @@ def me():
     if not company:
         session.pop("company_id", None)
         return jsonify(None)
-    return jsonify({"id": company["id"], "name": company["name"], "email": company["email"]})
+    return jsonify({"id": company["id"], "name": company["name"], "email": company["email"], "is_admin": bool(company.get("is_admin"))})
 
 
 @app.route("/api/auth/forgot-password", methods=["POST"])
@@ -424,15 +483,16 @@ def reset_password():
     password = payload.get("password") or ""
 
     if not token:
-        return jsonify({"error": "재설정 링크가 올바르지 않습니다."}), 400
-    if len(password) < 8:
-        return jsonify({"error": "비밀번호는 8자 이상이어야 합니다."}), 400
+        return jsonify({"error": "This reset link is invalid."}), 400
+    pw_error = _password_error(password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
 
     auth = load_auth()
     company_id = _consume_reset_token(auth, token)
     if not company_id or company_id not in auth["companies"]:
         save_auth(auth)  # 만료/사용된 토큰은 정리해서 저장
-        return jsonify({"error": "재설정 링크가 만료되었거나 이미 사용되었습니다. 다시 요청해주세요."}), 400
+        return jsonify({"error": "This reset link has expired or already been used. Please request a new one."}), 400
 
     auth["companies"][company_id]["password_hash"] = _hash_password(password)
     save_auth(auth)
@@ -471,9 +531,9 @@ def set_shift_time_setting(company_id):
     start = payload.get("start")
     end = payload.get("end")
     if shift not in SHIFT_TYPES:
-        return jsonify({"error": "존재하지 않는 근무유형입니다."}), 400
+        return jsonify({"error": "This shift type does not exist."}), 400
     if not start or not end:
-        return jsonify({"error": "start, end가 필요합니다."}), 400
+        return jsonify({"error": "start and end are required."}), 400
     state.setdefault("shift_time_overrides", {})[shift] = {"start": start, "end": end}
     save_state(company_id, state)
     return jsonify({"shift_type": shift, "start": start, "end": end})
@@ -513,7 +573,7 @@ def add_employee(company_id):
             return jsonify({"error": f"'{f}' 필드가 필요합니다."}), 400
 
     if any(e["id"] == payload["id"] for e in state["employees"]):
-        return jsonify({"error": f"이미 존재하는 직원 id입니다: {payload['id']}"}), 400
+        return jsonify({"error": f"An employee with this id already exists: {payload['id']}"}), 400
 
     employee = {
         "id": payload["id"],
@@ -546,7 +606,7 @@ def update_employee(company_id, employee_id):
             state["employees"][i].update(payload)
             save_state(company_id, state)
             return jsonify(state["employees"][i])
-    return jsonify({"error": "직원을 찾을 수 없습니다."}), 404
+    return jsonify({"error": "Employee not found."}), 404
 
 
 @app.route("/api/employees/<employee_id>", methods=["DELETE"])
@@ -583,7 +643,7 @@ def create_week(company_id):
     copy_from = payload.get("copy_from")
 
     if not week_key:
-        return jsonify({"error": "week_key가 필요합니다."}), 400
+        return jsonify({"error": "week_key is required."}), 400
 
     if week_key in state["weeks"]:
         return jsonify(state["weeks"][week_key])
@@ -660,12 +720,12 @@ def _week_locked(state, week_key):
 def set_week_requirements(company_id, week_key):
     state = load_state(company_id)
     if _week_locked(state, week_key):
-        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
+        return jsonify({"error": "This week is locked. Please unlock it first."}), 403
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
     if not isinstance(payload, list):
-        return jsonify({"error": "요건 목록은 배열이어야 합니다."}), 400
+        return jsonify({"error": "Requirements list must be an array."}), 400
     state["weeks"][week_key]["requirements"] = payload
     save_state(company_id, state)
     return jsonify(state["weeks"][week_key]["requirements"])
@@ -681,14 +741,14 @@ def set_week_off_days(company_id, week_key):
     """body: {employee_id, off_days: [day, ...]} - 그 직원의 그 주 휴무일 전체를 교체"""
     state = load_state(company_id)
     if _week_locked(state, week_key):
-        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
+        return jsonify({"error": "This week is locked. Please unlock it first."}), 403
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
     employee_id = payload.get("employee_id")
     off_days = payload.get("off_days", [])
     if not employee_id:
-        return jsonify({"error": "employee_id가 필요합니다."}), 400
+        return jsonify({"error": "employee_id is required."}), 400
     state["weeks"][week_key]["off_days"][employee_id] = off_days
     save_state(company_id, state)
     return jsonify(state["weeks"][week_key]["off_days"])
@@ -704,14 +764,14 @@ def generate_week_schedule(company_id, week_key):
     state = load_state(company_id)
     week = state["weeks"].get(week_key)
     if week is None:
-        return jsonify({"error": "존재하지 않는 주차입니다."}), 404
+        return jsonify({"error": "This week does not exist."}), 404
     if week.get("locked"):
-        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
+        return jsonify({"error": "This week is locked. Please unlock it first."}), 403
 
     if not state["employees"]:
-        return jsonify({"error": "등록된 직원이 없습니다."}), 400
+        return jsonify({"error": "No employees registered."}), 400
     if not week["requirements"]:
-        return jsonify({"error": "이번 주 근무 요건이 설정되지 않았습니다."}), 400
+        return jsonify({"error": "Shift requirements have not been set for this week."}), 400
 
     off_days_map = week.get("off_days", {})
 
@@ -788,7 +848,7 @@ def generate_week_schedule(company_id, week_key):
 def manual_adjust_week(company_id, week_key):
     state = load_state(company_id)
     if _week_locked(state, week_key):
-        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
+        return jsonify({"error": "This week is locked. Please unlock it first."}), 403
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
@@ -798,7 +858,7 @@ def manual_adjust_week(company_id, week_key):
     }
     schedule["assignments"] = payload.get("assignments", [])
     schedule["status"] = "MANUAL"
-    schedule["diagnostics"] = ["수동으로 재배치된 스케줄입니다."]
+    schedule["diagnostics"] = ["This schedule was manually rearranged."]
     state["weeks"][week_key]["schedule"] = schedule
     save_state(company_id, state)
     return jsonify(schedule)
@@ -813,7 +873,7 @@ def reset_week_schedule(company_id, week_key):
     트레이닝 실습용으로 스케줄을 새로 시작하고 싶을 때 사용합니다."""
     state = load_state(company_id)
     if _week_locked(state, week_key):
-        return jsonify({"error": "이 주는 잠겨 있습니다. 먼저 잠금을 해제해주세요."}), 403
+        return jsonify({"error": "This week is locked. Please unlock it first."}), 403
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     else:
@@ -908,9 +968,9 @@ def add_public_holiday(company_id):
     h_date = payload.get("date")
     name = payload.get("name", "")
     if not h_date:
-        return jsonify({"error": "date가 필요합니다."}), 400
+        return jsonify({"error": "date is required."}), 400
     if any(h["date"] == h_date for h in state["public_holidays"]):
-        return jsonify({"error": "이미 등록된 날짜입니다."}), 400
+        return jsonify({"error": "This date is already registered."}), 400
     holiday = {"date": h_date, "name": name}
     state["public_holidays"].append(holiday)
     save_state(company_id, state)

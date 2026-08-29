@@ -137,19 +137,19 @@ class ScheduleResult:
 def _explain_shortfall(req: "ShiftRequirement", employees: list["Employee"]) -> dict:
     day, shift = req.day, req.shift_type
     req_dept = SHIFT_DEPARTMENT.get(shift)
-    reasons = {"휴무 지정": 0, "근무유형 전체 금지": 0, "다른 부서 소속": 0}
+    reasons = {"forced_off": 0, "blocked_shift_type": 0, "different_department": 0}
     blocked_count = 0
 
     for e in employees:
         blocked = False
         if day in e.forced_off_days:
-            reasons["휴무 지정"] += 1
+            reasons["forced_off"] += 1
             blocked = True
         if shift in e.blocked_shift_types:
-            reasons["근무유형 전체 금지"] += 1
+            reasons["blocked_shift_type"] += 1
             blocked = True
         if req_dept is not None and e.department != req_dept:
-            reasons["다른 부서 소속"] += 1
+            reasons["different_department"] += 1
             blocked = True
         if blocked:
             blocked_count += 1
@@ -366,9 +366,9 @@ def solve_schedule(
             assignments=[],
             unmet_requirements=[],
             diagnostics=[
-                "제약을 만족하는 스케줄을 찾지 못했습니다. 캘린더에서 지정한 휴무일이나 "
-                "근무유형 전체 금지, 최소 근무시간, 부서 소속 설정이 여러 직원에게 동시에 "
-                "너무 강하게 걸려있지 않은지 확인해보세요.",
+                "Could not find a schedule that satisfies all constraints. Check whether "
+                "day-off marks, blocked shift types, minimum hours, or department "
+                "assignments are set too strictly for multiple employees at once.",
             ],
         )
 
@@ -516,7 +516,7 @@ def solve_schedule(
             })
 
     if not diagnostics:
-        diagnostics.append("모든 필수 인원 요건을 충족했습니다.")
+        diagnostics.append("All required staffing needs have been met.")
 
     return ScheduleResult(
         status=status_name,
