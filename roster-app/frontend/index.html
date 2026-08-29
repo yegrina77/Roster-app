@@ -225,9 +225,23 @@
     0%   { opacity: 0; transform: translate(0, 0); }
     78%  { opacity: 0; transform: translate(0, 0); }
     84%  { opacity: 1; transform: translate(0, 0); }
-    97%  { opacity: 1; transform: translate(-300px, 20px); }
-    99%  { opacity: 0; transform: translate(-300px, 20px); }
+    96%  { opacity: 1; transform: translate(-130px, 15px); }
+    99%  { opacity: 0; transform: translate(-130px, 15px); }
     100% { opacity: 0; transform: translate(0, 0); }
+  }
+  /* 걷는 동안 팔다리가 실제로 왔다갔다 움직이는 걸음걸이 사이클 (계속 돌아가지만,
+     person-walking이 안 보일 땐(투명도 0) 어차피 화면엔 안 보입니다) */
+  #person-walking .leg-left  { animation: limb-swing-a 0.55s ease-in-out infinite; }
+  #person-walking .leg-right { animation: limb-swing-b 0.55s ease-in-out infinite; }
+  #person-walking .arm-left  { animation: limb-swing-b 0.55s ease-in-out infinite; }
+  #person-walking .arm-right { animation: limb-swing-a 0.55s ease-in-out infinite; }
+  @keyframes limb-swing-a {
+    0%, 100% { transform: rotate(24deg); }
+    50%      { transform: rotate(-24deg); }
+  }
+  @keyframes limb-swing-b {
+    0%, 100% { transform: rotate(-24deg); }
+    50%      { transform: rotate(24deg); }
   }
   @media (max-width: 640px) {
     #office-scene { opacity: 0.28; }
@@ -366,32 +380,47 @@
     <circle cx="220" cy="120" r="3.5" fill="#4fd8e0"/>
     <line id="clock-hand" x1="220" y1="120" x2="220" y2="84" stroke="#4fd8e0" stroke-width="4" stroke-linecap="round"/>
 
-    <!-- 책상 -->
-    <rect x="330" y="330" width="220" height="10" rx="3" fill="#2c3644"/>
-    <rect x="345" y="340" width="8" height="70" fill="#232b37"/>
-    <rect x="515" y="340" width="8" height="70" fill="#232b37"/>
-
     <!-- 문 (사람이 퇴근하며 걸어나가는 곳) -->
     <rect x="60" y="260" width="70" height="150" rx="3" fill="none" stroke="#3a4656" stroke-width="5"/>
 
-    <!-- 앉아있는 사람 -->
+    <!-- 책상 (문 바로 옆에 배치해서 사람이 로그인 박스에 가려지지 않게 함) -->
+    <rect x="160" y="330" width="180" height="8" rx="3" fill="#2c3644"/>
+    <rect x="172" y="338" width="7" height="62" fill="#232b37"/>
+    <rect x="325" y="338" width="7" height="62" fill="#232b37"/>
+
+    <!-- 앉아서 일하는 사람 -->
     <g id="person-sitting">
-      <circle cx="420" cy="270" r="18" fill="#5b6b80"/>
-      <rect x="400" y="288" width="40" height="46" rx="10" fill="#4a5868"/>
-      <rect x="405" y="330" width="14" height="34" rx="5" fill="#3a4656"/>
-      <rect x="425" y="330" width="14" height="34" rx="5" fill="#3a4656"/>
+      <circle cx="245" cy="269" r="14" fill="#8a97a8"/>
+      <path d="M 245 283 q -16 0 -16 16 l 0 12 q 0 6 6 6 l 20 0 q 6 0 6 -6 l 0 -12 q 0 -16 -16 -16 z" fill="#6b7889"/>
+      <rect x="216" y="308" width="17" height="7" rx="3.5" fill="#6b7889"/>
+      <rect x="257" y="308" width="17" height="7" rx="3.5" fill="#6b7889"/>
     </g>
 
-    <!-- 걸어나가는 사람 (평소엔 숨겨져 있다가 하루 끝에 나타남) -->
+    <!-- 걸어나가는 사람 (평소엔 숨겨져 있다가 하루 끝에 문 쪽으로 걸어나감) -->
     <g id="person-walking">
-      <circle cx="420" cy="255" r="18" fill="#5b6b80"/>
-      <rect x="403" y="273" width="34" height="52" rx="10" fill="#4a5868"/>
-      <rect x="405" y="323" width="12" height="38" rx="5" fill="#3a4656"/>
-      <rect x="425" y="323" width="12" height="38" rx="5" fill="#3a4656"/>
+      <circle cx="245" cy="247" r="14" fill="#8a97a8"/>
+      <path d="M 245 260 q -14 0 -14 15 l 0 18 q 0 5 5 5 l 18 0 q 5 0 5 -5 l 0 -18 q 0 -15 -14 -15 z" fill="#6b7889"/>
+      <g class="arm-left" style="transform-origin: 233px 265px;">
+        <rect x="229" y="265" width="8" height="24" rx="4" fill="#6b7889"/>
+      </g>
+      <g class="arm-right" style="transform-origin: 257px 265px;">
+        <rect x="253" y="265" width="8" height="24" rx="4" fill="#6b7889"/>
+      </g>
+      <g class="leg-left" style="transform-origin: 239px 296px;">
+        <rect x="234" y="296" width="10" height="28" rx="4" fill="#4a5868"/>
+      </g>
+      <g class="leg-right" style="transform-origin: 251px 296px;">
+        <rect x="246" y="296" width="10" height="28" rx="4" fill="#4a5868"/>
+      </g>
     </g>
   </svg>
 
   <div id="auth-login-box" style="position:relative; z-index:1; max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
+    <div id="auth-lang-switcher" style="display:flex; gap:5px; justify-content:flex-end; margin-bottom:14px;">
+      <button class="btn-ghost btn-sm lang-btn" data-lang="ko" onclick="setLanguagePreLogin('ko')">한국어</button>
+      <button class="btn-ghost btn-sm lang-btn" data-lang="ja" onclick="setLanguagePreLogin('ja')">日本語</button>
+      <button class="btn-ghost btn-sm lang-btn" data-lang="en" onclick="setLanguagePreLogin('en')">English</button>
+    </div>
     <p class="eyebrow" style="margin-bottom:4px;">SYS · KITCHEN ROSTER</p>
     <h1 style="font-size:22px; margin:0 0 6px;" data-i18n="header_title">직원 로스터 관리</h1>
     <p style="font-size:13px; color:var(--text-muted); margin:0 0 22px;" data-i18n="auth_intro">회사(매장) 계정으로 로그인하거나, 새로 등록하세요.</p>
@@ -1117,11 +1146,28 @@ function setLanguage(lang) {
   Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[lang]);
   Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[lang]);
   applyI18nStatic();
+  updateAuthLangButtonsUI();
   updateLockButtonUI();
   renderShiftTimeSettingsUI();
   loadEmployees();
   renderRequirementGrid();
   renderCalendarArea();
+}
+
+function updateAuthLangButtonsUI() {
+  document.querySelectorAll("#auth-lang-switcher .lang-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.lang === currentLang);
+  });
+}
+
+// 로그인 화면(아직 로그인 전)에서 쓰는 가벼운 언어 전환입니다. 직원 목록·스케줄처럼
+// 로그인 후에만 있는 데이터를 건드리지 않고, 화면 문구(data-i18n)만 바꿉니다.
+function setLanguagePreLogin(lang) {
+  currentLang = lang;
+  localStorage.setItem("roster_lang", lang);
+  document.documentElement.lang = lang;
+  applyI18nStatic();
+  updateAuthLangButtonsUI();
 }
 
 let authMode = "login";
@@ -3622,6 +3668,7 @@ async function initAppData() {
   Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[currentLang]);
   Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[currentLang]);
   applyI18nStatic();
+  updateAuthLangButtonsUI();
   switchAuthMode("login");
   enableClickToOpenDatePicker(document.getElementById("week-date-picker"));
   enableClickToOpenDatePicker(document.getElementById("ph-date"));
