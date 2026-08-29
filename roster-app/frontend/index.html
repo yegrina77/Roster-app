@@ -627,6 +627,9 @@ const I18N = {
     admin_col_employees: "직원 수", admin_col_weeks: "저장된 주차 수", admin_badge_you: "나(관리자)",
     admin_row_click_hint: "회사를 클릭하면 그 회사에서 사용할 기능을 켜고 끌 수 있습니다.",
     admin_features_title: "{name} — 기능 설정", admin_features_sub: "체크 해제한 기능은 이 회사 화면에서 완전히 숨겨집니다.",
+    admin_col_online: "접속", admin_online_now: "지금 접속 중",
+    admin_last_active: "{n}분 전 마지막 활동", admin_never_active: "접속 기록 없음",
+    admin_online_legend: "🟢 최근 90초 이내 활동 = 접속 중 · ⚪ 그 외 = 접속 안 함. 배포 전에 참고용으로만 확인하세요.",
     auth_network_error: "네트워크 연결을 확인해주세요.",
     auth_pending_default_msg: "가입 요청이 접수되었습니다. 관리자 승인 후 이메일로 안내드립니다.",
     admin_pending_nav_btn: "📋 승인 대기", admin_pending_title: "가입 승인 대기 목록",
@@ -775,6 +778,9 @@ const I18N = {
     admin_col_employees: "スタッフ数", admin_col_weeks: "保存された週数", admin_badge_you: "自分(管理者)",
     admin_row_click_hint: "会社をクリックすると、その会社で使う機能をオン/オフできます。",
     admin_features_title: "{name} — 機能設定", admin_features_sub: "チェックを外した機能は、その会社の画面から完全に非表示になります。",
+    admin_col_online: "接続", admin_online_now: "現在接続中",
+    admin_last_active: "{n}分前に最終活動", admin_never_active: "活動記録なし",
+    admin_online_legend: "🟢 直近90秒以内に活動 = 接続中 ・ ⚪ それ以外 = 接続していません。デプロイ前の参考程度にご利用ください。",
     auth_network_error: "ネットワーク接続をご確認ください。",
     auth_pending_default_msg: "登録リクエストを受け付けました。管理者の承認後にメールでご案内します。",
     admin_pending_nav_btn: "📋 承認待ち", admin_pending_title: "登録承認待ちリスト",
@@ -923,6 +929,9 @@ const I18N = {
     admin_col_employees: "Employees", admin_col_weeks: "Saved Weeks", admin_badge_you: "You (Admin)",
     admin_row_click_hint: "Click a company to turn its features on or off.",
     admin_features_title: "{name} — Feature Settings", admin_features_sub: "Unchecked features are completely hidden from this company's screen.",
+    admin_col_online: "Online", admin_online_now: "Online now",
+    admin_last_active: "Last active {n}m ago", admin_never_active: "No activity yet",
+    admin_online_legend: "🟢 Active in the last 90 seconds = online · ⚪ Otherwise = offline. Use this as a rough guide before deploying.",
     auth_network_error: "Please check your network connection.",
     auth_pending_default_msg: "Your signup request has been submitted. You'll be notified by email once reviewed.",
     admin_pending_nav_btn: "📋 Pending Requests", admin_pending_title: "Pending Signup Requests",
@@ -1190,6 +1199,7 @@ async function showAdminPage() {
   const thead = document.createElement("thead");
   thead.innerHTML = `
     <tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
+      <th style="padding:6px 8px; text-align:center;">${t("admin_col_online")}</th>
       <th style="padding:6px 8px;">${t("admin_col_name")}</th>
       <th style="padding:6px 8px;">${t("admin_col_email")}</th>
       <th style="padding:6px 8px;">${t("admin_col_signup_date")}</th>
@@ -1207,7 +1217,14 @@ async function showAdminPage() {
     tr.onmouseleave = () => tr.style.background = "";
     tr.onclick = () => { overlay.remove(); showCompanyFeaturesModal(c.id, c.name); };
     const adminBadge = c.is_admin ? ` <span style="color:var(--cyan); font-size:10px;">(${t("admin_badge_you")})</span>` : "";
+    const dotColor = c.is_online ? "#4ade80" : "#6b7280";
+    const dotTitle = c.is_online
+      ? t("admin_online_now")
+      : (c.last_active_seconds_ago != null ? tf("admin_last_active", {n: Math.round(c.last_active_seconds_ago / 60)}) : t("admin_never_active"));
     tr.innerHTML = `
+      <td style="padding:6px 8px; text-align:center;" title="${dotTitle}">
+        <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${dotColor};"></span>
+      </td>
       <td style="padding:6px 8px;">${c.name}${adminBadge}</td>
       <td style="padding:6px 8px; color:var(--text-muted);">${c.email}</td>
       <td style="padding:6px 8px; color:var(--text-muted);">${c.created_at || "-"}</td>
@@ -1218,6 +1235,11 @@ async function showAdminPage() {
   });
   table.appendChild(tbody);
   box.appendChild(table);
+
+  const legend = document.createElement("div");
+  legend.style.cssText = "font-size:10.5px; color:var(--text-muted); margin-top:8px;";
+  legend.textContent = t("admin_online_legend");
+  box.appendChild(legend);
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
