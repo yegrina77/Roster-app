@@ -94,6 +94,20 @@ AUTH_KEY = "roster_auth_companies"
 LEGACY_STATE_KEY = "roster_state"  # 로그인 기능 도입 이전, 단일 매장이던 시절의 데이터 (마이그레이션용)
 
 
+TOGGLABLE_FEATURES = {
+    "public_holiday": "Public Holiday (NZ labour law calculator)",
+    "leave_request": "Leave Request",
+    "shift_time_settings": "Default Shift Time settings",
+    "week_lock": "Week Lock",
+    "pattern_suggestions": "Rule suggestions from past edits",
+    "weekday_frequency": "Consecutive weekday (N/8) badge",
+}
+
+
+def _default_features():
+    return {key: True for key in TOGGLABLE_FEATURES}
+
+
 def load_auth():
     raw = _raw_get(AUTH_KEY)
     if not raw:
@@ -104,9 +118,19 @@ def load_auth():
 
     # 관리자 기능이 생기기 전에 이미 가입된 계정들은 is_admin 표시가 없을 수 있습니다.
     # 그런 경우, 가장 먼저 가입한(created_at이 가장 이른) 계정을 자동으로 관리자로 지정합니다.
+    needs_save = False
     if data["companies"] and not any(c.get("is_admin") for c in data["companies"].values()):
         oldest = min(data["companies"].values(), key=lambda c: c.get("created_at") or "")
         oldest["is_admin"] = True
+        needs_save = True
+
+    # 기능 토글(enabled_features)이 생기기 전에 가입된 계정에는, 전부 켜진 기본값을 채워줍니다.
+    for c in data["companies"].values():
+        if "enabled_features" not in c:
+            c["enabled_features"] = _default_features()
+            needs_save = True
+
+    if needs_save:
         save_auth(data)
 
     return data
@@ -360,6 +384,40 @@ def list_admin_companies():
     return jsonify({"total": len(companies), "companies": companies})
 
 
+@app.route("/api/admin/companies/<company_id>/features", methods=["GET"])
+@require_admin
+def get_company_features(company_id):
+    """관리자 전용: 특정 회사에 어떤 기능이 켜져있는지 조회합니다."""
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    return jsonify({
+        "company_id": company_id,
+        "company_name": company["name"],
+        "features": {key: TOGGLABLE_FEATURES[key] for key in TOGGLABLE_FEATURES},
+        "enabled_features": company.get("enabled_features") or _default_features(),
+    })
+
+
+@app.route("/api/admin/companies/<company_id>/features", methods=["POST"])
+@require_admin
+def set_company_features(company_id):
+    """관리자 전용: 특정 회사의 기능 켜기/끄기를 저장합니다. body: {feature_key: true/false, ...}"""
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    payload = request.get_json(silent=True) or {}
+    current = company.get("enabled_features") or _default_features()
+    for key in TOGGLABLE_FEATURES:
+        if key in payload:
+            current[key] = bool(payload[key])
+    company["enabled_features"] = current
+    save_auth(auth)
+    return jsonify({"company_id": company_id, "enabled_features": current})
+
+
 @app.route("/api/meta", methods=["GET"])
 def get_meta():
     return jsonify({
@@ -405,6 +463,7 @@ def register():
         "password_hash": _hash_password(password),
         "created_at": date.today().isoformat(),
         "is_admin": is_first_company,  # 맨 처음 가입하는 계정(개발자 본인)을 자동으로 관리자로 지정합니다.
+        "enabled_features": _default_features(),
     }
     save_auth(auth)
 
@@ -417,7 +476,10 @@ def register():
 
     session["company_id"] = company_id
     session.permanent = True
-    return jsonify({"id": company_id, "name": name, "email": email, "is_admin": is_first_company}), 201
+    return jsonify({
+        "id": company_id, "name": name, "email": email,
+        "is_admin": is_first_company, "enabled_features": _default_features(),
+    }), 201
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -438,7 +500,10 @@ def login():
 
     session["company_id"] = match["id"]
     session.permanent = True
-    return jsonify({"id": match["id"], "name": match["name"], "email": match["email"], "is_admin": bool(match.get("is_admin"))})
+    return jsonify({
+        "id": match["id"], "name": match["name"], "email": match["email"],
+        "is_admin": bool(match.get("is_admin")), "enabled_features": match.get("enabled_features") or _default_features(),
+    })
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -457,7 +522,10 @@ def me():
     if not company:
         session.pop("company_id", None)
         return jsonify(None)
-    return jsonify({"id": company["id"], "name": company["name"], "email": company["email"], "is_admin": bool(company.get("is_admin"))})
+    return jsonify({
+        "id": company["id"], "name": company["name"], "email": company["email"],
+        "is_admin": bool(company.get("is_admin")), "enabled_features": company.get("enabled_features") or _default_features(),
+    })
 
 
 @app.route("/api/auth/forgot-password", methods=["POST"])
