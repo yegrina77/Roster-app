@@ -415,7 +415,7 @@
     </table>
   </section>
 
-  <section>
+  <section id="section-shift-time-settings">
     <h2 data-i18n="shift_time_title">근무유형 기본 시간</h2>
     <p class="desc" data-i18n="shift_time_desc">바쁜 시기가 아닐 때는 시작을 30분 늦추거나 종료를 30분 앞당기는 식으로, 근무유형별 기본 시작/종료 시간을 상황에 맞게 조정할 수 있습니다. 여기서 바꾸면 새로 생성되는 스케줄과 아직 개별 수정하지 않은 기존 배치 모두에 반영됩니다 (블록을 개별적으로 수정해둔 시간은 그대로 유지됩니다).</p>
     <div id="shift-time-settings-wrap"></div>
@@ -431,7 +431,7 @@
     </div>
   </section>
 
-  <section>
+  <section id="section-public-holidays">
     <h2 data-i18n="ph_title">Public Holidays</h2>
     <p class="desc" data-i18n="ph_desc">1년치 공휴일을 미리 등록해두면, 그 날짜가 포함된 주로 이동할 때 자동으로 알려드리고, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인할 수 있습니다.</p>
     <div class="row-form">
@@ -465,7 +465,7 @@
       <button class="btn-ghost" id="save-manual-btn" onclick="saveManualAdjustments()" style="display:none;" data-i18n="btn_save_changes">변경사항 저장</button>
       <button class="btn-ghost" id="reset-schedule-btn" onclick="resetWeekSchedule()" style="display:none;" data-i18n="btn_reset_schedule">🗑️ 스케줄 초기화</button>
       <button class="btn-ghost" id="ph-detail-btn" onclick="showPublicHolidayDetail()" style="display:none;" data-i18n="btn_ph_detail">🎌 Public Holiday 확인</button>
-      <button class="btn-ghost" onclick="checkPatternSuggestions()" style="margin-left:auto;" data-i18n="btn_pattern">📊 지난 수정 패턴에서 규칙 제안 보기</button>
+      <button class="btn-ghost" id="pattern-suggest-btn" onclick="checkPatternSuggestions()" style="margin-left:auto;" data-i18n="btn_pattern">📊 지난 수정 패턴에서 규칙 제안 보기</button>
     </div>
     <div id="schedule-output" style="margin-top:20px;"></div>
   </section>
@@ -624,6 +624,8 @@ const I18N = {
     admin_page_sub: "총 {n}개 회사가 가입되어 있습니다. 다른 회사의 직원/스케줄 데이터는 보이지 않고, 개수만 표시됩니다.",
     admin_col_name: "회사(매장) 이름", admin_col_email: "이메일", admin_col_signup_date: "가입일",
     admin_col_employees: "직원 수", admin_col_weeks: "저장된 주차 수", admin_badge_you: "나(관리자)",
+    admin_row_click_hint: "회사를 클릭하면 그 회사에서 사용할 기능을 켜고 끌 수 있습니다.",
+    admin_features_title: "{name} — 기능 설정", admin_features_sub: "체크 해제한 기능은 이 회사 화면에서 완전히 숨겨집니다.",
     auth_network_error: "네트워크 연결을 확인해주세요.",
     modal_network_error: "네트워크 연결을 확인하고 다시 시도해주세요.",
     auth_forgot_link: "비밀번호를 잊으셨나요?",
@@ -766,6 +768,8 @@ const I18N = {
     admin_page_sub: "合計{n}社が登録されています。他社のスタッフ・スケジュールデータは表示されず、件数のみ表示されます。",
     admin_col_name: "会社(店舗)名", admin_col_email: "メールアドレス", admin_col_signup_date: "登録日",
     admin_col_employees: "スタッフ数", admin_col_weeks: "保存された週数", admin_badge_you: "自分(管理者)",
+    admin_row_click_hint: "会社をクリックすると、その会社で使う機能をオン/オフできます。",
+    admin_features_title: "{name} — 機能設定", admin_features_sub: "チェックを外した機能は、その会社の画面から完全に非表示になります。",
     auth_network_error: "ネットワーク接続をご確認ください。",
     modal_network_error: "ネットワーク接続を確認して、もう一度お試しください。",
     auth_forgot_link: "パスワードをお忘れですか?",
@@ -908,6 +912,8 @@ const I18N = {
     admin_page_sub: "{n} companies registered in total. Other companies' employee/schedule data is never shown - only counts.",
     admin_col_name: "Company Name", admin_col_email: "Email", admin_col_signup_date: "Signup Date",
     admin_col_employees: "Employees", admin_col_weeks: "Saved Weeks", admin_badge_you: "You (Admin)",
+    admin_row_click_hint: "Click a company to turn its features on or off.",
+    admin_features_title: "{name} — Feature Settings", admin_features_sub: "Unchecked features are completely hidden from this company's screen.",
     auth_network_error: "Please check your network connection.",
     modal_network_error: "Please check your network connection and try again.",
     auth_forgot_link: "Forgot your password?",
@@ -992,6 +998,25 @@ function setLanguage(lang) {
 
 let authMode = "login";
 let currentCompany = null;
+
+function isFeatureEnabled(key) {
+  if (!currentCompany || !currentCompany.enabled_features) return true;
+  return currentCompany.enabled_features[key] !== false;
+}
+
+function applyFeatureToggles() {
+  const map = {
+    "public_holiday": "section-public-holidays",
+    "shift_time_settings": "section-shift-time-settings",
+  };
+  Object.entries(map).forEach(([feature, elId]) => {
+    const el = document.getElementById(elId);
+    if (el) el.style.display = isFeatureEnabled(feature) ? "" : "none";
+  });
+
+  const patternBtn = document.getElementById("pattern-suggest-btn");
+  if (patternBtn) patternBtn.style.display = isFeatureEnabled("pattern_suggestions") ? "" : "none";
+}
 
 function switchAuthMode(mode) {
   authMode = mode;
@@ -1134,6 +1159,11 @@ async function showAdminPage() {
   sub.textContent = tf("admin_page_sub", {n: data.total});
   box.appendChild(sub);
 
+  const hint = document.createElement("div");
+  hint.style.cssText = "font-size:11px; color:var(--text-muted); margin-bottom:8px;";
+  hint.textContent = t("admin_row_click_hint");
+  box.appendChild(hint);
+
   const table = document.createElement("table");
   table.style.cssText = "width:100%; border-collapse:collapse; margin-top:10px; font-size:12.5px;";
   const thead = document.createElement("thead");
@@ -1151,7 +1181,10 @@ async function showAdminPage() {
   const tbody = document.createElement("tbody");
   data.companies.forEach(c => {
     const tr = document.createElement("tr");
-    tr.style.borderBottom = "1px solid var(--line)";
+    tr.style.cssText = "border-bottom:1px solid var(--line); cursor:pointer;";
+    tr.onmouseenter = () => tr.style.background = "rgba(79,216,224,0.06)";
+    tr.onmouseleave = () => tr.style.background = "";
+    tr.onclick = () => { overlay.remove(); showCompanyFeaturesModal(c.id, c.name); };
     const adminBadge = c.is_admin ? ` <span style="color:var(--cyan); font-size:10px;">(${t("admin_badge_you")})</span>` : "";
     tr.innerHTML = `
       <td style="padding:6px 8px;">${c.name}${adminBadge}</td>
@@ -1173,6 +1206,74 @@ async function showAdminPage() {
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showCompanyFeaturesModal(companyId, companyName) {
+  let data;
+  try {
+    data = await api(`/api/admin/companies/${companyId}/features`);
+  } catch (e) {
+    return;
+  }
+  if (!data) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const title = document.createElement("h3");
+  title.textContent = tf("admin_features_title", {name: companyName});
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("admin_features_sub");
+  box.appendChild(sub);
+
+  const checkboxes = {};
+  Object.entries(data.features).forEach(([key, label]) => {
+    const row = document.createElement("label");
+    row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; cursor:pointer;";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = data.enabled_features[key] !== false;
+    checkboxes[key] = cb;
+    const span = document.createElement("span");
+    span.textContent = label;
+    row.appendChild(cb);
+    row.appendChild(span);
+    box.appendChild(row);
+  });
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => { overlay.remove(); showAdminPage(); };
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    const payload = {};
+    Object.entries(checkboxes).forEach(([key, cb]) => { payload[key] = cb.checked; });
+    await api(`/api/admin/companies/${companyId}/features`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    });
+    overlay.remove();
+    showAdminPage();
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
@@ -1482,7 +1583,9 @@ function buildRulesPanel(e) {
   leaveAddRow.appendChild(endInput);
   leaveAddRow.appendChild(addLeaveBtn);
   leaveBlock.appendChild(leaveAddRow);
-  wrap.appendChild(leaveBlock);
+  if (isFeatureEnabled("leave_request")) {
+    wrap.appendChild(leaveBlock);
+  }
 
   const prefOffBlock = document.createElement("div");
   prefOffBlock.className = "rules-block";
@@ -1921,6 +2024,10 @@ async function deletePublicHoliday(dateVal) {
 }
 
 async function checkPublicHolidayForWeek() {
+  if (!isFeatureEnabled("public_holiday")) {
+    document.getElementById("ph-detail-btn").style.display = "none";
+    return;
+  }
   let info;
   try {
     info = await api(`/api/weeks/${currentWeekKey}/public-holiday-info`);
@@ -2061,6 +2168,10 @@ function showPublicHolidayModal(info) {
 }
 
 async function refreshWeekdayFrequency() {
+  if (!isFeatureEnabled("weekday_frequency")) {
+    window._weekdayFrequency = {};
+    return;
+  }
   try {
     const data = await api(`/api/weeks/${currentWeekKey}/weekday-frequency`);
     window._weekdayFrequency = data.counts || {};
@@ -2248,7 +2359,7 @@ let weekLocked = false; // 이 주가 잠겨있으면 수정 관련 조작이 �
 
 function updateLockButtonUI() {
   const lockBtn = document.getElementById("lock-btn");
-  lockBtn.style.display = "inline-block";
+  lockBtn.style.display = isFeatureEnabled("week_lock") ? "inline-block" : "none";
   lockBtn.textContent = weekLocked ? "🔓 " + t("btn_unlock") : "🔒 " + t("btn_lock");
   lockBtn.classList.toggle("lock-active", weekLocked);
 
@@ -2999,8 +3110,11 @@ function buildCalendarGrid() {
             const freqWindow = window._weekdayFrequencyWindow || 8;
             const freqCount = ((window._weekdayFrequency || {})[empId] || {})[day] || 0;
             const freqHigh = freqCount >= (window._weekdayFrequencyThreshold || 5);
+            const freqBadgeHtml = isFeatureEnabled("weekday_frequency")
+              ? `<span class="freq-badge${freqHigh ? " high" : ""}" title="${t("freq_badge_tooltip")}">${freqCount}/${freqWindow}</span>`
+              : "";
             block.innerHTML = `
-              <span class="freq-badge${freqHigh ? " high" : ""}" title="${t("freq_badge_tooltip")}">${freqCount}/${freqWindow}</span>
+              ${freqBadgeHtml}
               ${SHIFT_LABEL[a.shift_type]}<span class="shift-time">${timeLabel}</span><span class="shift-source">${sourceLabel}</span>
             `;
             if (!weekLocked) {
@@ -3267,11 +3381,12 @@ function makeCalCell(text, cls) {
 }
 
 async function initAppData() {
+  applyFeatureToggles();
   window._weekOffDays = {};
   currentWeekKey = mondayKeyFromDate(new Date());
-  await loadShiftTimeSettings();
+  if (isFeatureEnabled("shift_time_settings")) await loadShiftTimeSettings();
   await loadEmployees();
-  await loadPublicHolidays();
+  if (isFeatureEnabled("public_holiday")) await loadPublicHolidays();
   await loadWeek();
 }
 
