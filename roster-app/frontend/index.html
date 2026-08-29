@@ -359,6 +359,7 @@
       <div id="auth-company-info" style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:8px;">
         <span id="auth-company-name"></span>
         <button class="btn-ghost btn-sm" id="admin-nav-btn" onclick="showAdminPage()" style="display:none;" data-i18n="admin_nav_btn">👑 Admin</button>
+        <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
       </div>
       <div id="lang-switcher" style="display:flex; gap:6px; flex-shrink:0;">
@@ -627,6 +628,10 @@ const I18N = {
     admin_row_click_hint: "회사를 클릭하면 그 회사에서 사용할 기능을 켜고 끌 수 있습니다.",
     admin_features_title: "{name} — 기능 설정", admin_features_sub: "체크 해제한 기능은 이 회사 화면에서 완전히 숨겨집니다.",
     auth_network_error: "네트워크 연결을 확인해주세요.",
+    auth_pending_default_msg: "가입 요청이 접수되었습니다. 관리자 승인 후 이메일로 안내드립니다.",
+    admin_pending_nav_btn: "📋 승인 대기", admin_pending_title: "가입 승인 대기 목록",
+    admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
+    admin_pending_requested_at: "요청일", btn_approve: "승인", btn_reject: "거절",
     modal_network_error: "네트워크 연결을 확인하고 다시 시도해주세요.",
     auth_forgot_link: "비밀번호를 잊으셨나요?",
     auth_forgot_title: "비밀번호 재설정",
@@ -771,6 +776,10 @@ const I18N = {
     admin_row_click_hint: "会社をクリックすると、その会社で使う機能をオン/オフできます。",
     admin_features_title: "{name} — 機能設定", admin_features_sub: "チェックを外した機能は、その会社の画面から完全に非表示になります。",
     auth_network_error: "ネットワーク接続をご確認ください。",
+    auth_pending_default_msg: "登録リクエストを受け付けました。管理者の承認後にメールでご案内します。",
+    admin_pending_nav_btn: "📋 承認待ち", admin_pending_title: "登録承認待ちリスト",
+    admin_pending_sub: "以下のリクエストを確認して承認または却下できます。", admin_pending_empty: "承認待ちのリクエストはありません。",
+    admin_pending_requested_at: "申請日", btn_approve: "承認", btn_reject: "却下",
     modal_network_error: "ネットワーク接続を確認して、もう一度お試しください。",
     auth_forgot_link: "パスワードをお忘れですか?",
     auth_forgot_title: "パスワード再設定",
@@ -915,6 +924,10 @@ const I18N = {
     admin_row_click_hint: "Click a company to turn its features on or off.",
     admin_features_title: "{name} — Feature Settings", admin_features_sub: "Unchecked features are completely hidden from this company's screen.",
     auth_network_error: "Please check your network connection.",
+    auth_pending_default_msg: "Your signup request has been submitted. You'll be notified by email once reviewed.",
+    admin_pending_nav_btn: "📋 Pending Requests", admin_pending_title: "Pending Signup Requests",
+    admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
+    admin_pending_requested_at: "Requested", btn_approve: "Approve", btn_reject: "Reject",
     modal_network_error: "Please check your network connection and try again.",
     auth_forgot_link: "Forgot your password?",
     auth_forgot_title: "Reset Password",
@@ -1061,6 +1074,7 @@ async function checkAuthAndInit() {
     currentCompany = me;
     document.getElementById("auth-company-name").textContent = me.name;
     document.getElementById("admin-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
+    document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     hideAuthScreen();
     await initAppData();
   } else {
@@ -1115,9 +1129,16 @@ async function submitAuth() {
     errBox.style.display = "block";
     return;
   }
+  if (data.status === "pending") {
+    okBox.textContent = data.message || t("auth_pending_default_msg");
+    okBox.style.display = "block";
+    document.getElementById("auth-password").value = "";
+    return;
+  }
     currentCompany = data;
     document.getElementById("auth-company-name").textContent = data.name;
     document.getElementById("admin-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
+    document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("auth-email").value = "";
     document.getElementById("auth-password").value = "";
     document.getElementById("auth-name").value = "";
@@ -1203,6 +1224,83 @@ async function showAdminPage() {
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn-primary";
   closeBtn.textContent = t("btn_confirm");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showPendingSignupsPage() {
+  let data;
+  try {
+    data = await api("/api/admin/pending-signups");
+  } catch (e) {
+    return;
+  }
+  if (!data) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "600px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("admin_pending_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("admin_pending_sub");
+  box.appendChild(sub);
+
+  if (!data.pending.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = t("admin_pending_empty");
+    box.appendChild(empty);
+  }
+
+  data.pending.forEach(r => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.innerHTML = `
+      <div class="modal-item-title">${r.name}</div>
+      <div class="modal-item-detail">${r.email} — ${t("admin_pending_requested_at")}: ${r.requested_at || "-"}</div>
+    `;
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex; gap:8px; margin-top:8px;";
+    const approveBtn = document.createElement("button");
+    approveBtn.className = "btn-primary btn-sm";
+    approveBtn.textContent = t("btn_approve");
+    approveBtn.onclick = async () => {
+      await api(`/api/admin/pending-signups/${r.id}/approve`, {method: "POST"});
+      overlay.remove();
+      showPendingSignupsPage();
+    };
+    const rejectBtn = document.createElement("button");
+    rejectBtn.className = "btn-danger btn-sm";
+    rejectBtn.textContent = t("btn_reject");
+    rejectBtn.onclick = async () => {
+      await api(`/api/admin/pending-signups/${r.id}/reject`, {method: "POST"});
+      overlay.remove();
+      showPendingSignupsPage();
+    };
+    btnRow.appendChild(approveBtn);
+    btnRow.appendChild(rejectBtn);
+    item.appendChild(btnRow);
+    box.appendChild(item);
+  });
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
