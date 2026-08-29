@@ -101,6 +101,14 @@ def load_auth():
     data = json.loads(raw)
     data.setdefault("companies", {})
     data.setdefault("reset_tokens", {})
+
+    # 관리자 기능이 생기기 전에 이미 가입된 계정들은 is_admin 표시가 없을 수 있습니다.
+    # 그런 경우, 가장 먼저 가입한(created_at이 가장 이른) 계정을 자동으로 관리자로 지정합니다.
+    if data["companies"] and not any(c.get("is_admin") for c in data["companies"].values()):
+        oldest = min(data["companies"].values(), key=lambda c: c.get("created_at") or "")
+        oldest["is_admin"] = True
+        save_auth(data)
+
     return data
 
 
