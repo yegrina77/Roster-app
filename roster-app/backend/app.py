@@ -15,6 +15,7 @@
 """
 
 import sys
+import time
 import hashlib
 import hmac
 import json
@@ -276,6 +277,13 @@ def _password_error(password):
     return None
 
 
+# 회사별 "마지막 활동 시각"을 메모리에만 기록합니다 (서버 재시작하면 초기화되는데,
+# 그건 상관없습니다 — 재시작 시점엔 어차피 아무도 접속 중이 아니었다는 뜻이니까요).
+# 이 값은 저장소(Upstash/파일)에 안 쓰기 때문에, 매 요청마다 추가 비용이 거의 없습니다.
+_last_active = {}
+ONLINE_THRESHOLD_SECONDS = 90  # 이 시간 이내에 요청이 있었으면 "접속 중"으로 표시
+
+
 def require_login(f):
     """이 데코레이터가 붙은 API는 로그인(세션에 company_id가 있는지)을 먼저 확인하고,
     통과하면 첫 번째 인자로 company_id를 넘겨줍니다. 이걸로 회사(매장)마다 데이터가
@@ -285,6 +293,7 @@ def require_login(f):
         company_id = session.get("company_id")
         if not company_id:
             return jsonify({"error": "Login required."}), 401
+        _last_active[company_id] = time.time()
         return f(company_id, *args, **kwargs)
     return wrapper
 
@@ -395,6 +404,7 @@ def list_admin_companies():
     다른 회사의 직원/스케줄 데이터 자체는 절대 보여주지 않고, 딱 '몇 명 등록되어 있는지'
     개수만 보여줍니다 (다른 회사의 개인정보를 침해하지 않기 위함)."""
     auth = load_auth()
+    now = time.time()
     companies = []
     for c in auth["companies"].values():
         try:
@@ -404,6 +414,7 @@ def list_admin_companies():
         except Exception:
             employee_count = 0
             week_count = 0
+        last_active = _last_active.get(c["id"])
         companies.append({
             "id": c["id"],
             "name": c["name"],
@@ -412,9 +423,11 @@ def list_admin_companies():
             "is_admin": bool(c.get("is_admin")),
             "employee_count": employee_count,
             "week_count": week_count,
+            "is_online": bool(last_active) and (now - last_active) < ONLINE_THRESHOLD_SECONDS,
+            "last_active_seconds_ago": int(now - last_active) if last_active else None,
         })
     companies.sort(key=lambda c: c.get("created_at") or "", reverse=True)
-    return jsonify({"total": len(companies), "companies": companies})
+    return jsonify({"total": len(companies), "companies": companies, "online_threshold_seconds": ONLINE_THRESHOLD_SECONDS})
 
 
 @app.route("/api/admin/companies/<company_id>/features", methods=["GET"])
