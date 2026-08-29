@@ -115,6 +115,7 @@ def load_auth():
     data = json.loads(raw)
     data.setdefault("companies", {})
     data.setdefault("reset_tokens", {})
+    data.setdefault("pending_signups", {})
 
     # 관리자 기능이 생기기 전에 이미 가입된 계정들은 is_admin 표시가 없을 수 있습니다.
     # 그런 경우, 가장 먼저 가입한(created_at이 가장 이른) 계정을 자동으로 관리자로 지정합니다.
@@ -178,38 +179,70 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "onboarding@resend.dev")
 
 
-def _send_password_reset_email(to_email, reset_link):
-    key_status = f"길이={len(RESEND_API_KEY)}자, {RESEND_API_KEY[:6]}..." if RESEND_API_KEY else "설정 안 됨(비어있음)"
-    print(f"[비밀번호 재설정 디버그] RESEND_API_KEY 상태: {key_status}", flush=True)
+def _send_email(to_email, subject, html):
+    """Resend를 통해 이메일을 보냅니다. RESEND_API_KEY가 없으면 콘솔에만 출력합니다.
+    (True, None) 또는 (False, 에러메시지)를 돌려줍니다."""
+    key_status = f"len={len(RESEND_API_KEY)}, {RESEND_API_KEY[:6]}..." if RESEND_API_KEY else "not set (empty)"
+    print(f"[email debug] RESEND_API_KEY status: {key_status}", flush=True)
     if not RESEND_API_KEY:
-        print(f"[비밀번호 재설정 메일 - 발송 미설정, 콘솔에만 출력] {to_email} -> {reset_link}", flush=True)
+        print(f"[email - sending not configured, console only] to={to_email} subject={subject}", flush=True)
         return True, None
     try:
         resp = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "from": RESEND_FROM_EMAIL,
-                "to": [to_email],
-                "subject": "Password Reset Request",
-                "html": (
-                    f"<p>Click the link below to reset your password. This link is valid "
-                    f"for {RESET_TOKEN_VALID_MINUTES} minutes.</p>"
-                    f'<p><a href="{reset_link}">{reset_link}</a></p>'
-                    f"<p>If you didn't request this, you can safely ignore this email.</p>"
-                ),
-            },
+            json={"from": RESEND_FROM_EMAIL, "to": [to_email], "subject": subject, "html": html},
             timeout=10,
         )
-        print(f"[비밀번호 재설정 디버그] Resend 응답: status={resp.status_code} body={resp.text[:300]}", flush=True)
+        print(f"[email debug] Resend response: status={resp.status_code} body={resp.text[:300]}", flush=True)
         if resp.status_code < 300:
             return True, None
-        # 실패 이유(Resend가 돌려준 에러 본문)를 서버 로그에 남겨서, Render Logs에서 바로 원인을 볼 수 있게 합니다.
-        print(f"[비밀번호 재설정 메일 발송 실패] status={resp.status_code} body={resp.text}", flush=True)
+        print(f"[email send failed] status={resp.status_code} body={resp.text}", flush=True)
         return False, resp.text
     except requests.RequestException as e:
-        print(f"[비밀번호 재설정 메일 발송 예외] {e}", flush=True)
+        print(f"[email send exception] {e}", flush=True)
         return False, str(e)
+
+
+def _send_password_reset_email(to_email, reset_link):
+    return _send_email(
+        to_email,
+        "Password Reset Request",
+        (
+            f"<p>Click the link below to reset your password. This link is valid "
+            f"for {RESET_TOKEN_VALID_MINUTES} minutes.</p>"
+            f'<p><a href="{reset_link}">{reset_link}</a></p>'
+            f"<p>If you didn't request this, you can safely ignore this email.</p>"
+        ),
+    )
+
+
+def _send_signup_request_email(admin_email, requester_name, requester_email):
+    return _send_email(
+        admin_email,
+        f"New Signup Request: {requester_name}",
+        (
+            f"<p>A new company has requested access to your roster system:</p>"
+            f"<p><b>Company:</b> {requester_name}<br><b>Email:</b> {requester_email}</p>"
+            f"<p>Log in and open the Admin page to approve or reject this request.</p>"
+        ),
+    )
+
+
+def _send_signup_approved_email(to_email):
+    return _send_email(
+        to_email,
+        "Your account has been approved",
+        "<p>Your signup request has been approved. You can now log in with the email and password you registered with.</p>",
+    )
+
+
+def _send_signup_rejected_email(to_email):
+    return _send_email(
+        to_email,
+        "Your signup request was not approved",
+        "<p>Unfortunately, your signup request was not approved. If you believe this is a mistake, please contact the administrator directly.</p>",
+    )
 
 
 def _hash_password(password, salt=None):
@@ -418,6 +451,58 @@ def set_company_features(company_id):
     return jsonify({"company_id": company_id, "enabled_features": current})
 
 
+@app.route("/api/admin/pending-signups", methods=["GET"])
+@require_admin
+def list_pending_signups():
+    """관리자 전용: 승인 대기 중인 가입 요청 목록을 보여줍니다."""
+    auth = load_auth()
+    pending = list(auth.get("pending_signups", {}).values())
+    pending.sort(key=lambda r: r.get("requested_at") or "")
+    return jsonify({
+        "pending": [
+            {"id": r["id"], "name": r["name"], "email": r["email"], "requested_at": r.get("requested_at")}
+            for r in pending
+        ]
+    })
+
+
+@app.route("/api/admin/pending-signups/<request_id>/approve", methods=["POST"])
+@require_admin
+def approve_pending_signup(request_id):
+    """관리자 전용: 가입 요청을 승인해서 실제 계정으로 만듭니다."""
+    auth = load_auth()
+    req = auth.get("pending_signups", {}).pop(request_id, None)
+    if not req:
+        return jsonify({"error": "Request not found."}), 404
+
+    company_id = secrets.token_hex(8)
+    auth["companies"][company_id] = {
+        "id": company_id,
+        "name": req["name"],
+        "email": req["email"],
+        "password_hash": req["password_hash"],
+        "created_at": date.today().isoformat(),
+        "is_admin": False,
+        "enabled_features": _default_features(),
+    }
+    save_auth(auth)
+    _send_signup_approved_email(req["email"])
+    return jsonify({"status": "approved", "company_id": company_id})
+
+
+@app.route("/api/admin/pending-signups/<request_id>/reject", methods=["POST"])
+@require_admin
+def reject_pending_signup(request_id):
+    """관리자 전용: 가입 요청을 거절합니다 (계정이 만들어지지 않습니다)."""
+    auth = load_auth()
+    req = auth.get("pending_signups", {}).pop(request_id, None)
+    if not req:
+        return jsonify({"error": "Request not found."}), 404
+    save_auth(auth)
+    _send_signup_rejected_email(req["email"])
+    return jsonify({"status": "rejected"})
+
+
 @app.route("/api/meta", methods=["GET"])
 def get_meta():
     return jsonify({
@@ -453,33 +538,58 @@ def register():
     auth = load_auth()
     if any(c["email"] == email for c in auth["companies"].values()):
         return jsonify({"error": "This email is already registered."}), 400
+    if any(r["email"] == email for r in auth.get("pending_signups", {}).values()):
+        return jsonify({"error": "A request with this email is already pending approval."}), 400
 
     is_first_company = len(auth["companies"]) == 0
-    company_id = secrets.token_hex(8)
-    auth["companies"][company_id] = {
-        "id": company_id,
-        "name": name,
-        "email": email,
-        "password_hash": _hash_password(password),
-        "created_at": date.today().isoformat(),
-        "is_admin": is_first_company,  # 맨 처음 가입하는 계정(개발자 본인)을 자동으로 관리자로 지정합니다.
-        "enabled_features": _default_features(),
-    }
-    save_auth(auth)
 
-    # 맨 처음 가입하는 회사에 한해서, 로그인 기능이 생기기 전 단일 매장이던 시절의
-    # 데이터를 그대로 이어받습니다 (사용자님의 기존 데이터가 사라지지 않도록).
     if is_first_company:
+        # 맨 처음 가입하는 계정(개발자 본인)은 승인 절차 없이 즉시 생성되고, 자동으로 관리자가 됩니다.
+        # (그래야 승인해줄 관리자가 아무도 없는 상태를 피할 수 있습니다.)
+        company_id = secrets.token_hex(8)
+        auth["companies"][company_id] = {
+            "id": company_id,
+            "name": name,
+            "email": email,
+            "password_hash": _hash_password(password),
+            "created_at": date.today().isoformat(),
+            "is_admin": True,
+            "enabled_features": _default_features(),
+        }
+        save_auth(auth)
+
+        # 로그인 기능이 생기기 전 단일 매장이던 시절의 데이터를 그대로 이어받습니다.
         legacy_raw = _raw_get(LEGACY_STATE_KEY)
         if legacy_raw:
             _raw_set(f"roster_state:{company_id}", legacy_raw)
 
-    session["company_id"] = company_id
-    session.permanent = True
+        session["company_id"] = company_id
+        session.permanent = True
+        return jsonify({
+            "id": company_id, "name": name, "email": email,
+            "is_admin": True, "enabled_features": _default_features(),
+        }), 201
+
+    # 두 번째 가입자부터는 관리자 승인이 필요합니다. 계정을 바로 만들지 않고
+    # "승인 대기" 상태로 저장한 뒤, 관리자(들)에게 이메일로 알립니다.
+    request_id = secrets.token_hex(8)
+    auth.setdefault("pending_signups", {})[request_id] = {
+        "id": request_id,
+        "name": name,
+        "email": email,
+        "password_hash": _hash_password(password),
+        "requested_at": date.today().isoformat(),
+    }
+    save_auth(auth)
+
+    admin_emails = [c["email"] for c in auth["companies"].values() if c.get("is_admin")]
+    for admin_email in admin_emails:
+        _send_signup_request_email(admin_email, name, email)
+
     return jsonify({
-        "id": company_id, "name": name, "email": email,
-        "is_admin": is_first_company, "enabled_features": _default_features(),
-    }), 201
+        "status": "pending",
+        "message": "Your request has been submitted for approval. You'll receive an email once it's reviewed.",
+    }), 202
 
 
 @app.route("/api/auth/login", methods=["POST"])
