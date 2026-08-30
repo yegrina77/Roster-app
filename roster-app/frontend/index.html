@@ -536,6 +536,12 @@
     </table>
   </section>
 
+  <section id="section-dept-management">
+    <h2 data-i18n="dept_mgmt_title">부서 및 근무유형 관리</h2>
+    <p class="desc" data-i18n="dept_mgmt_desc">매장마다 부서 구성이 다를 수 있습니다 (예: Larder, Protein, Dessert, FOH 등). 여기서 부서와 근무유형을 자유롭게 추가·수정·삭제해서 우리 매장에 맞게 조정하세요.</p>
+    <div id="dept-management-wrap"></div>
+  </section>
+
   <section id="section-shift-time-settings">
     <h2 data-i18n="shift_time_title">근무유형 기본 시간</h2>
     <p class="desc" data-i18n="shift_time_desc">바쁜 시기가 아닐 때는 시작을 30분 늦추거나 종료를 30분 앞당기는 식으로, 근무유형별 기본 시작/종료 시간을 상황에 맞게 조정할 수 있습니다. 여기서 바꾸면 새로 생성되는 스케줄과 아직 개별 수정하지 않은 기존 배치 모두에 반영됩니다 (블록을 개별적으로 수정해둔 시간은 그대로 유지됩니다).</p>
@@ -596,18 +602,14 @@
 <script>
 const DAYS = ["mon","tue","wed","thu","fri","sat","sun"];
 let DAY_LABEL = {mon:"월", tue:"화", wed:"수", thu:"목", fri:"금", sat:"토", sun:"일"};
-const SHIFT_TYPES = ["opening","helper","closing1","closing2","sushi1","sushi2","sushi3","c_opening","c_helper","c_closing1","c_closing2","management","management_cashier","training"];
-let SHIFT_LABEL = {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"스시1", sushi2:"스시2", sushi3:"스시3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"};
-let SHIFT_TIME = {opening:"06:00-15:00", helper:"08:00-17:00", closing1:"11:00-20:30", closing2:"11:30-20:30", sushi1:"05:00-14:00", sushi2:"05:00-14:00", sushi3:"10:00-19:00", c_opening:"06:00-15:00", c_helper:"10:00-19:00", c_closing1:"11:00-20:30", c_closing2:"12:00-20:30", management:"09:00-18:00", management_cashier:"10:00-19:00", training:"09:00-17:00"};
-const DEPARTMENTS = ["kitchen","sushi","cashier","management","training"];
-let DEPARTMENT_LABEL = {kitchen:"Kitchen", sushi:"스시", cashier:"Cashier", management:"Management", training:"Training"};
-const DEPARTMENT_SHIFTS = {
-  kitchen: ["opening","helper","closing1","closing2"],
-  sushi: ["sushi1","sushi2","sushi3"],
-  cashier: ["c_opening","c_helper","c_closing1","c_closing2"],
-  management: ["management","management_cashier"],
-  training: ["training"],
-};
+let SHIFT_TYPES = [];
+let SHIFT_LABEL = {};
+let SHIFT_TIME = {};
+let DEPARTMENTS = [];
+let DEPARTMENT_LABEL = {};
+let DEPARTMENT_SHIFTS = {};
+let customDepartments = [];  // [{id, name}] - 부서 관리 화면에서 그대로 씀
+let customShiftTypes = [];   // [{id, name, department_id, start, end, is_closing, blocked_after_closing}]
 const SHIFT_DEPT = {
   opening:"kitchen", helper:"kitchen", closing1:"kitchen", closing2:"kitchen",
   sushi1:"sushi", sushi2:"sushi", sushi3:"sushi",
@@ -761,6 +763,15 @@ const I18N = {
     admin_pending_nav_btn: "📋 승인 대기", admin_pending_title: "가입 승인 대기 목록",
     admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
     admin_pending_requested_at: "요청일", btn_approve: "승인", btn_reject: "거절",
+    dept_mgmt_title: "부서 및 근무유형 관리",
+    dept_mgmt_desc: "매장마다 부서 구성이 다를 수 있습니다 (예: Larder, Protein, Dessert, FOH 등). 여기서 부서와 근무유형을 자유롭게 추가·수정·삭제해서 우리 매장에 맞게 조정하세요.",
+    btn_delete_dept: "부서 삭제", btn_add_dept: "부서 추가", dept_new_name_placeholder: "새 부서 이름 (예: Larder)",
+    confirm_delete_dept_title: "이 부서를 삭제하시겠습니까?",
+    confirm_delete_dept_msg: "\"{name}\" 부서와 그 안의 모든 근무유형이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+    btn_delete_shift: "삭제", btn_add_shift: "근무유형 추가", shift_new_name_placeholder: "새 근무유형 이름",
+    confirm_delete_shift_title: "이 근무유형을 삭제하시겠습니까?",
+    confirm_delete_shift_msg: "\"{name}\" 근무유형이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+    shift_is_closing: "마감 근무", shift_blocked_after_closing: "마감 다음날 배정 금지",
     modal_network_error: "네트워크 연결을 확인하고 다시 시도해주세요.",
     auth_forgot_link: "비밀번호를 잊으셨나요?",
     auth_forgot_title: "비밀번호 재설정",
@@ -918,6 +929,15 @@ const I18N = {
     admin_pending_nav_btn: "📋 承認待ち", admin_pending_title: "登録承認待ちリスト",
     admin_pending_sub: "以下のリクエストを確認して承認または却下できます。", admin_pending_empty: "承認待ちのリクエストはありません。",
     admin_pending_requested_at: "申請日", btn_approve: "承認", btn_reject: "却下",
+    dept_mgmt_title: "部署・勤務タイプ管理",
+    dept_mgmt_desc: "店舗によって部署構成が異なる場合があります(例: Larder, Protein, Dessert, FOHなど)。ここで部署と勤務タイプを自由に追加・編集・削除して、自店舗に合わせて調整してください。",
+    btn_delete_dept: "部署を削除", btn_add_dept: "部署を追加", dept_new_name_placeholder: "新しい部署名 (例: Larder)",
+    confirm_delete_dept_title: "この部署を削除しますか?",
+    confirm_delete_dept_msg: "「{name}」部署とその中のすべての勤務タイプが削除されます。この操作は元に戻せません。",
+    btn_delete_shift: "削除", btn_add_shift: "勤務タイプを追加", shift_new_name_placeholder: "新しい勤務タイプ名",
+    confirm_delete_shift_title: "この勤務タイプを削除しますか?",
+    confirm_delete_shift_msg: "「{name}」勤務タイプが削除されます。この操作は元に戻せません。",
+    shift_is_closing: "クローズ勤務", shift_blocked_after_closing: "クローズ翌日の配置禁止",
     modal_network_error: "ネットワーク接続を確認して、もう一度お試しください。",
     auth_forgot_link: "パスワードをお忘れですか?",
     auth_forgot_title: "パスワード再設定",
@@ -1075,6 +1095,15 @@ const I18N = {
     admin_pending_nav_btn: "📋 Pending Requests", admin_pending_title: "Pending Signup Requests",
     admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
     admin_pending_requested_at: "Requested", btn_approve: "Approve", btn_reject: "Reject",
+    dept_mgmt_title: "Departments & Shift Types",
+    dept_mgmt_desc: "Every store's departments can be different (e.g. Larder, Protein, Dessert, FOH). Add, edit, or delete departments and shift types here to match your own store.",
+    btn_delete_dept: "Delete Department", btn_add_dept: "Add Department", dept_new_name_placeholder: "New department name (e.g. Larder)",
+    confirm_delete_dept_title: "Delete this department?",
+    confirm_delete_dept_msg: "\"{name}\" and all its shift types will be deleted. This cannot be undone.",
+    btn_delete_shift: "Delete", btn_add_shift: "Add Shift Type", shift_new_name_placeholder: "New shift type name",
+    confirm_delete_shift_title: "Delete this shift type?",
+    confirm_delete_shift_msg: "\"{name}\" will be deleted. This cannot be undone.",
+    shift_is_closing: "Closing shift", shift_blocked_after_closing: "Blocked the day after a closing shift",
     modal_network_error: "Please check your network connection and try again.",
     auth_forgot_link: "Forgot your password?",
     auth_forgot_title: "Reset Password",
@@ -1146,8 +1175,6 @@ function setLanguage(lang) {
   localStorage.setItem("roster_lang", lang);
   document.documentElement.lang = lang;
   Object.assign(DAY_LABEL, DAY_LABEL_I18N[lang]);
-  Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[lang]);
-  Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[lang]);
   applyI18nStatic();
   updateAuthLangButtonsUI();
   updateLockButtonUI();
@@ -1773,6 +1800,50 @@ async function loadEmployees() {
   renderCalendarArea();
 }
 
+// 이 회사가 만든 부서/근무유형을 서버에서 불러와서, 화면 전체(직원 부서 선택,
+// 근무요건 표, 근무유형 기본 시간, 캘린더 색상)가 참조하는 전역 데이터를 채웁니다.
+// Kitchen/Sushi 같은 이름이 코드에 없어도, 이 함수 하나로 전부 그 회사의 실제 이름으로 바뀝니다.
+const SHIFT_COLOR_PALETTE = [
+  "#facc15", "#4ade80", "#fb923c", "#a78bfa", "#38bdf8", "#f472b6",
+  "#fb7185", "#2dd4bf", "#c084fc", "#fbbf24", "#818cf8", "#34d399",
+];
+let _shiftColorCache = {};
+
+function shiftColor(shiftId) {
+  if (_shiftColorCache[shiftId]) return _shiftColorCache[shiftId];
+  const idx = customShiftTypes.findIndex(s => s.id === shiftId);
+  const color = SHIFT_COLOR_PALETTE[(idx >= 0 ? idx : 0) % SHIFT_COLOR_PALETTE.length];
+  _shiftColorCache[shiftId] = color;
+  return color;
+}
+
+async function loadDepartmentsAndShiftTypes() {
+  customDepartments = await api("/api/departments") || [];
+  customShiftTypes = await api("/api/shift-types") || [];
+
+  DEPARTMENTS = customDepartments.map(d => d.id);
+  DEPARTMENT_LABEL = {};
+  customDepartments.forEach(d => { DEPARTMENT_LABEL[d.id] = d.name; });
+
+  SHIFT_TYPES = customShiftTypes.map(s => s.id);
+  SHIFT_LABEL = {};
+  SHIFT_TIME = {};
+  customShiftTypes.forEach(s => {
+    SHIFT_LABEL[s.id] = s.name;
+    SHIFT_TIME[s.id] = `${s.start}-${s.end}`;
+  });
+
+  DEPARTMENT_SHIFTS = {};
+  DEPARTMENTS.forEach(deptId => {
+    DEPARTMENT_SHIFTS[deptId] = customShiftTypes.filter(s => s.department_id === deptId).map(s => s.id);
+  });
+
+  _shiftColorCache = {};
+  document.getElementById("emp-department").innerHTML = "";
+  ensureDepartmentSelectOptions();
+  renderDeptManagementUI();
+}
+
 function ensureDepartmentSelectOptions() {
   const sel = document.getElementById("emp-department");
   if (sel.options.length > 0) return;
@@ -2156,6 +2227,205 @@ function showNewWeekChoiceModal(weekLabel) {
 }
 
 let lastLoadedWeekKey = null; // 취소 시 되돌아갈 "마지막으로 정상 로드된 주"
+
+function renderDeptManagementUI() {
+  const wrap = document.getElementById("dept-management-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  customDepartments.forEach(dept => {
+    const box = document.createElement("div");
+    box.style.cssText = "border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:12px;";
+
+    const headRow = document.createElement("div");
+    headRow.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;";
+
+    const nameInput = document.createElement("input");
+    nameInput.value = dept.name;
+    nameInput.style.cssText = "font-weight:700; font-size:14px; max-width:220px;";
+    headRow.appendChild(nameInput);
+
+    const renameBtn = document.createElement("button");
+    renameBtn.className = "btn-ghost btn-sm";
+    renameBtn.textContent = t("btn_save");
+    renameBtn.onclick = async () => {
+      const newName = nameInput.value.trim();
+      if (!newName) return;
+      try {
+        await api(`/api/departments/${dept.id}`, {
+          method: "PUT", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name: newName}),
+        });
+        await loadDepartmentsAndShiftTypes();
+        renderDeptManagementUI();
+      } catch (e) {}
+    };
+    headRow.appendChild(renameBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn-danger btn-sm";
+    deleteBtn.textContent = t("btn_delete_dept");
+    deleteBtn.style.marginLeft = "auto";
+    deleteBtn.onclick = async () => {
+      const confirmed = await showConfirmModal(
+        t("confirm_delete_dept_title"), tf("confirm_delete_dept_msg", {name: dept.name}), t("btn_yes"), t("btn_no")
+      );
+      if (!confirmed) return;
+      try {
+        await api(`/api/departments/${dept.id}`, {method: "DELETE"});
+        await loadDepartmentsAndShiftTypes();
+        renderDeptManagementUI();
+        renderShiftTimeSettingsUI();
+        renderRequirementGrid();
+      } catch (e) {}
+    };
+    headRow.appendChild(deleteBtn);
+    box.appendChild(headRow);
+
+    // 이 부서의 근무유형 목록
+    const shiftsInDept = customShiftTypes.filter(s => s.department_id === dept.id);
+    shiftsInDept.forEach(shift => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap; padding-left:10px; border-left:2px solid var(--line);";
+
+      const sNameInput = document.createElement("input");
+      sNameInput.value = shift.name;
+      sNameInput.style.cssText = "max-width:150px; font-size:12.5px;";
+      row.appendChild(sNameInput);
+
+      const startInput = document.createElement("input");
+      startInput.type = "time";
+      startInput.value = shift.start;
+      enableClickToOpenDatePicker(startInput);
+      row.appendChild(startInput);
+
+      const dash = document.createElement("span");
+      dash.textContent = "~";
+      dash.style.color = "var(--text-muted)";
+      row.appendChild(dash);
+
+      const endInput = document.createElement("input");
+      endInput.type = "time";
+      endInput.value = shift.end;
+      enableClickToOpenDatePicker(endInput);
+      row.appendChild(endInput);
+
+      const closingLabel = document.createElement("label");
+      closingLabel.style.cssText = "font-size:11.5px; display:flex; align-items:center; gap:4px; color:var(--text-muted);";
+      const closingCb = document.createElement("input");
+      closingCb.type = "checkbox";
+      closingCb.checked = !!shift.is_closing;
+      closingLabel.appendChild(closingCb);
+      closingLabel.appendChild(document.createTextNode(t("shift_is_closing")));
+      row.appendChild(closingLabel);
+
+      const blockedLabel = document.createElement("label");
+      blockedLabel.style.cssText = "font-size:11.5px; display:flex; align-items:center; gap:4px; color:var(--text-muted);";
+      const blockedCb = document.createElement("input");
+      blockedCb.type = "checkbox";
+      blockedCb.checked = !!shift.blocked_after_closing;
+      blockedLabel.appendChild(blockedCb);
+      blockedLabel.appendChild(document.createTextNode(t("shift_blocked_after_closing")));
+      row.appendChild(blockedLabel);
+
+      const sSaveBtn = document.createElement("button");
+      sSaveBtn.className = "btn-ghost btn-sm";
+      sSaveBtn.textContent = t("btn_save");
+      sSaveBtn.onclick = async () => {
+        try {
+          await api(`/api/shift-types/${shift.id}`, {
+            method: "PUT", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              name: sNameInput.value.trim(), start: startInput.value, end: endInput.value,
+              is_closing: closingCb.checked, blocked_after_closing: blockedCb.checked,
+            }),
+          });
+          await loadDepartmentsAndShiftTypes();
+          renderDeptManagementUI();
+          renderShiftTimeSettingsUI();
+          renderRequirementGrid();
+          renderCalendarArea();
+        } catch (e) {}
+      };
+      row.appendChild(sSaveBtn);
+
+      const sDeleteBtn = document.createElement("button");
+      sDeleteBtn.className = "btn-danger btn-sm";
+      sDeleteBtn.textContent = t("btn_delete_shift");
+      sDeleteBtn.onclick = async () => {
+        const confirmed = await showConfirmModal(
+          t("confirm_delete_shift_title"), tf("confirm_delete_shift_msg", {name: shift.name}), t("btn_yes"), t("btn_no")
+        );
+        if (!confirmed) return;
+        try {
+          await api(`/api/shift-types/${shift.id}`, {method: "DELETE"});
+          await loadDepartmentsAndShiftTypes();
+          renderDeptManagementUI();
+          renderShiftTimeSettingsUI();
+          renderRequirementGrid();
+          renderCalendarArea();
+        } catch (e) {}
+      };
+      row.appendChild(sDeleteBtn);
+
+      box.appendChild(row);
+    });
+
+    // 이 부서에 새 근무유형 추가
+    const addRow = document.createElement("div");
+    addRow.style.cssText = "display:flex; align-items:center; gap:6px; margin-top:8px; flex-wrap:wrap; padding-left:10px;";
+    const newShiftName = document.createElement("input");
+    newShiftName.placeholder = t("shift_new_name_placeholder");
+    newShiftName.style.cssText = "max-width:150px; font-size:12.5px;";
+    addRow.appendChild(newShiftName);
+    const addShiftBtn = document.createElement("button");
+    addShiftBtn.className = "btn-ghost btn-sm";
+    addShiftBtn.textContent = t("btn_add_shift");
+    addShiftBtn.onclick = async () => {
+      const name = newShiftName.value.trim();
+      if (!name) return;
+      try {
+        await api("/api/shift-types", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name, department_id: dept.id, start: "09:00", end: "17:00"}),
+        });
+        await loadDepartmentsAndShiftTypes();
+        renderDeptManagementUI();
+        renderShiftTimeSettingsUI();
+        renderRequirementGrid();
+      } catch (e) {}
+    };
+    addRow.appendChild(addShiftBtn);
+    box.appendChild(addRow);
+
+    wrap.appendChild(box);
+  });
+
+  // 새 부서 추가
+  const newDeptRow = document.createElement("div");
+  newDeptRow.style.cssText = "display:flex; align-items:center; gap:8px; margin-top:6px;";
+  const newDeptInput = document.createElement("input");
+  newDeptInput.placeholder = t("dept_new_name_placeholder");
+  newDeptInput.style.cssText = "max-width:220px;";
+  newDeptRow.appendChild(newDeptInput);
+  const addDeptBtn = document.createElement("button");
+  addDeptBtn.className = "btn-primary btn-sm";
+  addDeptBtn.textContent = t("btn_add_dept");
+  addDeptBtn.onclick = async () => {
+    const name = newDeptInput.value.trim();
+    if (!name) return;
+    try {
+      await api("/api/departments", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name}),
+      });
+      await loadDepartmentsAndShiftTypes();
+      renderDeptManagementUI();
+    } catch (e) {}
+  };
+  newDeptRow.appendChild(addDeptBtn);
+  wrap.appendChild(newDeptRow);
+}
 
 async function loadShiftTimeSettings() {
   const data = await api("/api/shift-time-settings");
@@ -3212,21 +3482,11 @@ function renderSchedule(result) {
 
   const legend = document.createElement("div");
   legend.className = "legend";
+  const legendItems = SHIFT_TYPES.map(s =>
+    `<span><i style="background:${shiftColor(s)}"></i>${SHIFT_LABEL[s]}</span>`
+  ).join("");
   legend.innerHTML = `
-    <span><i style="background:var(--opening)"></i>${SHIFT_LABEL.opening}</span>
-    <span><i style="background:var(--helper)"></i>${SHIFT_LABEL.helper}</span>
-    <span><i style="background:var(--closing1)"></i>${SHIFT_LABEL.closing1}</span>
-    <span><i style="background:var(--closing2)"></i>${SHIFT_LABEL.closing2}</span>
-    <span><i style="background:var(--sushi1)"></i>${SHIFT_LABEL.sushi1}</span>
-    <span><i style="background:var(--sushi2)"></i>${SHIFT_LABEL.sushi2}</span>
-    <span><i style="background:var(--sushi3)"></i>${SHIFT_LABEL.sushi3}</span>
-    <span><i style="background:var(--c-opening)"></i>${SHIFT_LABEL.c_opening}</span>
-    <span><i style="background:var(--c-helper)"></i>${SHIFT_LABEL.c_helper}</span>
-    <span><i style="background:var(--c-closing1)"></i>${SHIFT_LABEL.c_closing1}</span>
-    <span><i style="background:var(--c-closing2)"></i>${SHIFT_LABEL.c_closing2}</span>
-    <span><i style="background:var(--management)"></i>${SHIFT_LABEL.management}</span>
-    <span><i style="background:var(--management-cashier)"></i>${SHIFT_LABEL.management_cashier}</span>
-    <span><i style="background:var(--training)"></i>${SHIFT_LABEL.training}</span>
+    ${legendItems}
     <span><i style="background:var(--off-bg); border:1px solid var(--border);"></i>${t("legend_off")}</span>
     <span style="margin-left:auto; color:var(--text-muted);">${t("legend_hint")}</span>
   `;
@@ -3380,7 +3640,11 @@ function buildCalendarGrid() {
         currentAssignments.forEach((a, idx) => {
           if (a.employee_id === empId && a.day === day) {
             const block = document.createElement("div");
-            block.className = "shift-block " + a.shift_type;
+            block.className = "shift-block";
+            const c = shiftColor(a.shift_type);
+            block.style.background = c + "24";
+            block.style.borderLeftColor = c;
+            block.style.color = c;
             block.draggable = !weekLocked;
             const timeLabel = (a.custom_start && a.custom_end) ? `${a.custom_start}-${a.custom_end}` : SHIFT_TIME[a.shift_type];
             const sourceLabel = a.source === "manual" ? t("manual_placed") : t("auto_placed");
@@ -3661,6 +3925,7 @@ async function initAppData() {
   applyFeatureToggles();
   window._weekOffDays = {};
   currentWeekKey = mondayKeyFromDate(new Date());
+  await loadDepartmentsAndShiftTypes();
   if (isFeatureEnabled("shift_time_settings")) await loadShiftTimeSettings();
   await loadEmployees();
   if (isFeatureEnabled("public_holiday")) await loadPublicHolidays();
@@ -3670,8 +3935,6 @@ async function initAppData() {
 (async () => {
   document.documentElement.lang = currentLang;
   Object.assign(DAY_LABEL, DAY_LABEL_I18N[currentLang]);
-  Object.assign(SHIFT_LABEL, SHIFT_LABEL_I18N[currentLang]);
-  Object.assign(DEPARTMENT_LABEL, DEPARTMENT_LABEL_I18N[currentLang]);
   applyI18nStatic();
   updateAuthLangButtonsUI();
   switchAuthMode("login");
