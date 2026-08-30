@@ -75,11 +75,15 @@ SHIFT_DEPARTMENT = {s: v["dept"] for s, v in SHIFT_DEFS.items()}
 DEPARTMENT_SHIFTS = {dept: [s for s, v in SHIFT_DEFS.items() if v["dept"] == dept] for dept in DEPARTMENTS}
 
 
+def _hours_from_range(start: str, end: str) -> float:
+    sh, sm = map(int, start.split(":"))
+    eh, em = map(int, end.split(":"))
+    return (eh * 60 + em - sh * 60 - sm) / 60
+
+
 def _hours(shift: str) -> float:
     s, e = SHIFT_TIME_RANGES[shift]
-    sh, sm = map(int, s.split(":"))
-    eh, em = map(int, e.split(":"))
-    return (eh * 60 + em - sh * 60 - sm) / 60
+    return _hours_from_range(s, e)
 
 
 SHIFT_HOURS = {s: _hours(s) for s in SHIFT_TYPES}
@@ -134,9 +138,9 @@ class ScheduleResult:
     consecutive_issues: list[dict] = field(default_factory=list)
 
 
-def _explain_shortfall(req: "ShiftRequirement", employees: list["Employee"]) -> dict:
+def _explain_shortfall(req: "ShiftRequirement", employees: list["Employee"], shift_department: dict) -> dict:
     day, shift = req.day, req.shift_type
-    req_dept = SHIFT_DEPARTMENT.get(shift)
+    req_dept = shift_department.get(shift)
     reasons = {"forced_off": 0, "blocked_shift_type": 0, "different_department": 0}
     blocked_count = 0
 
@@ -172,15 +176,38 @@ def solve_schedule(
     random_seed: Optional[int] = None,
     pinned: Optional[list[tuple]] = None,
     shift_hours: Optional[dict] = None,
+    shift_types: Optional[list[str]] = None,
+    shift_defs: Optional[dict] = None,
+    departments: Optional[list[str]] = None,
 ) -> ScheduleResult:
+    """shift_types/shift_defs/departments를 안 넘기면 코드에 기본 내장된 구성(Kitchen/Sushi/...)을
+    씁니다. 회사가 직접 만든 커스텀 부서·근무유형이 있으면, app.py에서 그 데이터를 이 형태로
+    변환해서 넘겨줍니다 — 이 함수 자체는 "부서/근무유형이 뭐가 있는지" 전혀 모르는 채로,
+    넘겨받은 목록만 갖고 계산합니다."""
+    shift_types = shift_types if shift_types is not None else SHIFT_TYPES
+    shift_defs = shift_defs if shift_defs is not None else SHIFT_DEFS
+    departments = departments if departments is not None else DEPARTMENTS
+
+    shift_department = {s: shift_defs[s]["dept"] for s in shift_types if s in shift_defs}
+    forbidden_consecutive = {
+        (prev, nxt)
+        for prev in shift_types if shift_defs.get(prev, {}).get("is_closing")
+        for nxt in shift_types if shift_defs.get(nxt, {}).get("blocked_after_closing")
+    }
+    default_hours = {}
+    for s in shift_types:
+        d = shift_defs.get(s, {})
+        t = d.get("time")
+        default_hours[s] = _hours_from_range(*t) if t else 8.0
+
     model = cp_model.CpModel()
     pinned_set = set(pinned or [])
-    hours_map = shift_hours or SHIFT_HOURS  # 관리자가 근무유형 기본 시간을 조정했으면 그 값을 사용
+    hours_map = shift_hours or default_hours  # 관리자가 근무유형 기본 시간을 조정했으면 그 값을 사용
 
     x = {}
     for e in employees:
         for day in DAYS:
-            for shift in SHIFT_TYPES:
+            for shift in shift_types:
                 x[(e.id, day, shift)] = model.NewBoolVar(f"x_{e.id}_{day}_{shift}")
 
     # ---- 수동으로 미리 배치해둔 자리는 그대로 고정 (하드) ----
@@ -198,11 +225,11 @@ def solve_schedule(
     # ---- 하드 규칙들 (항상 적용) ----
     for e in employees:
         for day in DAYS:
-            model.Add(sum(x[(e.id, day, s)] for s in SHIFT_TYPES) <= 1)
+            model.Add(sum(x[(e.id, day, s)] for s in shift_types) <= 1)
 
     for e in employees:
         for day in e.forced_off_days:
-            for shift in SHIFT_TYPES:
+            for shift in shift_types:
                 model.Add(x[(e.id, day, shift)] == 0)
 
     for e in employees:
@@ -212,8 +239,8 @@ def solve_schedule(
 
     # ---- 하드: 자동 생성 시 타 부서 근무유형 배정 금지 (수동 고정 배치는 예외) ----
     for e in employees:
-        for shift in SHIFT_TYPES:
-            if SHIFT_DEPARTMENT[shift] == e.department:
+        for shift in shift_types:
+            if shift_department[shift] == e.department:
                 continue
             for day in DAYS:
                 if (e.id, day, shift) in pinned_set:
@@ -223,14 +250,14 @@ def solve_schedule(
     for e in employees:
         total_hours_x1000 = sum(
             x[(e.id, day, shift)] * round(hours_map[shift] * 1000)
-            for day in DAYS for shift in SHIFT_TYPES
+            for day in DAYS for shift in shift_types
         )
         model.Add(total_hours_x1000 >= round(e.min_hours_per_week * 1000))
 
     for e in employees:
         for i in range(len(DAYS) - 1):
             today, tomorrow = DAYS[i], DAYS[i + 1]
-            for (prev_shift, next_shift) in FORBIDDEN_CONSECUTIVE:
+            for (prev_shift, next_shift) in forbidden_consecutive:
                 model.Add(
                     x[(e.id, today, prev_shift)] + x[(e.id, tomorrow, next_shift)] <= 1
                 )
@@ -252,7 +279,7 @@ def solve_schedule(
         consecutive_viol_vars[e.id] = {}
         for i, day in enumerate(DAYS):
             worked = model.NewBoolVar(f"worked_{e.id}_{day}")
-            model.Add(sum(x[(e.id, day, s)] for s in SHIFT_TYPES) == worked)
+            model.Add(sum(x[(e.id, day, s)] for s in shift_types) == worked)
             worked_vars[e.id][day] = worked
 
             streak = model.NewIntVar(0, MAX_CONSECUTIVE_DAYS + len(DAYS), f"streak_{e.id}_{day}")
@@ -276,7 +303,7 @@ def solve_schedule(
     pref_off_violation_terms = []
     for e in employees:
         for day in e.preferred_off_days:
-            for shift in SHIFT_TYPES:
+            for shift in shift_types:
                 if (e.id, day, shift) in x:
                     pref_off_violation_terms.append(x[(e.id, day, shift)])
 
@@ -292,10 +319,10 @@ def solve_schedule(
         # "힘든 근무"는 부서·이름이 아니라 근무유형 속성(is_closing)으로 판단합니다.
         # 이러면 Kitchen뿐 아니라 Cashier 등 마감이 있는 모든 부서에 공평하게 적용됩니다.
         closing_assignments = sum(
-            x[(e.id, day, s)] for day in DAYS for s in SHIFT_TYPES if SHIFT_DEFS[s]["is_closing"]
+            x[(e.id, day, s)] for day in DAYS for s in shift_types if shift_defs[s]["is_closing"]
         )
         weekend_assignments = sum(
-            x[(e.id, day, s)] for day in ["sat", "sun"] for s in SHIFT_TYPES
+            x[(e.id, day, s)] for day in ["sat", "sun"] for s in shift_types
         )
         fairness_penalty_terms.append(closing_assignments * e.recent_night_count)
         fairness_penalty_terms.append(weekend_assignments * e.recent_weekend_count)
@@ -303,7 +330,7 @@ def solve_schedule(
     day_count_dev_vars = {}
     for e in employees:
         if e.target_days_per_week is not None:
-            actual_days = sum(x[(e.id, day, s)] for day in DAYS for s in SHIFT_TYPES)
+            actual_days = sum(x[(e.id, day, s)] for day in DAYS for s in shift_types)
             dev = model.NewIntVar(0, 7, f"devdays_{e.id}")
             model.AddAbsEquality(dev, actual_days - e.target_days_per_week)
             day_count_dev_vars[e.id] = dev
@@ -315,7 +342,7 @@ def solve_schedule(
             off_vars_local = {}
             for day in DAYS:
                 off = model.NewBoolVar(f"off_{e.id}_{day}")
-                model.Add(sum(x[(e.id, day, s)] for s in SHIFT_TYPES) + off == 1)
+                model.Add(sum(x[(e.id, day, s)] for s in shift_types) + off == 1)
                 off_vars_local[day] = off
 
             emp_pattern_vars = []
@@ -410,7 +437,7 @@ def solve_schedule(
     assignments = []
     for e in employees:
         for day in DAYS:
-            for shift in SHIFT_TYPES:
+            for shift in shift_types:
                 if solver.Value(x[(e.id, day, shift)]) == 1:
                     assignments.append(
                         {"employee_id": e.id, "employee_name": e.name, "day": day, "shift_type": shift}
@@ -421,7 +448,7 @@ def solve_schedule(
     for idx, req in enumerate(requirements):
         gap = solver.Value(shortfall[idx])
         if gap > 0:
-            explanation = _explain_shortfall(req, employees)
+            explanation = _explain_shortfall(req, employees, shift_department)
             reason_str = ", ".join(f"{k} {v}명" for k, v in explanation["reasons"].items())
             unmet.append({
                 "day": req.day, "shift_type": req.shift_type, "missing_count": gap,
@@ -499,7 +526,7 @@ def solve_schedule(
     FAIRNESS_ALERT_THRESHOLD = 3  # 최근 집계 중 이 값(포함) 이상이면 "몰림" 경고 대상
     for e in employees:
         got_closing = any(
-            a["employee_id"] == e.id and SHIFT_DEFS[a["shift_type"]]["is_closing"] for a in assignments
+            a["employee_id"] == e.id and shift_defs[a["shift_type"]]["is_closing"] for a in assignments
         )
         got_weekend = any(
             a["employee_id"] == e.id and a["day"] in ("sat", "sun") for a in assignments

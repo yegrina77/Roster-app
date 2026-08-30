@@ -384,8 +384,8 @@ def save_state(company_id, state):
 
 def _effective_shift_times(state):
     """근무유형별 실제 적용되는 시작/종료 시간. 관리자가 조정해둔 값(shift_time_overrides)이
-    있으면 그걸 쓰고, 없으면 코드에 정의된 기본값(SHIFT_TIME_RANGES)을 씁니다."""
-    times = dict(SHIFT_TIME_RANGES)
+    있으면 그걸 쓰고, 없으면 이 회사가 설정해둔 근무유형 기본값(shift_types)을 씁니다."""
+    times = {s["id"]: (s["start"], s["end"]) for s in state.get("shift_types", [])}
     for shift, ov in state.get("shift_time_overrides", {}).items():
         if shift in times and ov.get("start") and ov.get("end"):
             times[shift] = (ov["start"], ov["end"])
@@ -399,6 +399,24 @@ def _effective_shift_hours(state):
         eh, em = map(int, e.split(":"))
         hours[shift] = (eh * 60 + em - sh * 60 - sm) / 60
     return hours
+
+
+def _scheduler_shift_defs(state):
+    """이 회사가 만든 부서/근무유형(state["departments"], state["shift_types"])을,
+    scheduler.py의 solve_schedule()이 이해하는 형태로 변환합니다. 이렇게 하면 스케줄
+    계산 엔진은 "Kitchen이 뭔지" 전혀 몰라도, 이 회사가 정의한 목록만 갖고 계산합니다."""
+    shift_types = [s["id"] for s in state.get("shift_types", [])]
+    shift_defs = {
+        s["id"]: {
+            "dept": s["department_id"],
+            "is_closing": bool(s.get("is_closing")),
+            "blocked_after_closing": bool(s.get("blocked_after_closing")),
+            "time": (s["start"], s["end"]),
+        }
+        for s in state.get("shift_types", [])
+    }
+    departments = [d["id"] for d in state.get("departments", [])]
+    return shift_types, shift_defs, departments
 
 
 def empty_week():
@@ -926,7 +944,8 @@ def set_shift_time_setting(company_id):
     shift = payload.get("shift_type")
     start = payload.get("start")
     end = payload.get("end")
-    if shift not in SHIFT_TYPES:
+    valid_ids = {s["id"] for s in state.get("shift_types", [])}
+    if shift not in valid_ids:
         return jsonify({"error": "This shift type does not exist."}), 400
     if not start or not end:
         return jsonify({"error": "start and end are required."}), 400
@@ -938,11 +957,13 @@ def set_shift_time_setting(company_id):
 @app.route("/api/shift-time-settings/<shift_type>", methods=["DELETE"])
 @require_login
 def reset_shift_time_setting(company_id, shift_type):
-    """이 근무유형의 시간을 코드에 정의된 원래 기본값으로 되돌립니다."""
+    """이 근무유형의 시간을, 회사가 근무유형을 만들 때 정한 원래 기본값으로 되돌립니다."""
     state = load_state(company_id)
     state.get("shift_time_overrides", {}).pop(shift_type, None)
     save_state(company_id, state)
-    default_start, default_end = SHIFT_TIME_RANGES.get(shift_type, (None, None))
+    shift_def = next((s for s in state.get("shift_types", []) if s["id"] == shift_type), None)
+    default_start = shift_def["start"] if shift_def else None
+    default_end = shift_def["end"] if shift_def else None
     return jsonify({"shift_type": shift_type, "start": default_start, "end": default_end})
 
 
@@ -1209,12 +1230,16 @@ def generate_week_schedule(company_id, week_key):
     pinned = [(a["employee_id"], a["day"], a["shift_type"]) for a in pin_raw]
     random_seed = random.randint(1, 10_000_000) if exclude_solutions else None
 
+    shift_types, shift_defs, departments = _scheduler_shift_defs(state)
     result = solve_schedule(
         employees, requirements,
         exclude_solutions=exclude_solutions or None,
         random_seed=random_seed,
         pinned=pinned or None,
         shift_hours=_effective_shift_hours(state),
+        shift_types=shift_types,
+        shift_defs=shift_defs,
+        departments=departments,
     )
 
     result_dict = {
@@ -1429,6 +1454,7 @@ RECENT_FAIRNESS_WINDOW_WEEKS = 4  # 공정성 판단에 참고하는 "최근" �
 def _recent_shift_counts(state, employee_id, week_key, window=RECENT_FAIRNESS_WINDOW_WEEKS):
     """이 주(week_key) 이전 최근 window주 동안, 이 직원이 마감(is_closing) 근무를 몇 번,
     주말(토/일) 근무를 몇 번 했는지 셉니다. 이번 주 자체는 포함하지 않습니다(아직 계산 전이므로)."""
+    closing_ids = {s["id"] for s in state.get("shift_types", []) if s.get("is_closing")}
     y, m, d = map(int, week_key.split("-"))
     base_monday = date(y, m, d)
     night_count = 0
@@ -1442,7 +1468,7 @@ def _recent_shift_counts(state, employee_id, week_key, window=RECENT_FAIRNESS_WI
         for a in assignments:
             if a["employee_id"] != employee_id:
                 continue
-            if SHIFT_DEFS.get(a["shift_type"], {}).get("is_closing"):
+            if a["shift_type"] in closing_ids:
                 night_count += 1
             if a["day"] in ("sat", "sun"):
                 weekend_count += 1
