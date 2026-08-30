@@ -314,15 +314,67 @@ def require_admin(f):
     return wrapper
 
 
+def _default_departments():
+    """새 회사가 가입할 때, 그리고 이 기능이 생기기 전에 이미 있던 회사에 채워주는 기본값입니다.
+    회사는 이후 자유롭게 이름을 바꾸거나 추가·삭제할 수 있습니다 — 이건 코드에 고정된 값이 아니라
+    '시작할 때 미리 채워주는 예시'일 뿐입니다."""
+    return [
+        {"id": "kitchen", "name": "Kitchen"},
+        {"id": "sushi", "name": "Sushi"},
+        {"id": "cashier", "name": "Cashier"},
+        {"id": "management", "name": "Management"},
+        {"id": "training", "name": "Training"},
+    ]
+
+
+def _default_shift_types():
+    return [
+        {"id": "opening", "name": "Opening", "department_id": "kitchen", "start": "06:00", "end": "15:00", "is_closing": False, "blocked_after_closing": True},
+        {"id": "helper", "name": "Helper", "department_id": "kitchen", "start": "08:00", "end": "17:00", "is_closing": False, "blocked_after_closing": True},
+        {"id": "closing1", "name": "Closing1", "department_id": "kitchen", "start": "11:00", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
+        {"id": "closing2", "name": "Closing2", "department_id": "kitchen", "start": "11:30", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
+        {"id": "sushi1", "name": "Sushi 1", "department_id": "sushi", "start": "05:00", "end": "14:00", "is_closing": False, "blocked_after_closing": False},
+        {"id": "sushi2", "name": "Sushi 2", "department_id": "sushi", "start": "05:00", "end": "14:00", "is_closing": False, "blocked_after_closing": False},
+        {"id": "sushi3", "name": "Sushi 3", "department_id": "sushi", "start": "10:00", "end": "19:00", "is_closing": False, "blocked_after_closing": False},
+        {"id": "c_opening", "name": "C.Opening", "department_id": "cashier", "start": "06:00", "end": "15:00", "is_closing": False, "blocked_after_closing": True},
+        {"id": "c_helper", "name": "C.Helper", "department_id": "cashier", "start": "10:00", "end": "19:00", "is_closing": False, "blocked_after_closing": True},
+        {"id": "c_closing1", "name": "C.Closing1", "department_id": "cashier", "start": "11:00", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
+        {"id": "c_closing2", "name": "C.Closing2", "department_id": "cashier", "start": "12:00", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
+        {"id": "management", "name": "Management", "department_id": "management", "start": "09:00", "end": "18:00", "is_closing": False, "blocked_after_closing": False},
+        {"id": "management_cashier", "name": "Management & Cashier", "department_id": "management", "start": "10:00", "end": "19:00", "is_closing": False, "blocked_after_closing": False},
+        {"id": "training", "name": "Training", "department_id": "training", "start": "09:00", "end": "17:00", "is_closing": False, "blocked_after_closing": False},
+    ]
+
+
+def _slugify_id(name, existing_ids):
+    """사람이 입력한 이름(예: "Larder")에서 안전한 내부 id(예: "larder")를 만듭니다.
+    이미 있는 id와 겹치면 뒤에 숫자를 붙여 구분합니다."""
+    base = re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_") or "item"
+    slug = base
+    n = 2
+    while slug in existing_ids:
+        slug = f"{base}_{n}"
+        n += 1
+    return slug
+
+
 def load_state(company_id):
     raw = _raw_get(f"roster_state:{company_id}")
     if not raw:
-        return {"employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {}}
+        return {
+            "employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {},
+            "departments": _default_departments(), "shift_types": _default_shift_types(),
+        }
     state = json.loads(raw)
     state.setdefault("employees", [])
     state.setdefault("weeks", {})
     state.setdefault("public_holidays", [])
     state.setdefault("shift_time_overrides", {})
+    # 이 기능(커스텀 부서/근무유형)이 생기기 전에 이미 만들어진 회사에는, 지금까지 쓰던
+    # 고정 부서/근무유형을 그대로 "이 회사의 데이터"로 한 번 채워 넣어줍니다. 이후로는
+    # 이 회사가 자유롭게 수정·추가·삭제할 수 있는 자기 데이터가 됩니다.
+    state.setdefault("departments", _default_departments())
+    state.setdefault("shift_types", _default_shift_types())
     return state
 
 
@@ -527,6 +579,151 @@ def get_meta():
         "shift_labels": SHIFT_LABEL_KO,
         "shift_times": SHIFT_TIME_RANGES,
     })
+
+
+# ---------------------------------------------------------------------------
+# 회사별 커스텀 부서 (Department)
+# 매장마다 부서 구성이 다를 수 있어서(예: Larder/Protein/Dessert/FOH 등),
+# 더 이상 코드에 고정된 목록이 아니라 각 회사가 직접 만들고 관리하는 데이터입니다.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/departments", methods=["GET"])
+@require_login
+def list_departments(company_id):
+    state = load_state(company_id)
+    return jsonify(state["departments"])
+
+
+@app.route("/api/departments", methods=["POST"])
+@require_login
+def add_department(company_id):
+    state = load_state(company_id)
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Department name is required."}), 400
+    existing_ids = {d["id"] for d in state["departments"]}
+    if any(d["name"].lower() == name.lower() for d in state["departments"]):
+        return jsonify({"error": "A department with this name already exists."}), 400
+    dept = {"id": _slugify_id(name, existing_ids), "name": name}
+    state["departments"].append(dept)
+    save_state(company_id, state)
+    return jsonify(dept), 201
+
+
+@app.route("/api/departments/<dept_id>", methods=["PUT"])
+@require_login
+def rename_department(company_id, dept_id):
+    state = load_state(company_id)
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Department name is required."}), 400
+    for d in state["departments"]:
+        if d["id"] == dept_id:
+            d["name"] = name
+            save_state(company_id, state)
+            return jsonify(d)
+    return jsonify({"error": "Department not found."}), 404
+
+
+@app.route("/api/departments/<dept_id>", methods=["DELETE"])
+@require_login
+def delete_department(company_id, dept_id):
+    state = load_state(company_id)
+    employees_using_it = [e for e in state["employees"] if e.get("department") == dept_id]
+    if employees_using_it:
+        names = ", ".join(e["name"] for e in employees_using_it[:5])
+        return jsonify({
+            "error": f"Cannot delete: {len(employees_using_it)} employee(s) are still assigned to this "
+                     f"department ({names}{'...' if len(employees_using_it) > 5 else ''}). "
+                     f"Please reassign them to a different department first.",
+        }), 400
+    state["departments"] = [d for d in state["departments"] if d["id"] != dept_id]
+    removed_shift_ids = {s["id"] for s in state["shift_types"] if s["department_id"] == dept_id}
+    state["shift_types"] = [s for s in state["shift_types"] if s["department_id"] != dept_id]
+    for shift_id in removed_shift_ids:
+        state.get("shift_time_overrides", {}).pop(shift_id, None)
+    for e in state["employees"]:
+        e["blocked_shift_types"] = [s for s in e.get("blocked_shift_types", []) if s not in removed_shift_ids]
+        e["preferred"] = [p for p in e.get("preferred", []) if p[1] not in removed_shift_ids]
+    save_state(company_id, state)
+    return "", 204
+
+
+# ---------------------------------------------------------------------------
+# 회사별 커스텀 근무유형 (Shift Type)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/shift-types", methods=["GET"])
+@require_login
+def list_shift_types(company_id):
+    state = load_state(company_id)
+    return jsonify(state["shift_types"])
+
+
+@app.route("/api/shift-types", methods=["POST"])
+@require_login
+def add_shift_type(company_id):
+    state = load_state(company_id)
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    department_id = payload.get("department_id")
+    start = payload.get("start") or "09:00"
+    end = payload.get("end") or "17:00"
+    is_closing = bool(payload.get("is_closing", False))
+    blocked_after_closing = bool(payload.get("blocked_after_closing", False))
+
+    if not name:
+        return jsonify({"error": "Shift type name is required."}), 400
+    if not any(d["id"] == department_id for d in state["departments"]):
+        return jsonify({"error": "That department does not exist."}), 400
+    if any(s["name"].lower() == name.lower() and s["department_id"] == department_id for s in state["shift_types"]):
+        return jsonify({"error": "A shift type with this name already exists in this department."}), 400
+
+    existing_ids = {s["id"] for s in state["shift_types"]}
+    shift = {
+        "id": _slugify_id(name, existing_ids), "name": name, "department_id": department_id,
+        "start": start, "end": end, "is_closing": is_closing, "blocked_after_closing": blocked_after_closing,
+    }
+    state["shift_types"].append(shift)
+    save_state(company_id, state)
+    return jsonify(shift), 201
+
+
+@app.route("/api/shift-types/<shift_id>", methods=["PUT"])
+@require_login
+def update_shift_type(company_id, shift_id):
+    state = load_state(company_id)
+    payload = request.get_json(silent=True) or {}
+    for s in state["shift_types"]:
+        if s["id"] == shift_id:
+            if "name" in payload and payload["name"].strip():
+                s["name"] = payload["name"].strip()
+            if "start" in payload:
+                s["start"] = payload["start"]
+            if "end" in payload:
+                s["end"] = payload["end"]
+            if "is_closing" in payload:
+                s["is_closing"] = bool(payload["is_closing"])
+            if "blocked_after_closing" in payload:
+                s["blocked_after_closing"] = bool(payload["blocked_after_closing"])
+            save_state(company_id, state)
+            return jsonify(s)
+    return jsonify({"error": "Shift type not found."}), 404
+
+
+@app.route("/api/shift-types/<shift_id>", methods=["DELETE"])
+@require_login
+def delete_shift_type(company_id, shift_id):
+    state = load_state(company_id)
+    state["shift_types"] = [s for s in state["shift_types"] if s["id"] != shift_id]
+    state.get("shift_time_overrides", {}).pop(shift_id, None)
+    for e in state["employees"]:
+        e["blocked_shift_types"] = [s for s in e.get("blocked_shift_types", []) if s != shift_id]
+        e["preferred"] = [p for p in e.get("preferred", []) if p[1] != shift_id]
+    save_state(company_id, state)
+    return "", 204
 
 
 # ---------------------------------------------------------------------------
