@@ -407,6 +407,7 @@ def load_state(company_id):
         return {
             "employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {},
             "departments": _default_departments(), "shift_types": _default_shift_types(),
+            "public_holiday_policy": _default_public_holiday_policy(),
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -418,6 +419,10 @@ def load_state(company_id):
     # 이 회사가 자유롭게 수정·추가·삭제할 수 있는 자기 데이터가 됩니다.
     state.setdefault("departments", _default_departments())
     state.setdefault("shift_types", _default_shift_types())
+    # 회사별 공휴일 급여 정책 커스터마이징 기능이 생기기 전에 가입한 회사에는, 지금까지
+    # 모든 회사에 똑같이 적용되던 계산 기준(8주 중 5주 이상)을 그대로 자기 회사 설정값으로
+    # 채워 넣어줍니다. 이후로는 이 회사가 Settings에서 자유롭게 바꿀 수 있는 자기 데이터입니다.
+    state.setdefault("public_holiday_policy", _default_public_holiday_policy())
     return state
 
 
@@ -1784,6 +1789,74 @@ def get_weekday_frequency(company_id, week_key):
 
 
 HOLIDAY_OWD_THRESHOLD = 5  # 지난 8주(이번 주 포함) 중 이 값(포함) 이상 일했으면 "평소 근무 요일"로 간주
+# (회사별 설정이 없는 경우의 기본값으로 계속 쓰입니다 — _default_public_holiday_policy 참고)
+
+
+def _default_public_holiday_policy():
+    """공휴일 급여 정책이 생기기 전부터 모든 회사에 똑같이 적용되던 계산 기준을
+    그대로 기본값으로 씁니다: 지난 8주(이번 주 포함) 중 5주 이상 그 요일에 근무했으면
+    '평소 근무 요일'로 간주. 회사는 이후 Settings에서 window_weeks/min_weeks_worked를
+    자유롭게 바꾸거나, method 자체를 "actual_only"(과거 기록 없이 그날 근무 여부만 기준)로
+    바꿀 수 있습니다."""
+    return {
+        "method": "threshold",  # "threshold" | "actual_only"
+        "window_weeks": FREQUENCY_WINDOW_WEEKS,
+        "min_weeks_worked": HOLIDAY_OWD_THRESHOLD,
+        # method가 "actual_only"일 때만 쓰입니다: 공휴일에 실제로 일한 경우 어떤 대우를
+        # 줄지 — "A"(1.5배 + 대체휴무) 또는 "C"(1.5배만, 대체휴무 없음). 일하지 않은 경우는
+        # 항상 "해당 없음"으로 처리됩니다(과거 기록을 안 보므로 "평소 근무일이라 쉬어도
+        # 하루치 급여를 준다"는 판단 자체를 할 수 없기 때문입니다).
+        "actual_only_worked_category": "C",
+    }
+
+
+def _validate_public_holiday_policy(payload):
+    """회사가 보낸 공휴일 정책 설정값을 검증하고, 정리된 딕셔너리를 돌려줍니다.
+    문제가 있으면 (None, 에러메시지)를 돌려줍니다."""
+    method = payload.get("method")
+    if method not in ("threshold", "actual_only"):
+        return None, "method는 'threshold' 또는 'actual_only'여야 합니다."
+
+    policy = {"method": method}
+    if method == "threshold":
+        try:
+            window_weeks = int(payload.get("window_weeks"))
+            min_weeks_worked = int(payload.get("min_weeks_worked"))
+        except (TypeError, ValueError):
+            return None, "window_weeks와 min_weeks_worked는 숫자여야 합니다."
+        if window_weeks < 1 or window_weeks > 26:
+            return None, "window_weeks는 1~26 사이여야 합니다."
+        if min_weeks_worked < 1 or min_weeks_worked > window_weeks:
+            return None, "min_weeks_worked는 1 이상, window_weeks 이하여야 합니다."
+        policy["window_weeks"] = window_weeks
+        policy["min_weeks_worked"] = min_weeks_worked
+    else:  # actual_only
+        worked_category = payload.get("actual_only_worked_category")
+        if worked_category not in ("A", "C"):
+            return None, "actual_only_worked_category는 'A' 또는 'C'여야 합니다."
+        policy["actual_only_worked_category"] = worked_category
+
+    return policy, None
+
+
+@app.route("/api/public-holiday-policy", methods=["GET"])
+@require_login
+def get_public_holiday_policy(company_id):
+    state = load_state(company_id)
+    return jsonify(state["public_holiday_policy"])
+
+
+@app.route("/api/public-holiday-policy", methods=["POST"])
+@require_login
+def set_public_holiday_policy(company_id):
+    payload = request.get_json(silent=True) or {}
+    policy, error = _validate_public_holiday_policy(payload)
+    if error:
+        return jsonify({"error": error}), 400
+    state = load_state(company_id)
+    state["public_holiday_policy"] = policy
+    save_state(company_id, state)
+    return jsonify(policy)
 
 
 def _weekday_total_count(state, employee_id, day, week_key, window=FREQUENCY_WINDOW_WEEKS):
@@ -1802,14 +1875,14 @@ def _weekday_total_count(state, employee_id, day, week_key, window=FREQUENCY_WIN
 @app.route("/api/weeks/<week_key>/public-holiday-info", methods=["GET"])
 @require_login
 def get_public_holiday_info(company_id, week_key):
-    """이 주(week_key)에 Public Holiday가 포함되어 있으면, 사용자가 정의한 뉴질랜드
-    노동법 4가지 기준에 따라 직원별 적용 항목(1.5배+Lieu / 평소급여만 / 1.5배만 / 해당없음)을
-    계산해서 돌려줍니다.
+    """이 주(week_key)에 Public Holiday가 포함되어 있으면, 이 회사가 설정한 정책
+    (Settings > 공휴일 정책)에 따라 직원별 적용 항목(1.5배+Lieu / 평소급여만 / 1.5배만 /
+    해당없음)을 계산해서 돌려줍니다.
 
-    기준: 지난 8주(이번 주 포함) 중 5주 이상 그 요일에 근무했으면 "평소 근무 요일"로 간주합니다.
     ⚠️ 이 계산은 사용자가 정의한 규칙을 그대로 옮긴 것으로, 실제 급여 지급 전에는
     회계/노무 담당자 확인을 권장합니다."""
     state = load_state(company_id)
+    policy = state["public_holiday_policy"]
     y, m, d = map(int, week_key.split("-"))
     monday = date(y, m, d)
     week_dates = [monday + timedelta(days=i) for i in range(7)]
@@ -1825,7 +1898,7 @@ def get_public_holiday_info(company_id, week_key):
             holidays_this_week.append({"date": h["date"], "name": h.get("name", ""), "day": DAYS[day_idx]})
 
     if not holidays_this_week:
-        return jsonify({"holidays": [], "categories": {}})
+        return jsonify({"holidays": [], "categories": {}, "policy": policy})
 
     week = state["weeks"].get(week_key)
     assignments = ((week.get("schedule") or {}).get("assignments") if week else None) or []
@@ -1837,17 +1910,27 @@ def get_public_holiday_info(company_id, week_key):
         rows = []
         for e in state["employees"]:
             emp_id = e["id"]
-            count = _weekday_total_count(state, emp_id, day, week_key)
-            is_usual_day = count >= HOLIDAY_OWD_THRESHOLD
             worked = (emp_id, day) in worked_today
-            if is_usual_day and worked:
-                category = 1
-            elif is_usual_day and not worked:
-                category = 2
-            elif not is_usual_day and worked:
-                category = 3
-            else:
-                category = 4
+
+            if policy["method"] == "threshold":
+                count = _weekday_total_count(state, emp_id, day, week_key, window=policy["window_weeks"])
+                is_usual_day = count >= policy["min_weeks_worked"]
+                if is_usual_day and worked:
+                    category = 1
+                elif is_usual_day and not worked:
+                    category = 2
+                elif not is_usual_day and worked:
+                    category = 3
+                else:
+                    category = 4
+            else:  # actual_only — 과거 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만 봅니다.
+                count = None
+                is_usual_day = None
+                if worked:
+                    category = 1 if policy["actual_only_worked_category"] == "A" else 3
+                else:
+                    category = 4
+
             rows.append({
                 "employee_id": emp_id, "employee_name": e["name"],
                 "occurrence_count": count, "is_usual_working_day": is_usual_day,
@@ -1855,7 +1938,7 @@ def get_public_holiday_info(company_id, week_key):
             })
         categories[day] = rows
 
-    return jsonify({"holidays": holidays_this_week, "categories": categories, "threshold": HOLIDAY_OWD_THRESHOLD, "window": FREQUENCY_WINDOW_WEEKS})
+    return jsonify({"holidays": holidays_this_week, "categories": categories, "policy": policy})
 
 
 @app.route("/api/pattern-suggestions", methods=["GET"])
