@@ -1160,6 +1160,15 @@ function t(key) {
   return (I18N[currentLang] && I18N[currentLang][key] !== undefined) ? I18N[currentLang][key] : (I18N.ko[key] || key);
 }
 
+// 사용자가 입력한 값(회사명, 이메일, 직원명 등)을 innerHTML에 넣을 때 반드시 이 함수로
+// 감싸주세요. 안 그러면 예를 들어 회사명에 <img src=x onerror=...> 같은 값을 넣어서
+// 그 화면을 보는 다른 사람(관리자 등)의 세션에서 스크립트가 실행될 수 있습니다(XSS).
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[ch]));
+}
+
 function tf(key, params) {
   let s = t(key);
   Object.keys(params || {}).forEach(k => { s = s.replace(`{${k}}`, params[k]); });
@@ -1420,9 +1429,9 @@ async function showAdminPage() {
       <td style="padding:6px 8px; text-align:center;" title="${dotTitle}">
         <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${dotColor};"></span>
       </td>
-      <td style="padding:6px 8px;">${c.name}${adminBadge}</td>
-      <td style="padding:6px 8px; color:var(--text-muted);">${c.email}</td>
-      <td style="padding:6px 8px; color:var(--text-muted);">${c.created_at || "-"}</td>
+      <td style="padding:6px 8px;">${escapeHtml(c.name)}${adminBadge}</td>
+      <td style="padding:6px 8px; color:var(--text-muted);">${escapeHtml(c.email)}</td>
+      <td style="padding:6px 8px; color:var(--text-muted);">${escapeHtml(c.created_at || "-")}</td>
       <td style="padding:6px 8px; text-align:center;">${c.employee_count}</td>
       <td style="padding:6px 8px; text-align:center;">${c.week_count}</td>
     `;
@@ -1486,8 +1495,8 @@ async function showPendingSignupsPage() {
     const item = document.createElement("div");
     item.className = "modal-item";
     item.innerHTML = `
-      <div class="modal-item-title">${r.name}</div>
-      <div class="modal-item-detail">${r.email} — ${t("admin_pending_requested_at")}: ${r.requested_at || "-"}</div>
+      <div class="modal-item-title">${escapeHtml(r.name)}</div>
+      <div class="modal-item-detail">${escapeHtml(r.email)} — ${t("admin_pending_requested_at")}: ${escapeHtml(r.requested_at || "-")}</div>
     `;
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex; gap:8px; margin-top:8px;";
@@ -1757,20 +1766,26 @@ async function loadEmployees() {
     const ruleSummary = summarizeRules(e);
     const dept = e.department || "kitchen";
     tr.innerHTML = `
-      <td>${e.id}</td>
-      <td>${e.name}</td>
-      <td>${DEPARTMENT_LABEL[dept] || dept}</td>
+      <td>${escapeHtml(e.id)}</td>
+      <td>${escapeHtml(e.name)}</td>
+      <td>${escapeHtml(DEPARTMENT_LABEL[dept] || dept)}</td>
       <td>${e.min_hours_per_week}</td>
       <td>${e.target_days_per_week != null ? e.target_days_per_week + t("day_suffix") : "-"}</td>
       <td>
         <div style="font-size:11px; color: var(--text-muted); margin-bottom:4px;">${ruleSummary}</div>
-        <button class="btn-ghost btn-sm" onclick="toggleRulesPanel('${e.id}')">${t("btn_rule_settings")}</button>
+        <button class="btn-ghost btn-sm" data-action="rules">${t("btn_rule_settings")}</button>
       </td>
       <td>
-        <button class="btn-ghost btn-sm" onclick='startEditEmployee(${JSON.stringify(e)})'>${t("btn_edit")}</button>
-        <button class="btn-danger btn-sm" onclick="deleteEmployee('${e.id}')">${t("btn_delete")}</button>
+        <button class="btn-ghost btn-sm" data-action="edit">${t("btn_edit")}</button>
+        <button class="btn-danger btn-sm" data-action="delete">${t("btn_delete")}</button>
       </td>
     `;
+    // 직원 이름/ID처럼 사용자가 입력한 값을 onclick 문자열(HTML 속성)에 직접 끼워 넣지 않고,
+    // 이렇게 DOM에서 버튼을 찾아 JS 함수로 직접 연결합니다 — 값에 따옴표나 특수문자가
+    // 있어도(예: O'Brien) 절대 깨지거나 스크립트로 해석되지 않습니다.
+    tr.querySelector('[data-action="rules"]').onclick = () => toggleRulesPanel(e.id);
+    tr.querySelector('[data-action="edit"]').onclick = () => startEditEmployee(e);
+    tr.querySelector('[data-action="delete"]').onclick = () => deleteEmployee(e.id);
     tbody.appendChild(tr);
 
     if (openRulesPanelId === e.id) {
