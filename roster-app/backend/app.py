@@ -310,6 +310,7 @@ def require_admin(f):
         company = auth["companies"].get(company_id)
         if not company or not company.get("is_admin"):
             return jsonify({"error": "Admin access only."}), 403
+        _last_active[company_id] = time.time()  # 관리자 본인 접속도 온라인 상태에 반영
         return f(*args, **kwargs)
     return wrapper
 
@@ -772,6 +773,13 @@ def register():
     is_first_company = len(auth["companies"]) == 0
 
     if is_first_company:
+        # 저장 직전에 한 번 더 확인합니다 — 거의 동시에 두 명이 가입 요청을 보내면,
+        # 둘 다 위에서 "회사가 0개"라고 읽었을 수 있습니다. 완벽한 잠금은 아니지만,
+        # 이 재확인으로 그 창을 최대한 좁혀서 두 계정이 동시에 관리자가 되는 걸 막습니다.
+        auth = load_auth()
+        is_first_company = len(auth["companies"]) == 0
+
+    if is_first_company:
         # 맨 처음 가입하는 계정(개발자 본인)은 승인 절차 없이 즉시 생성되고, 자동으로 관리자가 됩니다.
         # (그래야 승인해줄 관리자가 아무도 없는 상태를 피할 수 있습니다.)
         company_id = secrets.token_hex(8)
@@ -1016,11 +1024,20 @@ def add_employee(company_id):
 def update_employee(company_id, employee_id):
     state = load_state(company_id)
     payload = request.get_json()
-    if "leave_requests" in payload:
-        payload["leave_requests"] = _prune_expired_leave_requests(payload["leave_requests"])
+    # id는 여러 곳(주차별 off_days, 스케줄 배치, leave_requests 등)에서 참조 키로 쓰이기
+    # 때문에, 여기서 바뀌면 과거 데이터와 연결이 끊어집니다. 그래서 여기서 바꿀 수 있는
+    # 필드를 화이트리스트로 명확히 제한합니다 (id는 절대 이 API로 바꿀 수 없음).
+    ALLOWED_FIELDS = {
+        "name", "department", "min_hours_per_week", "target_days_per_week",
+        "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
+        "leave_requests", "recent_night_count", "recent_weekend_count",
+    }
+    updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
+    if "leave_requests" in updates:
+        updates["leave_requests"] = _prune_expired_leave_requests(updates["leave_requests"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
-            state["employees"][i].update(payload)
+            state["employees"][i].update(updates)
             save_state(company_id, state)
             return jsonify(state["employees"][i])
     return jsonify({"error": "Employee not found."}), 404
@@ -1229,6 +1246,43 @@ def generate_week_schedule(company_id, week_key):
     pin_raw = payload.get("pin", [])
     pinned = [(a["employee_id"], a["day"], a["shift_type"]) for a in pin_raw]
     random_seed = random.randint(1, 10_000_000) if exclude_solutions else None
+
+    # ---- pin(수동 사전 배치) 검증 ----
+    # pin은 model.Add(x == 1)로 하드 고정되는데, 이게 다른 하드 규칙과 모순되면
+    # 계산 자체가 "원인불명 INFEASIBLE"로 실패해버립니다. 계산을 돌리기 전에 미리
+    # 걸러내서, 정확히 어떤 pin이 왜 문제인지 알려줍니다.
+    emp_by_id = {e.id: e for e in employees}
+    pin_errors = []
+    req_required = {(r.day, r.shift_type): r.required_count for r in requirements}
+    pin_count_by_req = {}
+    for emp_id, day, shift in pinned:
+        emp = emp_by_id.get(emp_id)
+        if emp is None:
+            pin_errors.append(f"Pinned employee '{emp_id}' was not found.")
+            continue
+        if day in emp.forced_off_days:
+            pin_errors.append(
+                f"{emp.name} is pinned to work on {day}, but that day is already marked as a "
+                f"forced day off (Off / Leave Request) for them. Remove one of the two."
+            )
+        if shift in emp.blocked_shift_types:
+            pin_errors.append(
+                f"{emp.name} is pinned to '{shift}' on {day}, but that shift type is in their "
+                f"blocked list. Remove the pin or un-block the shift type for this employee."
+            )
+        key = (day, shift)
+        pin_count_by_req[key] = pin_count_by_req.get(key, 0) + 1
+
+    for (day, shift), count in pin_count_by_req.items():
+        required = req_required.get((day, shift))
+        if required is not None and count > required:
+            pin_errors.append(
+                f"{day} {shift}: {count} employees are pinned, but the requirement for that "
+                f"shift is only {required}. Either raise the requirement or remove some pins."
+            )
+
+    if pin_errors:
+        return jsonify({"error": " ".join(pin_errors)}), 400
 
     shift_types, shift_defs, departments = _scheduler_shift_defs(state)
     result = solve_schedule(
