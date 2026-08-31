@@ -360,32 +360,23 @@ def require_admin(f):
 def _default_departments():
     """새 회사가 가입할 때, 그리고 이 기능이 생기기 전에 이미 있던 회사에 채워주는 기본값입니다.
     회사는 이후 자유롭게 이름을 바꾸거나 추가·삭제할 수 있습니다 — 이건 코드에 고정된 값이 아니라
-    '시작할 때 미리 채워주는 예시'일 뿐입니다."""
+    '시작할 때 미리 채워주는 예시'일 뿐입니다. 특정 업종에 치우치지 않도록 중립적인 이름(고객
+    응대/내부 업무/관리)으로 구성했습니다."""
     return [
-        {"id": "kitchen", "name": "Kitchen"},
-        {"id": "sushi", "name": "Sushi"},
-        {"id": "cashier", "name": "Cashier"},
+        {"id": "front_of_house", "name": "Front of House"},
+        {"id": "back_of_house", "name": "Back of House"},
         {"id": "management", "name": "Management"},
-        {"id": "training", "name": "Training"},
     ]
 
 
 def _default_shift_types():
     return [
-        {"id": "opening", "name": "Opening", "department_id": "kitchen", "start": "06:00", "end": "15:00", "is_closing": False, "blocked_after_closing": True},
-        {"id": "helper", "name": "Helper", "department_id": "kitchen", "start": "08:00", "end": "17:00", "is_closing": False, "blocked_after_closing": True},
-        {"id": "closing1", "name": "Closing1", "department_id": "kitchen", "start": "11:00", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
-        {"id": "closing2", "name": "Closing2", "department_id": "kitchen", "start": "11:30", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
-        {"id": "sushi1", "name": "Sushi 1", "department_id": "sushi", "start": "05:00", "end": "14:00", "is_closing": False, "blocked_after_closing": False},
-        {"id": "sushi2", "name": "Sushi 2", "department_id": "sushi", "start": "05:00", "end": "14:00", "is_closing": False, "blocked_after_closing": False},
-        {"id": "sushi3", "name": "Sushi 3", "department_id": "sushi", "start": "10:00", "end": "19:00", "is_closing": False, "blocked_after_closing": False},
-        {"id": "c_opening", "name": "C.Opening", "department_id": "cashier", "start": "06:00", "end": "15:00", "is_closing": False, "blocked_after_closing": True},
-        {"id": "c_helper", "name": "C.Helper", "department_id": "cashier", "start": "10:00", "end": "19:00", "is_closing": False, "blocked_after_closing": True},
-        {"id": "c_closing1", "name": "C.Closing1", "department_id": "cashier", "start": "11:00", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
-        {"id": "c_closing2", "name": "C.Closing2", "department_id": "cashier", "start": "12:00", "end": "20:30", "is_closing": True, "blocked_after_closing": False},
-        {"id": "management", "name": "Management", "department_id": "management", "start": "09:00", "end": "18:00", "is_closing": False, "blocked_after_closing": False},
-        {"id": "management_cashier", "name": "Management & Cashier", "department_id": "management", "start": "10:00", "end": "19:00", "is_closing": False, "blocked_after_closing": False},
-        {"id": "training", "name": "Training", "department_id": "training", "start": "09:00", "end": "17:00", "is_closing": False, "blocked_after_closing": False},
+        {"id": "foh_opening", "name": "Opening", "department_id": "front_of_house", "start": "09:00", "end": "17:00", "is_closing": False, "blocked_after_closing": True},
+        {"id": "foh_closing", "name": "Closing", "department_id": "front_of_house", "start": "13:00", "end": "21:00", "is_closing": True, "blocked_after_closing": False},
+        {"id": "boh_opening", "name": "Opening", "department_id": "back_of_house", "start": "09:00", "end": "17:00", "is_closing": False, "blocked_after_closing": True},
+        {"id": "boh_closing", "name": "Closing", "department_id": "back_of_house", "start": "13:00", "end": "21:00", "is_closing": True, "blocked_after_closing": False},
+        {"id": "mgmt_opening", "name": "Opening", "department_id": "management", "start": "09:00", "end": "17:00", "is_closing": False, "blocked_after_closing": True},
+        {"id": "mgmt_closing", "name": "Closing", "department_id": "management", "start": "13:00", "end": "21:00", "is_closing": True, "blocked_after_closing": False},
     ]
 
 
@@ -1164,20 +1155,6 @@ def list_employees(company_id):
     return jsonify(out)
 
 
-def _sanitize_fixed_work_pattern(value):
-    """직원의 '계약상 고정 근무 요일'을 정리합니다. 리스트가 아니거나 유효하지 않은
-    요일 값이 섞여 있으면 걸러내고, 빈 리스트/None이면 '고정 패턴 없음'(과거 기록
-    기반으로 판단)으로 취급합니다."""
-    if not isinstance(value, list):
-        return []
-    valid = set(DAYS)
-    seen = []
-    for v in value:
-        if v in valid and v not in seen:
-            seen.append(v)
-    return seen
-
-
 @app.route("/api/employees", methods=["POST"])
 @require_login
 def add_employee(company_id):
@@ -1222,9 +1199,6 @@ def add_employee(company_id):
         "leave_requests": _prune_expired_leave_requests(payload.get("leave_requests", [])),
         "recent_night_count": payload.get("recent_night_count", 0),
         "recent_weekend_count": payload.get("recent_weekend_count", 0),
-        # 계약상 고정 근무 요일(예: "월/수/금 무조건 근무"). 지정해두면 공휴일 판정 시
-        # 과거 기록을 보지 않고 이 요일들을 곧바로 '평소 근무일'로 인정합니다.
-        "fixed_work_pattern": _sanitize_fixed_work_pattern(payload.get("fixed_work_pattern")),
     }
     state["employees"].append(employee)
     save_state(company_id, state)
@@ -1242,13 +1216,11 @@ def update_employee(company_id, employee_id):
     ALLOWED_FIELDS = {
         "name", "department", "min_hours_per_week", "target_days_per_week",
         "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
-        "leave_requests", "recent_night_count", "recent_weekend_count", "fixed_work_pattern",
+        "leave_requests", "recent_night_count", "recent_weekend_count",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "leave_requests" in updates:
         updates["leave_requests"] = _prune_expired_leave_requests(updates["leave_requests"])
-    if "fixed_work_pattern" in updates:
-        updates["fixed_work_pattern"] = _sanitize_fixed_work_pattern(updates["fixed_work_pattern"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             state["employees"][i].update(updates)
@@ -1922,23 +1894,8 @@ def get_public_holiday_info(company_id, week_key):
         for e in state["employees"]:
             emp_id = e["id"]
             worked = (emp_id, day) in worked_today
-            fixed_pattern = e.get("fixed_work_pattern") or []
 
-            if fixed_pattern:
-                # 계약상 고정 근무 요일이 지정된 직원은, 회사의 정책(threshold/actual_only)과
-                # 무관하게 이 요일들을 곧바로 '평소 근무일'로 인정합니다 — 과거 로스터 기록을
-                # 참고할 필요 자체가 없습니다 (PayHero 등 실제 급여 소프트웨어의 처리 방식과 동일).
-                count = None
-                is_usual_day = day in fixed_pattern
-                if is_usual_day and worked:
-                    category = 1
-                elif is_usual_day and not worked:
-                    category = 2
-                elif not is_usual_day and worked:
-                    category = 3
-                else:
-                    category = 4
-            elif policy["method"] == "threshold":
+            if policy["method"] == "threshold":
                 count = _weekday_total_count(state, emp_id, day, week_key, window=policy["window_weeks"])
                 is_usual_day = count >= policy["min_weeks_worked"]
                 if is_usual_day and worked:
@@ -1959,7 +1916,6 @@ def get_public_holiday_info(company_id, week_key):
                 "employee_id": emp_id, "employee_name": e["name"],
                 "occurrence_count": count, "is_usual_working_day": is_usual_day,
                 "worked_on_holiday": worked, "category": category,
-                "used_fixed_pattern": bool(fixed_pattern),
             })
         categories[day] = rows
 
