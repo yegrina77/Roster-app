@@ -427,6 +427,18 @@
         <label data-i18n="auth_company_name">회사(매장) 이름</label>
         <input id="auth-name" style="width:100%;" placeholder="My Restaurant">
       </div>
+      <div class="field" style="margin-bottom:10px; width:100%;">
+        <label data-i18n="auth_contact_name">담당자 이름</label>
+        <input id="auth-contact-name" style="width:100%;" placeholder="Jane Smith">
+      </div>
+      <div class="field" style="margin-bottom:10px; width:100%;">
+        <label data-i18n="auth_phone">전화번호 (선택)</label>
+        <input id="auth-phone" type="tel" style="width:100%;" placeholder="021 234 5678">
+      </div>
+      <div class="field" style="margin-bottom:10px; width:100%;">
+        <label data-i18n="auth_employee_limit">예상 직원 수</label>
+        <input id="auth-employee-limit" type="number" min="1" step="1" style="width:100%;" placeholder="10">
+      </div>
     </div>
     <div class="field" style="margin-bottom:10px; width:100%;">
       <label data-i18n="auth_email">이메일</label>
@@ -656,6 +668,9 @@ const I18N = {
     opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
     modal_training_added_title: "Training 인원이 등록되었습니다",
     modal_employee_added_title: "등록 완료", modal_employee_added_msg: "직원이 추가되었습니다.",
+    emp_limit_exceeded_title: "등록 가능 인원 초과",
+    emp_limit_exceeded_msg: "등록 가능한 직원 수({limit}명)를 초과했습니다. 현재 {count}명이 등록되어 있습니다.",
+    emp_limit_request_btn: "한도 증가 요청하기", emp_limit_request_sent: "관리자에게 요청을 보냈습니다.",
     confirm_delete_employee_title: "정말로 삭제하시겠습니까?", confirm_delete_employee_msg: "이 직원을 삭제하면 되돌릴 수 없습니다.",
     btn_yes: "예", btn_no: "아니오",
     terms_popup_title: "이용약관 및 개인정보처리방침에 동의하시나요?",
@@ -668,7 +683,7 @@ const I18N = {
     rules_none: "설정된 규칙 없음",
     req_title: "근무 요건",
     req_desc: '각 칸에 필요 인원 수를 직접 입력하세요 (0 또는 빈칸이면 그 요건 없음). 숫자만 바꾸면 바로 수정되는 방식입니다 — 다 입력하신 후 "저장" 한 번만 누르면 됩니다.',
-    btn_save: "저장",
+    btn_save: "저장", btn_saved_check: "저장됨 ✓",
     sched_title: "스케줄",
     btn_prev_week: "◀ 이전 주", btn_next_week: "다음 주 ▶",
     sched_desc: '빈 칸을 클릭해 근무(Opening/Helper/Closing1/Closing2)를 추가하거나 <b>Off(휴무)</b>로 지정할 수 있습니다. Off로 지정하면 자동 생성 시 그 직원은 그날 절대 배정되지 않습니다. 준비가 되면 자동 생성을 눌러주세요. 휴무 지정과 근무 요건은 <b>주차별로 따로</b> 저장됩니다.',
@@ -750,7 +765,9 @@ const I18N = {
     shift_time_modified: "수정됨", btn_reset_default: "기본값으로",
     auth_intro: "회사(매장) 계정으로 로그인하거나, 새로 등록하세요.",
     auth_tab_login: "로그인", auth_tab_register: "회원가입",
-    auth_company_name: "회사(매장) 이름", auth_email: "이메일", auth_password: "비밀번호",
+    auth_company_name: "회사(매장) 이름", auth_contact_name: "담당자 이름", auth_phone: "전화번호 (선택)",
+    auth_employee_limit: "예상 직원 수",
+    auth_email: "이메일", auth_password: "비밀번호",
     auth_logout: "로그아웃", auth_fill_all: "모든 항목을 입력해주세요.",
     auth_invalid_email: "이메일 형식이 올바르지 않습니다.",
     auth_password_too_short: "비밀번호는 8자 이상이며, 숫자와 특수문자를 각각 1개 이상 포함해야 합니다.",
@@ -758,7 +775,7 @@ const I18N = {
     admin_nav_btn: "👑 관리자", admin_page_title: "가입 회사 목록 (관리자 전용)",
     admin_page_sub: "총 {n}개 회사가 가입되어 있습니다. 다른 회사의 직원/스케줄 데이터는 보이지 않고, 개수만 표시됩니다.",
     admin_col_name: "회사(매장) 이름", admin_col_email: "이메일", admin_col_signup_date: "가입일",
-    admin_col_employees: "직원 수", admin_col_weeks: "저장된 주차 수", admin_badge_you: "나(관리자)",
+    admin_col_employees: "직원 수", admin_col_employee_limit: "등록 한도", admin_col_weeks: "저장된 주차 수", admin_badge_you: "나(관리자)",
     admin_row_click_hint: "회사를 클릭하면 그 회사에서 사용할 기능을 켜고 끌 수 있습니다.",
     admin_features_title: "{name} — 기능 설정", admin_features_sub: "체크 해제한 기능은 이 회사 화면에서 완전히 숨겨집니다.",
     admin_col_online: "접속", admin_online_now: "지금 접속 중",
@@ -822,6 +839,9 @@ const I18N = {
     opt_0h: "0時間", opt_5h: "5時間", opt_30h: "30時間", opt_40h: "40時間",
     modal_training_added_title: "Trainingスタッフが登録されました",
     modal_employee_added_title: "登録完了", modal_employee_added_msg: "スタッフが追加されました。",
+    emp_limit_exceeded_title: "登録可能人数を超えています",
+    emp_limit_exceeded_msg: "登録可能な従業員数({limit}名)を超えました。現在{count}名が登録されています。",
+    emp_limit_request_btn: "上限引き上げをリクエスト", emp_limit_request_sent: "管理者にリクエストを送信しました。",
     confirm_delete_employee_title: "本当に削除しますか?", confirm_delete_employee_msg: "このスタッフを削除すると元に戻せません。",
     btn_yes: "はい", btn_no: "いいえ",
     terms_popup_title: "利用規約とプライバシーポリシーに同意しますか?",
@@ -834,7 +854,7 @@ const I18N = {
     rules_none: "設定されたルールなし",
     req_title: "勤務要件",
     req_desc: '各セルに必要人数を直接入力してください(0または空欄はその要件なし)。数字を変えるとそれがそのまま修正になります — 入力後「保存」を一度押してください。',
-    btn_save: "保存",
+    btn_save: "保存", btn_saved_check: "保存済み ✓",
     sched_title: "スケジュール",
     btn_prev_week: "◀ 前の週", btn_next_week: "次の週 ▶",
     sched_desc: '空いているセルをクリックして勤務(Opening/Helper/Closing1/Closing2)を追加するか、<b>Off(休み)</b>に指定できます。Offに指定すると自動生成時にそのスタッフはその日は絶対に配置されません。準備ができたら自動生成を押してください。休み指定と勤務要件は<b>週ごとに別々に</b>保存されます。',
@@ -916,7 +936,9 @@ const I18N = {
     shift_time_modified: "変更済み", btn_reset_default: "デフォルトに戻す",
     auth_intro: "会社(店舗)アカウントでログインするか、新規登録してください。",
     auth_tab_login: "ログイン", auth_tab_register: "新規登録",
-    auth_company_name: "会社(店舗)名", auth_email: "メールアドレス", auth_password: "パスワード",
+    auth_company_name: "会社(店舗)名", auth_contact_name: "担当者名", auth_phone: "電話番号(任意)",
+    auth_employee_limit: "想定される従業員数",
+    auth_email: "メールアドレス", auth_password: "パスワード",
     auth_logout: "ログアウト", auth_fill_all: "すべての項目を入力してください。",
     auth_invalid_email: "メールアドレスの形式が正しくありません。",
     auth_password_too_short: "パスワードは8文字以上で、数字と特殊文字をそれぞれ1つ以上含めてください。",
@@ -924,7 +946,7 @@ const I18N = {
     admin_nav_btn: "👑 管理者", admin_page_title: "登録会社一覧 (管理者専用)",
     admin_page_sub: "合計{n}社が登録されています。他社のスタッフ・スケジュールデータは表示されず、件数のみ表示されます。",
     admin_col_name: "会社(店舗)名", admin_col_email: "メールアドレス", admin_col_signup_date: "登録日",
-    admin_col_employees: "スタッフ数", admin_col_weeks: "保存された週数", admin_badge_you: "自分(管理者)",
+    admin_col_employees: "スタッフ数", admin_col_employee_limit: "登録上限", admin_col_weeks: "保存された週数", admin_badge_you: "自分(管理者)",
     admin_row_click_hint: "会社をクリックすると、その会社で使う機能をオン/オフできます。",
     admin_features_title: "{name} — 機能設定", admin_features_sub: "チェックを外した機能は、その会社の画面から完全に非表示になります。",
     admin_col_online: "接続", admin_online_now: "現在接続中",
@@ -988,6 +1010,9 @@ const I18N = {
     opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
     modal_training_added_title: "Training employee registered",
     modal_employee_added_title: "Added", modal_employee_added_msg: "Employee has been added.",
+    emp_limit_exceeded_title: "Employee Limit Reached",
+    emp_limit_exceeded_msg: "You've reached your employee limit ({limit}). Currently {count} employees are registered.",
+    emp_limit_request_btn: "Request Higher Limit", emp_limit_request_sent: "Request sent to your admin.",
     confirm_delete_employee_title: "Are you sure you want to delete this?", confirm_delete_employee_msg: "This employee will be permanently removed. This cannot be undone.",
     btn_yes: "Yes", btn_no: "No",
     terms_popup_title: "Do you agree to the Terms & Conditions and Privacy Policy?",
@@ -1000,7 +1025,7 @@ const I18N = {
     rules_none: "No rules set",
     req_title: "Shift Requirements",
     req_desc: 'Enter the required headcount directly in each cell (0 or blank means no requirement). Changing a number is itself the edit — click "Save" once when done.',
-    btn_save: "Save",
+    btn_save: "Save", btn_saved_check: "Saved ✓",
     sched_title: "Schedule",
     btn_prev_week: "◀ Prev week", btn_next_week: "Next week ▶",
     sched_desc: 'Click an empty cell to add a shift (Opening/Helper/Closing1/Closing2) or mark it as <b>Off</b>. Off means that employee will never be scheduled that day. Click generate when ready. Off-marks and shift requirements are saved <b>per week</b>.',
@@ -1082,7 +1107,9 @@ const I18N = {
     shift_time_modified: "Modified", btn_reset_default: "Reset to default",
     auth_intro: "Log in with your company (store) account, or register a new one.",
     auth_tab_login: "Log In", auth_tab_register: "Sign Up",
-    auth_company_name: "Company (Store) Name", auth_email: "Email", auth_password: "Password",
+    auth_company_name: "Company (Store) Name", auth_contact_name: "Contact Name", auth_phone: "Phone Number (optional)",
+    auth_employee_limit: "Expected Number of Employees",
+    auth_email: "Email", auth_password: "Password",
     auth_logout: "Log Out", auth_fill_all: "Please fill in all fields.",
     auth_invalid_email: "Please enter a valid email address.",
     auth_password_too_short: "Password must be at least 8 characters, with at least one number and one special character.",
@@ -1090,7 +1117,7 @@ const I18N = {
     admin_nav_btn: "👑 Admin", admin_page_title: "Registered Companies (Admin Only)",
     admin_page_sub: "{n} companies registered in total. Other companies' employee/schedule data is never shown - only counts.",
     admin_col_name: "Company Name", admin_col_email: "Email", admin_col_signup_date: "Signup Date",
-    admin_col_employees: "Employees", admin_col_weeks: "Saved Weeks", admin_badge_you: "You (Admin)",
+    admin_col_employees: "Employees", admin_col_employee_limit: "Limit", admin_col_weeks: "Saved Weeks", admin_badge_you: "You (Admin)",
     admin_row_click_hint: "Click a company to turn its features on or off.",
     admin_features_title: "{name} — Feature Settings", admin_features_sub: "Unchecked features are completely hidden from this company's screen.",
     admin_col_online: "Online", admin_online_now: "Online now",
@@ -1296,8 +1323,17 @@ async function submitAuth() {
   const email = document.getElementById("auth-email").value.trim();
   const password = document.getElementById("auth-password").value;
   const name = document.getElementById("auth-name").value.trim();
+  const contactName = document.getElementById("auth-contact-name").value.trim();
+  const phone = document.getElementById("auth-phone").value.trim();
+  const employeeLimitRaw = document.getElementById("auth-employee-limit").value.trim();
+  const employeeLimit = employeeLimitRaw === "" ? null : Number(employeeLimitRaw);
 
-  if (!email || !password || (authMode === "register" && !name)) {
+  // 회사명/담당자 이름/예상 직원수는 공백만 입력해도(trim 결과가 빈 문자열이면) 미입력으로
+  // 처리해서 "입력해주세요" 안내가 뜨도록 합니다. 전화번호는 선택 입력이라 이 체크에서 제외합니다.
+  const registerFieldsMissing = authMode === "register" && (
+    !name || !contactName || !employeeLimitRaw || !Number.isFinite(employeeLimit) || employeeLimit < 1
+  );
+  if (!email || !password || registerFieldsMissing) {
     errBox.textContent = t("auth_fill_all");
     errBox.style.display = "block";
     return;
@@ -1321,7 +1357,7 @@ async function submitAuth() {
   }
 
   const url = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
-  const body = authMode === "login" ? {email, password} : {email, password, name};
+  const body = authMode === "login" ? {email, password} : {email, password, name, contact_name: contactName, phone, employee_limit: employeeLimit};
 
   let res, data;
   try {
@@ -1355,6 +1391,9 @@ async function submitAuth() {
     document.getElementById("auth-email").value = "";
     document.getElementById("auth-password").value = "";
     document.getElementById("auth-name").value = "";
+    document.getElementById("auth-contact-name").value = "";
+    document.getElementById("auth-phone").value = "";
+    document.getElementById("auth-employee-limit").value = "";
     hideAuthScreen();
     await initAppData();
 }
@@ -1408,6 +1447,7 @@ async function showAdminPage() {
       <th style="padding:6px 8px;">${t("admin_col_email")}</th>
       <th style="padding:6px 8px;">${t("admin_col_signup_date")}</th>
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_employees")}</th>
+      <th style="padding:6px 8px; text-align:center;">${t("admin_col_employee_limit")}</th>
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_weeks")}</th>
     </tr>
   `;
@@ -1425,16 +1465,45 @@ async function showAdminPage() {
     const dotTitle = c.is_online
       ? t("admin_online_now")
       : (c.last_active_seconds_ago != null ? tf("admin_last_active", {n: Math.round(c.last_active_seconds_ago / 60)}) : t("admin_never_active"));
+    const contactLine = c.contact_name
+      ? `<div style="font-size:10.5px; color:var(--text-muted);">${escapeHtml(c.contact_name)}${c.phone ? " · " + escapeHtml(c.phone) : ""}</div>`
+      : "";
     tr.innerHTML = `
       <td style="padding:6px 8px; text-align:center;" title="${dotTitle}">
         <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${dotColor};"></span>
       </td>
-      <td style="padding:6px 8px;">${escapeHtml(c.name)}${adminBadge}</td>
+      <td style="padding:6px 8px;">${escapeHtml(c.name)}${adminBadge}${contactLine}</td>
       <td style="padding:6px 8px; color:var(--text-muted);">${escapeHtml(c.email)}</td>
       <td style="padding:6px 8px; color:var(--text-muted);">${escapeHtml(c.created_at || "-")}</td>
       <td style="padding:6px 8px; text-align:center;">${c.employee_count}</td>
+      <td style="padding:6px 8px; text-align:center;" data-limit-cell>
+        <input type="number" min="1" step="1" value="${Number(c.employee_limit) || ""}"
+               style="width:52px; text-align:center;" data-limit-input>
+        <button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px;" data-action="save-limit">${t("btn_save")}</button>
+      </td>
       <td style="padding:6px 8px; text-align:center;">${c.week_count}</td>
     `;
+    const limitCell = tr.querySelector("[data-limit-cell]");
+    limitCell.addEventListener("click", (ev) => ev.stopPropagation());
+    const limitInput = tr.querySelector("[data-limit-input]");
+    const saveLimitBtn = tr.querySelector('[data-action="save-limit"]');
+    saveLimitBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const newLimit = Number(limitInput.value);
+      if (!Number.isFinite(newLimit) || newLimit < 1) return;
+      saveLimitBtn.disabled = true;
+      try {
+        await api(`/api/admin/companies/${c.id}/employee-limit`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({employee_limit: newLimit}),
+        });
+        saveLimitBtn.textContent = t("btn_saved_check");
+        setTimeout(() => { saveLimitBtn.textContent = t("btn_save"); saveLimitBtn.disabled = false; }, 1200);
+      } catch (e) {
+        saveLimitBtn.disabled = false;
+      }
+    });
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -1494,9 +1563,12 @@ async function showPendingSignupsPage() {
   data.pending.forEach(r => {
     const item = document.createElement("div");
     item.className = "modal-item";
+    const contactLine = r.contact_name
+      ? `${escapeHtml(r.contact_name)}${r.phone ? " · " + escapeHtml(r.phone) : ""}<br>`
+      : "";
     item.innerHTML = `
       <div class="modal-item-title">${escapeHtml(r.name)}</div>
-      <div class="modal-item-detail">${escapeHtml(r.email)} — ${t("admin_pending_requested_at")}: ${escapeHtml(r.requested_at || "-")}</div>
+      <div class="modal-item-detail">${contactLine}${escapeHtml(r.email)} — ${t("admin_pending_requested_at")}: ${escapeHtml(r.requested_at || "-")}</div>
     `;
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex; gap:8px; margin-top:8px;";
@@ -2132,11 +2204,24 @@ async function submitEmployee() {
       body: JSON.stringify({name, department, min_hours_per_week, target_days_per_week})
     });
   } else {
-    await api("/api/employees", {
-      method: "POST",
+    // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
+    // "한도 증가 요청" 버튼이 있는 전용 모달을 보여줘야 해서, 여기서는 공용 api() 헬퍼
+    // 대신 fetch를 직접 써서 응답 본문(error_code 등)을 확인합니다.
+    const res = await fetch("/api/employees", {
+      method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({id, name, department, min_hours_per_week, target_days_per_week}),
     });
+    if (res.status === 401) { showAuthScreen(); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (data.error_code === "employee_limit_exceeded") {
+        showEmployeeLimitExceededModal(data.employee_count, data.employee_limit);
+      } else {
+        showMessageModal(t("modal_request_failed"), data.error || t("modal_network_error"), true);
+      }
+      return;
+    }
   }
   cancelEditEmployee();
   loadEmployees();
@@ -2146,6 +2231,54 @@ async function submitEmployee() {
   } else if (isNewEmployee) {
     showMessageModal(t("modal_employee_added_title"), t("modal_employee_added_msg"), false);
   }
+}
+
+function showEmployeeLimitExceededModal(employeeCount, employeeLimit) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  const h = document.createElement("h3");
+  h.textContent = t("emp_limit_exceeded_title");
+  box.appendChild(h);
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = tf("emp_limit_exceeded_msg", {count: employeeCount, limit: employeeLimit});
+  box.appendChild(sub);
+  const status = document.createElement("div");
+  status.className = "modal-sub";
+  status.style.cssText = "display:none; color: var(--accent-green, #2e7d32); margin-top:6px;";
+  status.textContent = t("emp_limit_request_sent");
+  box.appendChild(status);
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:10px;";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  const requestBtn = document.createElement("button");
+  requestBtn.className = "btn-primary";
+  requestBtn.textContent = t("emp_limit_request_btn");
+  requestBtn.onclick = async () => {
+    requestBtn.disabled = true;
+    try {
+      await fetch("/api/company/request-employee-limit-increase", {
+        method: "POST", credentials: "same-origin",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({}),
+      });
+      status.style.display = "block";
+      requestBtn.style.display = "none";
+    } catch (e) {
+      requestBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(closeBtn);
+  btnRow.appendChild(requestBtn);
+  box.appendChild(btnRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
 
 async function deleteEmployee(id) {
