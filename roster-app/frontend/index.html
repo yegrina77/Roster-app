@@ -584,6 +584,7 @@
       <div class="field"><label data-i18n="ph_date">날짜</label><input type="date" id="ph-date"></div>
       <div class="field"><label data-i18n="ph_name">이름</label><input id="ph-name" placeholder="Waitangi Day"></div>
       <button class="btn-primary" onclick="addPublicHoliday()" data-i18n="btn_add_generic">추가</button>
+      <button class="btn-ghost" onclick="showPublicHolidayPolicyModal()" data-i18n="ph_policy_btn">⚙️ 판정 기준 설정</button>
     </div>
     <table id="ph-table">
       <thead><tr><th data-i18n="ph_date">날짜</th><th data-i18n="ph_name">이름</th><th></th></tr></thead>
@@ -752,6 +753,15 @@ const I18N = {
     freq_badge_tooltip: "이번 주를 포함해 연속으로 이 요일에 근무한 주 수 (중간에 쉰 주가 있으면 초기화됨 - 참고용, 강제 아님)",
     ph_title: "Public Holidays", btn_add_generic: "추가",
     ph_desc: "1년치 공휴일을 미리 등록해두면, 그 날짜가 포함된 주로 이동할 때 자동으로 알려드리고, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인할 수 있습니다.",
+    ph_policy_btn: "⚙️ 판정 기준 설정",
+    ph_policy_title: "공휴일 판정 기준", ph_policy_sub: "직원이 공휴일에 '평소 근무일'이었는지를 판단하는 기준을 회사에 맞게 설정하세요.",
+    ph_policy_method_threshold_title: "최근 근무 비율 기준",
+    ph_policy_method_threshold_desc: "지난 N주 중 M주 이상 그 요일에 근무했으면 평소 근무일로 간주합니다.",
+    ph_policy_window_prefix: "최근", ph_policy_window_mid: "주 중", ph_policy_window_suffix: "주 이상 근무",
+    ph_policy_method_actual_title: "과거 기록 없이, 그날 근무 여부만",
+    ph_policy_method_actual_desc: "지난 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만으로 판단합니다.",
+    ph_policy_actual_cat_a: "일했으면 1.5배 + 대체휴무 지급",
+    ph_policy_actual_cat_c: "일했으면 1.5배만 지급 (대체휴무 없음)",
     ph_date: "날짜", ph_name: "이름", modal_ph_date_required: "날짜는 필수입니다.",
     modal_ph_week_title: "이번 주는 Public Holiday가 있는 주입니다",
     modal_ph_week_sub: "아래 공휴일에 대해, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인하세요. (참고용 계산이니 실제 지급 전 확인 권장)",
@@ -940,6 +950,15 @@ const I18N = {
     freq_badge_tooltip: "今週を含め、この曜日に連続して勤務した週数(休んだ週があればリセット・参考用、強制ではありません)",
     ph_title: "Public Holidays", btn_add_generic: "追加",
     ph_desc: "1年分の祝日を事前に登録しておくと、その日付を含む週に移動した際に自動でお知らせし、スタッフごとにニュージーランド労働法の基準を確認できます。",
+    ph_policy_btn: "⚙️ 判定基準の設定",
+    ph_policy_title: "祝日判定基準", ph_policy_sub: "スタッフが祝日に「通常の勤務日」だったかを判断する基準を、会社に合わせて設定してください。",
+    ph_policy_method_threshold_title: "直近の勤務比率基準",
+    ph_policy_method_threshold_desc: "直近N週のうちM週以上その曜日に勤務していれば通常の勤務日とみなします。",
+    ph_policy_window_prefix: "直近", ph_policy_window_mid: "週中", ph_policy_window_suffix: "週以上勤務",
+    ph_policy_method_actual_title: "過去の記録を見ず、その日の勤務有無のみ",
+    ph_policy_method_actual_desc: "過去の勤務記録を見ず、この祝日に実際に勤務したかどうかだけで判断します。",
+    ph_policy_actual_cat_a: "勤務した場合1.5倍+代休を付与",
+    ph_policy_actual_cat_c: "勤務した場合1.5倍のみ付与(代休なし)",
     ph_date: "日付", ph_name: "名前", modal_ph_date_required: "日付は必須です。",
     modal_ph_week_title: "今週はPublic Holidayがある週です",
     modal_ph_week_sub: "以下の祝日について、スタッフごとにニュージーランド労働法基準の適用項目を確認してください。(参考用の計算のため、実際の支払い前にご確認をお勧めします)",
@@ -1128,6 +1147,15 @@ const I18N = {
     freq_badge_tooltip: "Consecutive weeks (including this one) worked on this weekday - resets if a week off breaks the streak. Informational only, not enforced.",
     ph_title: "Public Holidays", btn_add_generic: "Add",
     ph_desc: "Register a year's worth of public holidays in advance. When you navigate to a week containing one, you'll be notified automatically and can check which NZ labour law entitlement applies to each employee.",
+    ph_policy_btn: "⚙️ Set Determination Rule",
+    ph_policy_title: "Public Holiday Determination Rule", ph_policy_sub: "Set how your company decides whether an employee's public holiday was a 'usual working day'.",
+    ph_policy_method_threshold_title: "Recent Work Ratio",
+    ph_policy_method_threshold_desc: "If an employee worked that weekday at least M out of the last N weeks, treat it as a usual working day.",
+    ph_policy_window_prefix: "Last", ph_policy_window_mid: "weeks, at least", ph_policy_window_suffix: "weeks worked",
+    ph_policy_method_actual_title: "No lookback — only whether they worked that day",
+    ph_policy_method_actual_desc: "Ignore past work history; decide based only on whether they actually worked on this public holiday.",
+    ph_policy_actual_cat_a: "If worked: 1.5x pay + lieu day",
+    ph_policy_actual_cat_c: "If worked: 1.5x pay only (no lieu day)",
     ph_date: "Date", ph_name: "Name", modal_ph_date_required: "Date is required.",
     modal_ph_week_title: "This week contains a Public Holiday",
     modal_ph_week_sub: "For the holiday(s) below, check which NZ labour law entitlement applies to each employee. (This is a reference calculation - please verify before running payroll.)",
@@ -3033,11 +3061,16 @@ function showPublicHolidayModal(info) {
       rowsInCat.forEach(r => {
         const line = document.createElement("div");
         line.className = "modal-item-detail";
-        const dayNote = r.is_usual_working_day
-          ? tf("ph_usual_day", {n: r.occurrence_count})
-          : tf("ph_not_usual_day", {n: r.occurrence_count});
         const workNote = r.worked_on_holiday ? t("ph_worked") : t("ph_not_worked");
-        line.textContent = `${r.employee_name} — ${dayNote}, ${workNote}`;
+        if (r.is_usual_working_day === null || r.is_usual_working_day === undefined) {
+          // actual_only 정책: 과거 근무 기록을 안 보므로 "평소 근무일" 판정 자체가 없습니다.
+          line.textContent = `${r.employee_name} — ${workNote}`;
+        } else {
+          const dayNote = r.is_usual_working_day
+            ? tf("ph_usual_day", {n: r.occurrence_count})
+            : tf("ph_not_usual_day", {n: r.occurrence_count});
+          line.textContent = `${r.employee_name} — ${dayNote}, ${workNote}`;
+        }
         catBlock.appendChild(line);
       });
       box.appendChild(catBlock);
@@ -3052,6 +3085,167 @@ function showPublicHolidayModal(info) {
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showPublicHolidayPolicyModal() {
+  let policy;
+  try {
+    policy = await api("/api/public-holiday-policy");
+  } catch (e) {
+    return;
+  }
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "520px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("ph_policy_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("ph_policy_sub");
+  box.appendChild(sub);
+
+  const methodWrap = document.createElement("div");
+  methodWrap.style.cssText = "display:flex; flex-direction:column; gap:10px; margin:14px 0;";
+
+  // --- 방식 1: 기준 근무일 비율 (threshold) ---
+  const thresholdLabel = document.createElement("label");
+  thresholdLabel.style.cssText = "display:flex; align-items:flex-start; gap:8px; cursor:pointer;";
+  const thresholdRadio = document.createElement("input");
+  thresholdRadio.type = "radio"; thresholdRadio.name = "ph-method"; thresholdRadio.value = "threshold";
+  thresholdRadio.checked = policy.method === "threshold";
+  thresholdLabel.appendChild(thresholdRadio);
+  const thresholdText = document.createElement("div");
+  const thresholdTitle = document.createElement("div");
+  thresholdTitle.style.fontWeight = "600";
+  thresholdTitle.textContent = t("ph_policy_method_threshold_title");
+  const thresholdDesc = document.createElement("div");
+  thresholdDesc.className = "modal-item-detail";
+  thresholdDesc.textContent = t("ph_policy_method_threshold_desc");
+  thresholdText.appendChild(thresholdTitle);
+  thresholdText.appendChild(thresholdDesc);
+  thresholdLabel.appendChild(thresholdText);
+  methodWrap.appendChild(thresholdLabel);
+
+  const thresholdFields = document.createElement("div");
+  thresholdFields.style.cssText = "margin-left:26px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px;";
+  const windowInput = document.createElement("input");
+  windowInput.type = "number"; windowInput.min = "1"; windowInput.max = "26"; windowInput.style.width = "56px";
+  windowInput.value = policy.window_weeks || 8;
+  const minInput = document.createElement("input");
+  minInput.type = "number"; minInput.min = "1"; minInput.style.width = "56px";
+  minInput.value = policy.min_weeks_worked || 5;
+  const percentNote = document.createElement("span");
+  percentNote.style.color = "var(--text-muted)";
+  const updatePercent = () => {
+    const w = Number(windowInput.value) || 1;
+    const m = Number(minInput.value) || 0;
+    percentNote.textContent = `(${Math.round((m / w) * 100)}%)`;
+  };
+  windowInput.oninput = updatePercent;
+  minInput.oninput = updatePercent;
+  updatePercent();
+  const l1 = document.createElement("span"); l1.textContent = t("ph_policy_window_prefix");
+  const l2 = document.createElement("span"); l2.textContent = t("ph_policy_window_mid");
+  const l3 = document.createElement("span"); l3.textContent = t("ph_policy_window_suffix");
+  thresholdFields.append(l1, windowInput, l2, minInput, l3, percentNote);
+  methodWrap.appendChild(thresholdFields);
+
+  // --- 방식 2: 과거 기록 없이 그날 근무 여부만 (actual_only) ---
+  const actualLabel = document.createElement("label");
+  actualLabel.style.cssText = "display:flex; align-items:flex-start; gap:8px; cursor:pointer;";
+  const actualRadio = document.createElement("input");
+  actualRadio.type = "radio"; actualRadio.name = "ph-method"; actualRadio.value = "actual_only";
+  actualRadio.checked = policy.method === "actual_only";
+  actualLabel.appendChild(actualRadio);
+  const actualText = document.createElement("div");
+  const actualTitle = document.createElement("div");
+  actualTitle.style.fontWeight = "600";
+  actualTitle.textContent = t("ph_policy_method_actual_title");
+  const actualDesc = document.createElement("div");
+  actualDesc.className = "modal-item-detail";
+  actualDesc.textContent = t("ph_policy_method_actual_desc");
+  actualText.appendChild(actualTitle);
+  actualText.appendChild(actualDesc);
+  actualLabel.appendChild(actualText);
+  methodWrap.appendChild(actualLabel);
+
+  const actualFields = document.createElement("div");
+  actualFields.style.cssText = "margin-left:26px; display:flex; flex-direction:column; gap:6px; font-size:13px;";
+  const catARadio = document.createElement("input");
+  catARadio.type = "radio"; catARadio.name = "ph-actual-cat"; catARadio.value = "A";
+  catARadio.checked = (policy.actual_only_worked_category || "C") === "A";
+  const catALabel = document.createElement("label");
+  catALabel.style.cssText = "display:flex; align-items:center; gap:6px;";
+  const catASpan = document.createElement("span");
+  catASpan.textContent = t("ph_policy_actual_cat_a");
+  catALabel.append(catARadio, catASpan);
+
+  const catCRadio = document.createElement("input");
+  catCRadio.type = "radio"; catCRadio.name = "ph-actual-cat"; catCRadio.value = "C";
+  catCRadio.checked = (policy.actual_only_worked_category || "C") === "C";
+  const catCLabel = document.createElement("label");
+  catCLabel.style.cssText = "display:flex; align-items:center; gap:6px;";
+  const catCSpan = document.createElement("span");
+  catCSpan.textContent = t("ph_policy_actual_cat_c");
+  catCLabel.append(catCRadio, catCSpan);
+
+  actualFields.append(catALabel, catCLabel);
+  methodWrap.appendChild(actualFields);
+  box.appendChild(methodWrap);
+
+  const toggleFieldsEnabled = () => {
+    const isThreshold = thresholdRadio.checked;
+    thresholdFields.style.opacity = isThreshold ? "1" : "0.4";
+    windowInput.disabled = !isThreshold;
+    minInput.disabled = !isThreshold;
+    actualFields.style.opacity = isThreshold ? "0.4" : "1";
+    catARadio.disabled = isThreshold;
+    catCRadio.disabled = isThreshold;
+  };
+  thresholdRadio.onchange = toggleFieldsEnabled;
+  actualRadio.onchange = toggleFieldsEnabled;
+  toggleFieldsEnabled();
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    const method = thresholdRadio.checked ? "threshold" : "actual_only";
+    const body = method === "threshold"
+      ? {method, window_weeks: Number(windowInput.value), min_weeks_worked: Number(minInput.value)}
+      : {method, actual_only_worked_category: catARadio.checked ? "A" : "C"};
+    saveBtn.disabled = true;
+    try {
+      await api("/api/public-holiday-policy", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      overlay.remove();
+      checkPublicHolidayForWeek();
+    } catch (e) {
+      saveBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
