@@ -1164,6 +1164,20 @@ def list_employees(company_id):
     return jsonify(out)
 
 
+def _sanitize_fixed_work_pattern(value):
+    """직원의 '계약상 고정 근무 요일'을 정리합니다. 리스트가 아니거나 유효하지 않은
+    요일 값이 섞여 있으면 걸러내고, 빈 리스트/None이면 '고정 패턴 없음'(과거 기록
+    기반으로 판단)으로 취급합니다."""
+    if not isinstance(value, list):
+        return []
+    valid = set(DAYS)
+    seen = []
+    for v in value:
+        if v in valid and v not in seen:
+            seen.append(v)
+    return seen
+
+
 @app.route("/api/employees", methods=["POST"])
 @require_login
 def add_employee(company_id):
@@ -1208,6 +1222,9 @@ def add_employee(company_id):
         "leave_requests": _prune_expired_leave_requests(payload.get("leave_requests", [])),
         "recent_night_count": payload.get("recent_night_count", 0),
         "recent_weekend_count": payload.get("recent_weekend_count", 0),
+        # 계약상 고정 근무 요일(예: "월/수/금 무조건 근무"). 지정해두면 공휴일 판정 시
+        # 과거 기록을 보지 않고 이 요일들을 곧바로 '평소 근무일'로 인정합니다.
+        "fixed_work_pattern": _sanitize_fixed_work_pattern(payload.get("fixed_work_pattern")),
     }
     state["employees"].append(employee)
     save_state(company_id, state)
@@ -1225,11 +1242,13 @@ def update_employee(company_id, employee_id):
     ALLOWED_FIELDS = {
         "name", "department", "min_hours_per_week", "target_days_per_week",
         "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
-        "leave_requests", "recent_night_count", "recent_weekend_count",
+        "leave_requests", "recent_night_count", "recent_weekend_count", "fixed_work_pattern",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "leave_requests" in updates:
         updates["leave_requests"] = _prune_expired_leave_requests(updates["leave_requests"])
+    if "fixed_work_pattern" in updates:
+        updates["fixed_work_pattern"] = _sanitize_fixed_work_pattern(updates["fixed_work_pattern"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             state["employees"][i].update(updates)
@@ -1903,8 +1922,23 @@ def get_public_holiday_info(company_id, week_key):
         for e in state["employees"]:
             emp_id = e["id"]
             worked = (emp_id, day) in worked_today
+            fixed_pattern = e.get("fixed_work_pattern") or []
 
-            if policy["method"] == "threshold":
+            if fixed_pattern:
+                # 계약상 고정 근무 요일이 지정된 직원은, 회사의 정책(threshold/actual_only)과
+                # 무관하게 이 요일들을 곧바로 '평소 근무일'로 인정합니다 — 과거 로스터 기록을
+                # 참고할 필요 자체가 없습니다 (PayHero 등 실제 급여 소프트웨어의 처리 방식과 동일).
+                count = None
+                is_usual_day = day in fixed_pattern
+                if is_usual_day and worked:
+                    category = 1
+                elif is_usual_day and not worked:
+                    category = 2
+                elif not is_usual_day and worked:
+                    category = 3
+                else:
+                    category = 4
+            elif policy["method"] == "threshold":
                 count = _weekday_total_count(state, emp_id, day, week_key, window=policy["window_weeks"])
                 is_usual_day = count >= policy["min_weeks_worked"]
                 if is_usual_day and worked:
@@ -1925,6 +1959,7 @@ def get_public_holiday_info(company_id, week_key):
                 "employee_id": emp_id, "employee_name": e["name"],
                 "occurrence_count": count, "is_usual_working_day": is_usual_day,
                 "worked_on_holiday": worked, "category": category,
+                "used_fixed_pattern": bool(fixed_pattern),
             })
         categories[day] = rows
 
