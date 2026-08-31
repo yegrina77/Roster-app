@@ -218,13 +218,15 @@ def _send_password_reset_email(to_email, reset_link):
     )
 
 
-def _send_signup_request_email(admin_email, requester_name, requester_email):
+def _send_signup_request_email(admin_email, requester_name, requester_email, contact_name=None, phone=None):
+    contact_line = f"<br><b>Contact:</b> {contact_name}" if contact_name else ""
+    phone_line = f"<br><b>Phone:</b> {phone}" if phone else ""
     return _send_email(
         admin_email,
         f"New Signup Request: {requester_name}",
         (
             f"<p>A new company has requested access to your roster system:</p>"
-            f"<p><b>Company:</b> {requester_name}<br><b>Email:</b> {requester_email}</p>"
+            f"<p><b>Company:</b> {requester_name}<br><b>Email:</b> {requester_email}{contact_line}{phone_line}</p>"
             f"<p>Log in and open the Admin page to approve or reject this request.</p>"
         ),
     )
@@ -235,6 +237,19 @@ def _send_signup_approved_email(to_email):
         to_email,
         "Your account has been approved",
         "<p>Your signup request has been approved. You can now log in with the email and password you registered with.</p>",
+    )
+
+
+def _send_employee_limit_request_email(admin_email, company_name, company_email, current_count, current_limit, requested_limit):
+    return _send_email(
+        admin_email,
+        f"Employee Limit Increase Requested: {company_name}",
+        (
+            f"<p><b>{company_name}</b> ({company_email}) has requested a higher employee registration limit.</p>"
+            f"<p>Currently using {current_count} of {current_limit} slots"
+            f"{f', requesting up to {requested_limit}' if requested_limit else ''}.</p>"
+            f"<p>Log in and open the Admin page to update their limit.</p>"
+        ),
     )
 
 
@@ -468,6 +483,19 @@ def index():
     return send_from_directory(FRONTEND_DIR, "index.html")
 
 
+DEFAULT_EMPLOYEE_LIMIT_BUFFER = 10  # 이 기능이 생기기 전에 가입한 회사는 한도가 없었으므로,
+# 현재 등록된 직원 수에 이 값을 더한 만큼을 초기 한도로 자동 설정합니다(넉넉한 여유분).
+
+
+def _ensure_employee_limit(auth, company, employee_count):
+    """회사 레코드에 employee_limit이 없으면(이 기능이 생기기 전에 가입한 회사),
+    현재 등록된 직원 수 + 여유분으로 기본값을 채워 넣고 그 값을 반환합니다.
+    호출한 쪽에서 auth를 이미 들고 있다면 이 함수 호출 후 save_auth(auth)를 해줘야 저장됩니다."""
+    if company.get("employee_limit") is None:
+        company["employee_limit"] = employee_count + DEFAULT_EMPLOYEE_LIMIT_BUFFER
+    return company["employee_limit"]
+
+
 @app.route("/api/admin/companies", methods=["GET"])
 @require_admin
 def list_admin_companies():
@@ -477,6 +505,7 @@ def list_admin_companies():
     auth = load_auth()
     now = time.time()
     companies = []
+    auth_dirty = False
     for c in auth["companies"].values():
         try:
             state = load_state(c["id"])
@@ -485,20 +514,49 @@ def list_admin_companies():
         except Exception:
             employee_count = 0
             week_count = 0
+        if c.get("employee_limit") is None:
+            _ensure_employee_limit(auth, c, employee_count)
+            auth_dirty = True
         last_active = _last_active.get(c["id"])
         companies.append({
             "id": c["id"],
             "name": c["name"],
+            "contact_name": c.get("contact_name", ""),
+            "phone": c.get("phone", ""),
             "email": c["email"],
             "created_at": c.get("created_at"),
             "is_admin": bool(c.get("is_admin")),
             "employee_count": employee_count,
+            "employee_limit": c.get("employee_limit"),
             "week_count": week_count,
             "is_online": bool(last_active) and (now - last_active) < ONLINE_THRESHOLD_SECONDS,
             "last_active_seconds_ago": int(now - last_active) if last_active else None,
         })
+    if auth_dirty:
+        save_auth(auth)
     companies.sort(key=lambda c: c.get("created_at") or "", reverse=True)
     return jsonify({"total": len(companies), "companies": companies, "online_threshold_seconds": ONLINE_THRESHOLD_SECONDS})
+
+
+@app.route("/api/admin/companies/<company_id>/employee-limit", methods=["POST"])
+@require_admin
+def set_employee_limit(company_id):
+    """관리자 전용: 특정 회사의 직원 등록 상한을 직접 수정합니다."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        new_limit = int(payload.get("employee_limit"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "employee_limit must be a whole number."}), 400
+    if new_limit < 1:
+        return jsonify({"error": "employee_limit must be at least 1."}), 400
+
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    company["employee_limit"] = new_limit
+    save_auth(auth)
+    return jsonify({"id": company_id, "employee_limit": new_limit})
 
 
 @app.route("/api/admin/companies/<company_id>/features", methods=["GET"])
@@ -544,7 +602,12 @@ def list_pending_signups():
     pending.sort(key=lambda r: r.get("requested_at") or "")
     return jsonify({
         "pending": [
-            {"id": r["id"], "name": r["name"], "email": r["email"], "requested_at": r.get("requested_at")}
+            {
+                "id": r["id"], "name": r["name"],
+                "contact_name": r.get("contact_name", ""), "phone": r.get("phone", ""),
+                "email": r["email"], "requested_at": r.get("requested_at"),
+                "employee_limit": r.get("employee_limit"),
+            }
             for r in pending
         ]
     })
@@ -563,11 +626,14 @@ def approve_pending_signup(request_id):
     auth["companies"][company_id] = {
         "id": company_id,
         "name": req["name"],
+        "contact_name": req.get("contact_name", ""),
+        "phone": req.get("phone", ""),
         "email": req["email"],
         "password_hash": req["password_hash"],
         "created_at": date.today().isoformat(),
         "is_admin": False,
         "enabled_features": _default_features(),
+        "employee_limit": req.get("employee_limit") or DEFAULT_EMPLOYEE_LIMIT_BUFFER,
     }
     save_auth(auth)
     _send_signup_approved_email(req["email"])
@@ -753,11 +819,20 @@ def delete_shift_type(company_id, shift_id):
 def register():
     payload = request.get_json(silent=True) or {}
     name = (payload.get("name") or "").strip()
+    contact_name = (payload.get("contact_name") or "").strip()
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
+    # phone은 선택 입력이라 값이 없어도 통과시키되, 공백만 입력한 경우는 빈 값으로 취급합니다.
+    phone = (payload.get("phone") or "").strip()
 
-    if not name or not email or not password:
-        return jsonify({"error": "Please enter company/store name, email, and password."}), 400
+    if not name or not contact_name or not email or not password:
+        return jsonify({"error": "Please enter company/store name, contact name, email, and password."}), 400
+    try:
+        employee_limit = int(payload.get("employee_limit"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Please enter the number of employees you expect to register."}), 400
+    if employee_limit < 1:
+        return jsonify({"error": "Number of employees must be at least 1."}), 400
     if not _valid_email(email):
         return jsonify({"error": "Please enter a valid email address."}), 400
     pw_error = _password_error(password)
@@ -786,11 +861,14 @@ def register():
         auth["companies"][company_id] = {
             "id": company_id,
             "name": name,
+            "contact_name": contact_name,
+            "phone": phone,
             "email": email,
             "password_hash": _hash_password(password),
             "created_at": date.today().isoformat(),
             "is_admin": True,
             "enabled_features": _default_features(),
+            "employee_limit": employee_limit,
         }
         save_auth(auth)
 
@@ -802,8 +880,8 @@ def register():
         session["company_id"] = company_id
         session.permanent = True
         return jsonify({
-            "id": company_id, "name": name, "email": email,
-            "is_admin": True, "enabled_features": _default_features(),
+            "id": company_id, "name": name, "contact_name": contact_name, "phone": phone, "email": email,
+            "is_admin": True, "enabled_features": _default_features(), "employee_limit": employee_limit,
         }), 201
 
     # 두 번째 가입자부터는 관리자 승인이 필요합니다. 계정을 바로 만들지 않고
@@ -812,15 +890,18 @@ def register():
     auth.setdefault("pending_signups", {})[request_id] = {
         "id": request_id,
         "name": name,
+        "contact_name": contact_name,
+        "phone": phone,
         "email": email,
         "password_hash": _hash_password(password),
         "requested_at": date.today().isoformat(),
+        "employee_limit": employee_limit,
     }
     save_auth(auth)
 
     admin_emails = [c["email"] for c in auth["companies"].values() if c.get("is_admin")]
     for admin_email in admin_emails:
-        _send_signup_request_email(admin_email, name, email)
+        _send_signup_request_email(admin_email, name, email, contact_name=contact_name, phone=phone)
 
     return jsonify({
         "status": "pending",
@@ -847,8 +928,11 @@ def login():
     session["company_id"] = match["id"]
     session.permanent = True
     return jsonify({
-        "id": match["id"], "name": match["name"], "email": match["email"],
+        "id": match["id"], "name": match["name"],
+        "contact_name": match.get("contact_name", ""), "phone": match.get("phone", ""),
+        "email": match["email"],
         "is_admin": bool(match.get("is_admin")), "enabled_features": match.get("enabled_features") or _default_features(),
+        "employee_limit": match.get("employee_limit"),
     })
 
 
@@ -869,8 +953,11 @@ def me():
         session.pop("company_id", None)
         return jsonify(None)
     return jsonify({
-        "id": company["id"], "name": company["name"], "email": company["email"],
+        "id": company["id"], "name": company["name"],
+        "contact_name": company.get("contact_name", ""), "phone": company.get("phone", ""),
+        "email": company["email"],
         "is_admin": bool(company.get("is_admin")), "enabled_features": company.get("enabled_features") or _default_features(),
+        "employee_limit": company.get("employee_limit"),
     })
 
 
@@ -1000,6 +1087,24 @@ def add_employee(company_id):
     if any(e["id"] == payload["id"] for e in state["employees"]):
         return jsonify({"error": f"An employee with this id already exists: {payload['id']}"}), 400
 
+    # 가입할 때 신고한 예상 직원 수를 넘어서 등록하지 못하도록 막습니다.
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if company is not None:
+        current_count = len(state["employees"])
+        limit = _ensure_employee_limit(auth, company, current_count)
+        save_auth(auth)  # _ensure_employee_limit이 방금 기본값을 채워 넣었을 수 있으므로 저장
+        if current_count >= limit:
+            return jsonify({
+                "error": (
+                    f"등록 가능한 직원 수({limit}명)를 초과했습니다. "
+                    "더 많은 인원이 필요하시면 관리자에게 한도 증가를 요청해주세요."
+                ),
+                "error_code": "employee_limit_exceeded",
+                "employee_limit": limit,
+                "employee_count": current_count,
+            }), 400
+
     employee = {
         "id": payload["id"],
         "name": payload["name"],
@@ -1050,6 +1155,37 @@ def delete_employee(company_id, employee_id):
     state["employees"] = [e for e in state["employees"] if e["id"] != employee_id]
     save_state(company_id, state)
     return "", 204
+
+
+@app.route("/api/company/request-employee-limit-increase", methods=["POST"])
+@require_login
+def request_employee_limit_increase(company_id):
+    """회사(매장) 계정이 등록 인원 한도를 늘려달라고 관리자에게 요청합니다.
+    한도를 직접 바꾸지는 않고, 관리자에게 이메일 알림만 보냅니다 — 실제 한도 조정은
+    관리자가 Admin 페이지에서 직접 승인해야 합니다."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        requested_limit = int(payload.get("requested_limit")) if payload.get("requested_limit") is not None else None
+    except (TypeError, ValueError):
+        requested_limit = None
+
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+
+    state = load_state(company_id)
+    current_count = len(state.get("employees", []))
+    current_limit = _ensure_employee_limit(auth, company, current_count)
+    save_auth(auth)
+
+    admin_emails = [c["email"] for c in auth["companies"].values() if c.get("is_admin")]
+    for admin_email in admin_emails:
+        _send_employee_limit_request_email(
+            admin_email, company["name"], company["email"], current_count, current_limit, requested_limit,
+        )
+
+    return jsonify({"status": "requested"}), 202
 
 
 # ---------------------------------------------------------------------------
