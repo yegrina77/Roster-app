@@ -759,9 +759,7 @@ const I18N = {
     ph_policy_method_threshold_desc: "지난 N주 중 M주 이상 그 요일에 근무했으면 평소 근무일로 간주합니다.",
     ph_policy_window_prefix: "최근", ph_policy_window_mid: "주 중", ph_policy_window_suffix: "주 이상 근무",
     ph_policy_method_actual_title: "과거 기록 없이, 그날 근무 여부만",
-    ph_policy_method_actual_desc: "지난 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만으로 판단합니다.",
-    ph_policy_actual_cat_a: "일했으면 1.5배 + 대체휴무 지급",
-    ph_policy_actual_cat_c: "일했으면 1.5배만 지급 (대체휴무 없음)",
+    ph_policy_method_actual_desc: "지난 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만으로 판단합니다. 일했으면 1.5배+대체휴무, 안 했으면 해당 없음으로 처리됩니다.",
     ph_date: "날짜", ph_name: "이름", modal_ph_date_required: "날짜는 필수입니다.",
     modal_ph_week_title: "이번 주는 Public Holiday가 있는 주입니다",
     modal_ph_week_sub: "아래 공휴일에 대해, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인하세요. (참고용 계산이니 실제 지급 전 확인 권장)",
@@ -956,9 +954,7 @@ const I18N = {
     ph_policy_method_threshold_desc: "直近N週のうちM週以上その曜日に勤務していれば通常の勤務日とみなします。",
     ph_policy_window_prefix: "直近", ph_policy_window_mid: "週中", ph_policy_window_suffix: "週以上勤務",
     ph_policy_method_actual_title: "過去の記録を見ず、その日の勤務有無のみ",
-    ph_policy_method_actual_desc: "過去の勤務記録を見ず、この祝日に実際に勤務したかどうかだけで判断します。",
-    ph_policy_actual_cat_a: "勤務した場合1.5倍+代休を付与",
-    ph_policy_actual_cat_c: "勤務した場合1.5倍のみ付与(代休なし)",
+    ph_policy_method_actual_desc: "過去の勤務記録を見ず、この祝日に実際に勤務したかどうかだけで判断します。勤務した場合は1.5倍+代休、しなかった場合は対象外になります。",
     ph_date: "日付", ph_name: "名前", modal_ph_date_required: "日付は必須です。",
     modal_ph_week_title: "今週はPublic Holidayがある週です",
     modal_ph_week_sub: "以下の祝日について、スタッフごとにニュージーランド労働法基準の適用項目を確認してください。(参考用の計算のため、実際の支払い前にご確認をお勧めします)",
@@ -1153,9 +1149,7 @@ const I18N = {
     ph_policy_method_threshold_desc: "If an employee worked that weekday at least M out of the last N weeks, treat it as a usual working day.",
     ph_policy_window_prefix: "Last", ph_policy_window_mid: "weeks, at least", ph_policy_window_suffix: "weeks worked",
     ph_policy_method_actual_title: "No lookback — only whether they worked that day",
-    ph_policy_method_actual_desc: "Ignore past work history; decide based only on whether they actually worked on this public holiday.",
-    ph_policy_actual_cat_a: "If worked: 1.5x pay + lieu day",
-    ph_policy_actual_cat_c: "If worked: 1.5x pay only (no lieu day)",
+    ph_policy_method_actual_desc: "Ignore past work history; decide based only on whether they actually worked on this public holiday. Worked = 1.5x pay + lieu day, didn't work = not applicable.",
     ph_date: "Date", ph_name: "Name", modal_ph_date_required: "Date is required.",
     modal_ph_week_title: "This week contains a Public Holiday",
     modal_ph_week_sub: "For the holiday(s) below, check which NZ labour law entitlement applies to each employee. (This is a reference calculation - please verify before running payroll.)",
@@ -3178,29 +3172,6 @@ async function showPublicHolidayPolicyModal() {
   actualText.appendChild(actualDesc);
   actualLabel.appendChild(actualText);
   methodWrap.appendChild(actualLabel);
-
-  const actualFields = document.createElement("div");
-  actualFields.style.cssText = "margin-left:26px; display:flex; flex-direction:column; gap:6px; font-size:13px;";
-  const catARadio = document.createElement("input");
-  catARadio.type = "radio"; catARadio.name = "ph-actual-cat"; catARadio.value = "A";
-  catARadio.checked = (policy.actual_only_worked_category || "C") === "A";
-  const catALabel = document.createElement("label");
-  catALabel.style.cssText = "display:flex; align-items:center; gap:6px;";
-  const catASpan = document.createElement("span");
-  catASpan.textContent = t("ph_policy_actual_cat_a");
-  catALabel.append(catARadio, catASpan);
-
-  const catCRadio = document.createElement("input");
-  catCRadio.type = "radio"; catCRadio.name = "ph-actual-cat"; catCRadio.value = "C";
-  catCRadio.checked = (policy.actual_only_worked_category || "C") === "C";
-  const catCLabel = document.createElement("label");
-  catCLabel.style.cssText = "display:flex; align-items:center; gap:6px;";
-  const catCSpan = document.createElement("span");
-  catCSpan.textContent = t("ph_policy_actual_cat_c");
-  catCLabel.append(catCRadio, catCSpan);
-
-  actualFields.append(catALabel, catCLabel);
-  methodWrap.appendChild(actualFields);
   box.appendChild(methodWrap);
 
   const toggleFieldsEnabled = () => {
@@ -3208,9 +3179,6 @@ async function showPublicHolidayPolicyModal() {
     thresholdFields.style.opacity = isThreshold ? "1" : "0.4";
     windowInput.disabled = !isThreshold;
     minInput.disabled = !isThreshold;
-    actualFields.style.opacity = isThreshold ? "0.4" : "1";
-    catARadio.disabled = isThreshold;
-    catCRadio.disabled = isThreshold;
   };
   thresholdRadio.onchange = toggleFieldsEnabled;
   actualRadio.onchange = toggleFieldsEnabled;
@@ -3229,7 +3197,7 @@ async function showPublicHolidayPolicyModal() {
     const method = thresholdRadio.checked ? "threshold" : "actual_only";
     const body = method === "threshold"
       ? {method, window_weeks: Number(windowInput.value), min_weeks_worked: Number(minInput.value)}
-      : {method, actual_only_worked_category: catARadio.checked ? "A" : "C"};
+      : {method};
     saveBtn.disabled = true;
     try {
       await api("/api/public-holiday-policy", {
