@@ -2580,12 +2580,18 @@ function showNewWeekChoiceModal(weekLabel) {
 
 let lastLoadedWeekKey = null; // 취소 시 되돌아갈 "마지막으로 정상 로드된 주"
 
+let deptManagementExpanded = false;
+const DEPT_MANAGEMENT_DEFAULT_COUNT = 3;
+
 function renderDeptManagementUI() {
   const wrap = document.getElementById("dept-management-wrap");
   if (!wrap) return;
   wrap.innerHTML = "";
 
-  customDepartments.forEach(dept => {
+  const showAllDepts = deptManagementExpanded || customDepartments.length <= DEPT_MANAGEMENT_DEFAULT_COUNT;
+  const displayDepartments = showAllDepts ? customDepartments : customDepartments.slice(0, DEPT_MANAGEMENT_DEFAULT_COUNT);
+
+  displayDepartments.forEach(dept => {
     const box = document.createElement("div");
     box.style.cssText = "border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:12px;";
 
@@ -2752,6 +2758,22 @@ function renderDeptManagementUI() {
 
     wrap.appendChild(box);
   });
+
+  if (customDepartments.length > DEPT_MANAGEMENT_DEFAULT_COUNT) {
+    const toggleRow = document.createElement("div");
+    toggleRow.style.cssText = "text-align:center; margin-bottom:12px;";
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn-ghost btn-sm";
+    if (showAllDepts) {
+      toggleBtn.textContent = t("btn_show_less");
+      toggleBtn.onclick = () => { deptManagementExpanded = false; renderDeptManagementUI(); };
+    } else {
+      toggleBtn.textContent = tf("btn_show_more", {n: customDepartments.length - DEPT_MANAGEMENT_DEFAULT_COUNT});
+      toggleBtn.onclick = () => { deptManagementExpanded = true; renderDeptManagementUI(); };
+    }
+    toggleRow.appendChild(toggleBtn);
+    wrap.appendChild(toggleRow);
+  }
 
   // 새 부서 추가
   const newDeptRow = document.createElement("div");
