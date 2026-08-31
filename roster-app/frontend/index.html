@@ -499,6 +499,7 @@
         <button class="btn-ghost btn-sm" id="admin-nav-btn" onclick="showAdminPage()" style="display:none;" data-i18n="admin_nav_btn">👑 Admin</button>
         <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
+        <button class="btn-ghost btn-sm" id="delete-account-btn" onclick="startDeleteAccount()" style="color:#ef4444;" data-i18n="account_delete_btn">회원탈퇴</button>
       </div>
       <div id="lang-switcher" style="display:flex; gap:6px; flex-shrink:0;">
         <button class="btn-ghost btn-sm lang-btn" data-lang="ko" onclick="setLanguage('ko')">한국어</button>
@@ -769,6 +770,23 @@ const I18N = {
     auth_employee_limit: "예상 직원 수",
     auth_email: "이메일", auth_password: "비밀번호",
     auth_logout: "로그아웃", auth_fill_all: "모든 항목을 입력해주세요.",
+    account_delete_btn: "회원탈퇴",
+    account_delete_title: "회원탈퇴",
+    account_delete_warning: "탈퇴하면 계정과 등록된 모든 직원/스케줄 데이터가 영구적으로 삭제되며, 되돌릴 수 없습니다.",
+    account_delete_reason_price: "가격이 부담됨",
+    account_delete_reason_missing_features: "필요한 기능이 없음",
+    account_delete_reason_switching: "다른 서비스로 이전",
+    account_delete_reason_closed_business: "더 이상 사업을 운영하지 않음",
+    account_delete_reason_other: "기타",
+    account_delete_other_placeholder: "자세한 이유를 알려주시면 도움이 됩니다 (선택)",
+    account_delete_reason_required: "탈퇴 이유를 하나 이상 선택해주세요.",
+    account_delete_final_confirm_title: "정말 탈퇴하시겠습니까?",
+    account_delete_final_confirm_msg: "이 작업은 되돌릴 수 없습니다. 계정과 모든 데이터가 즉시 삭제됩니다.",
+    account_delete_confirm_btn: "탈퇴하기",
+    admin_col_actions: "관리",
+    admin_force_delete_btn: "강제 탈퇴",
+    admin_force_delete_confirm_title: "회사 강제 탈퇴",
+    admin_force_delete_confirm_msg: "'{name}' 계정과 모든 데이터를 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속할까요?",
     auth_invalid_email: "이메일 형식이 올바르지 않습니다.",
     auth_password_too_short: "비밀번호는 8자 이상이며, 숫자와 특수문자를 각각 1개 이상 포함해야 합니다.",
     auth_password_hint: "8자 이상, 숫자 1개 이상, 특수문자 1개 이상 포함",
@@ -940,6 +958,23 @@ const I18N = {
     auth_employee_limit: "想定される従業員数",
     auth_email: "メールアドレス", auth_password: "パスワード",
     auth_logout: "ログアウト", auth_fill_all: "すべての項目を入力してください。",
+    account_delete_btn: "退会",
+    account_delete_title: "退会",
+    account_delete_warning: "退会すると、アカウントと登録された全てのスタッフ・スケジュールデータが完全に削除され、元に戻せません。",
+    account_delete_reason_price: "価格が負担",
+    account_delete_reason_missing_features: "必要な機能がない",
+    account_delete_reason_switching: "他のサービスに移行",
+    account_delete_reason_closed_business: "事業をもう営んでいない",
+    account_delete_reason_other: "その他",
+    account_delete_other_placeholder: "詳しい理由を教えていただけると助かります(任意)",
+    account_delete_reason_required: "退会理由を1つ以上選択してください。",
+    account_delete_final_confirm_title: "本当に退会しますか?",
+    account_delete_final_confirm_msg: "この操作は元に戻せません。アカウントと全データが即座に削除されます。",
+    account_delete_confirm_btn: "退会する",
+    admin_col_actions: "管理",
+    admin_force_delete_btn: "強制退会",
+    admin_force_delete_confirm_title: "会社を強制退会",
+    admin_force_delete_confirm_msg: "'{name}' のアカウントと全データを削除します。この操作は元に戻せません。続けますか?",
     auth_invalid_email: "メールアドレスの形式が正しくありません。",
     auth_password_too_short: "パスワードは8文字以上で、数字と特殊文字をそれぞれ1つ以上含めてください。",
     auth_password_hint: "8文字以上、数字1つ以上、特殊文字1つ以上を含む",
@@ -1111,6 +1146,23 @@ const I18N = {
     auth_employee_limit: "Expected Number of Employees",
     auth_email: "Email", auth_password: "Password",
     auth_logout: "Log Out", auth_fill_all: "Please fill in all fields.",
+    account_delete_btn: "Delete Account",
+    account_delete_title: "Delete Account",
+    account_delete_warning: "Deleting your account permanently removes it along with all registered employee and schedule data. This cannot be undone.",
+    account_delete_reason_price: "Too expensive",
+    account_delete_reason_missing_features: "Missing features I need",
+    account_delete_reason_switching: "Switching to another service",
+    account_delete_reason_closed_business: "No longer running this business",
+    account_delete_reason_other: "Other",
+    account_delete_other_placeholder: "Let us know more (optional)",
+    account_delete_reason_required: "Please select at least one reason.",
+    account_delete_final_confirm_title: "Are you sure?",
+    account_delete_final_confirm_msg: "This cannot be undone. Your account and all data will be deleted immediately.",
+    account_delete_confirm_btn: "Delete Account",
+    admin_col_actions: "Actions",
+    admin_force_delete_btn: "Force Delete",
+    admin_force_delete_confirm_title: "Force Delete Company",
+    admin_force_delete_confirm_msg: "This will delete '{name}' and all their data. This cannot be undone. Continue?",
     auth_invalid_email: "Please enter a valid email address.",
     auth_password_too_short: "Password must be at least 8 characters, with at least one number and one special character.",
     auth_password_hint: "At least 8 characters, including 1 number and 1 special character",
@@ -1308,6 +1360,7 @@ async function checkAuthAndInit() {
     document.getElementById("auth-company-name").textContent = me.name;
     document.getElementById("admin-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
+    document.getElementById("delete-account-btn").style.display = me.is_admin ? "none" : "inline-block";
     hideAuthScreen();
     await initAppData();
   } else {
@@ -1388,6 +1441,7 @@ async function submitAuth() {
     document.getElementById("auth-company-name").textContent = data.name;
     document.getElementById("admin-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
+    document.getElementById("delete-account-btn").style.display = data.is_admin ? "none" : "inline-block";
     document.getElementById("auth-email").value = "";
     document.getElementById("auth-password").value = "";
     document.getElementById("auth-name").value = "";
@@ -1404,6 +1458,104 @@ async function logoutUser() {
   document.getElementById("auth-email").value = "";
   document.getElementById("auth-password").value = "";
   showAuthScreen();
+}
+
+function startDeleteAccount() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const h = document.createElement("h3");
+  h.textContent = t("account_delete_title");
+  box.appendChild(h);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("account_delete_warning");
+  box.appendChild(sub);
+
+  const reasonKeys = ["price", "missing_features", "switching", "closed_business", "other"];
+  const reasonWrap = document.createElement("div");
+  reasonWrap.style.cssText = "display:flex; flex-direction:column; gap:6px; margin:12px 0;";
+  const checkboxes = {};
+  reasonKeys.forEach((key) => {
+    const label = document.createElement("label");
+    label.style.cssText = "display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = key;
+    checkboxes[key] = cb;
+    label.appendChild(cb);
+    const span = document.createElement("span");
+    span.textContent = t(`account_delete_reason_${key}`);
+    label.appendChild(span);
+    reasonWrap.appendChild(label);
+  });
+  box.appendChild(reasonWrap);
+
+  const otherInput = document.createElement("textarea");
+  otherInput.placeholder = t("account_delete_other_placeholder");
+  otherInput.style.cssText = "width:100%; min-height:60px; margin-bottom:10px; display:none; box-sizing:border-box;";
+  box.appendChild(otherInput);
+  checkboxes.other.onchange = () => {
+    otherInput.style.display = checkboxes.other.checked ? "block" : "none";
+  };
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-bottom:8px;";
+  box.appendChild(errLine);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const confirmBtn = document.createElement("button");
+  confirmBtn.className = "btn-primary";
+  confirmBtn.style.background = "#ef4444";
+  confirmBtn.textContent = t("account_delete_confirm_btn");
+  confirmBtn.onclick = async () => {
+    const reasons = reasonKeys.filter((k) => checkboxes[k].checked).map((k) => t(`account_delete_reason_${k}`));
+    if (reasons.length === 0) {
+      errLine.textContent = t("account_delete_reason_required");
+      errLine.style.display = "block";
+      return;
+    }
+    const finalConfirmed = await showConfirmModal(
+      t("account_delete_final_confirm_title"), t("account_delete_final_confirm_msg"),
+      t("account_delete_confirm_btn"), t("btn_cancel"),
+    );
+    if (!finalConfirmed) return;
+    confirmBtn.disabled = true;
+    try {
+      const res = await fetch("/api/auth/account", {
+        method: "DELETE", credentials: "same-origin",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({reasons, other_text: otherInput.value.trim()}),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        errLine.textContent = data.error || t("modal_request_failed");
+        errLine.style.display = "block";
+        confirmBtn.disabled = false;
+        return;
+      }
+      overlay.remove();
+      location.reload();
+    } catch (e) {
+      errLine.textContent = t("modal_network_error");
+      errLine.style.display = "block";
+      confirmBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(confirmBtn);
+  box.appendChild(btnRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
 
 async function showAdminPage() {
@@ -1449,6 +1601,7 @@ async function showAdminPage() {
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_employees")}</th>
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_employee_limit")}</th>
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_weeks")}</th>
+      <th style="padding:6px 8px; text-align:center;">${t("admin_col_actions")}</th>
     </tr>
   `;
   table.appendChild(thead);
@@ -1482,6 +1635,9 @@ async function showAdminPage() {
         <button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px;" data-action="save-limit">${t("btn_save")}</button>
       </td>
       <td style="padding:6px 8px; text-align:center;">${c.week_count}</td>
+      <td style="padding:6px 8px; text-align:center;" data-actions-cell>
+        ${c.is_admin ? "" : `<button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px; color:#ef4444;" data-action="force-delete">${t("admin_force_delete_btn")}</button>`}
+      </td>
     `;
     const limitCell = tr.querySelector("[data-limit-cell]");
     limitCell.addEventListener("click", (ev) => ev.stopPropagation());
@@ -1504,6 +1660,26 @@ async function showAdminPage() {
         saveLimitBtn.disabled = false;
       }
     });
+    const actionsCell = tr.querySelector("[data-actions-cell]");
+    actionsCell.addEventListener("click", (ev) => ev.stopPropagation());
+    const forceDeleteBtn = tr.querySelector('[data-action="force-delete"]');
+    if (forceDeleteBtn) {
+      forceDeleteBtn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const confirmed = await showConfirmModal(
+          t("admin_force_delete_confirm_title"), tf("admin_force_delete_confirm_msg", {name: c.name}),
+          t("admin_force_delete_btn"), t("btn_cancel"),
+        );
+        if (!confirmed) return;
+        forceDeleteBtn.disabled = true;
+        try {
+          await api(`/api/admin/companies/${c.id}`, {method: "DELETE"});
+          tr.remove();
+        } catch (e) {
+          forceDeleteBtn.disabled = false;
+        }
+      });
+    }
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
