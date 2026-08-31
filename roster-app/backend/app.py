@@ -18,6 +18,7 @@ import sys
 import time
 import hashlib
 import hmac
+import html
 import json
 import os
 import random
@@ -89,6 +90,15 @@ def _raw_set(key, value_str):
     path = os.path.join(DATA_DIR, f"{key}.json")
     with open(path, "w", encoding="utf-8") as f:
         f.write(value_str)
+
+
+def _raw_delete(key):
+    if _upstash_redis is not None:
+        _upstash_redis.delete(key)
+        return
+    path = os.path.join(DATA_DIR, f"{key}.json")
+    if os.path.exists(path):
+        os.remove(path)
 
 
 AUTH_KEY = "roster_auth_companies"
@@ -249,6 +259,23 @@ def _send_employee_limit_request_email(admin_email, company_name, company_email,
             f"<p>Currently using {current_count} of {current_limit} slots"
             f"{f', requesting up to {requested_limit}' if requested_limit else ''}.</p>"
             f"<p>Log in and open the Admin page to update their limit.</p>"
+        ),
+    )
+
+
+def _send_account_deleted_email(admin_email, company_name, company_email, reasons, other_text):
+    # reasons/other_text는 사용자가 자유롭게 입력하는 값이라, 이메일 본문에 넣기 전에
+    # HTML 이스케이프를 거쳐서 이메일 클라이언트에서 깨지거나 악용되지 않도록 합니다.
+    safe_reasons = ", ".join(html.escape(r) for r in reasons) if reasons else "(no reason selected)"
+    other_line = f"<p><b>Other:</b> {html.escape(other_text)}</p>" if other_text else ""
+    return _send_email(
+        admin_email,
+        f"Account Deleted: {company_name}",
+        (
+            f"<p><b>{html.escape(company_name)}</b> ({html.escape(company_email)}) has deleted their account "
+            f"and all associated roster data.</p>"
+            f"<p><b>Reason(s):</b> {safe_reasons}</p>"
+            f"{other_line}"
         ),
     )
 
@@ -557,6 +584,26 @@ def set_employee_limit(company_id):
     company["employee_limit"] = new_limit
     save_auth(auth)
     return jsonify({"id": company_id, "employee_limit": new_limit})
+
+
+@app.route("/api/admin/companies/<company_id>", methods=["DELETE"])
+@require_admin
+def admin_delete_company(company_id):
+    """관리자 전용: 특정 회사(매장) 계정을 강제로 탈퇴(삭제)시킵니다. 계정과 저장된
+    로스터 데이터를 전부 지우는 되돌릴 수 없는 작업입니다. 관리자 계정은 이 API로
+    지울 수 없게 막아둡니다(관리자가 하나도 안 남는 상황을 막기 위함 — 필요하다면
+    먼저 다른 계정에 관리자 권한을 넘긴 뒤 그 계정을 지워야 합니다)."""
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    if company.get("is_admin"):
+        return jsonify({"error": "관리자 계정은 이 기능으로 삭제할 수 없습니다."}), 400
+
+    del auth["companies"][company_id]
+    save_auth(auth)
+    _raw_delete(f"roster_state:{company_id}")
+    return "", 204
 
 
 @app.route("/api/admin/companies/<company_id>/features", methods=["GET"])
@@ -959,6 +1006,44 @@ def me():
         "is_admin": bool(company.get("is_admin")), "enabled_features": company.get("enabled_features") or _default_features(),
         "employee_limit": company.get("employee_limit"),
     })
+
+
+@app.route("/api/auth/account", methods=["DELETE"])
+@require_login
+def delete_account(company_id):
+    """회사(매장) 계정이 스스로 탈퇴합니다. 탈퇴 사유(체크박스+기타 텍스트)를 받아서
+    관리자에게 이메일로 통보한 뒤, 계정과 저장된 로스터 데이터를 전부 삭제합니다.
+    되돌릴 수 없는 작업이라, 관리자 계정 본인은 이 API로 탈퇴할 수 없게 막아둡니다
+    (관리자가 없어지면 아무도 승인/관리를 못 하게 되므로)."""
+    payload = request.get_json(silent=True) or {}
+    reasons = payload.get("reasons") or []
+    if not isinstance(reasons, list):
+        reasons = []
+    reasons = [str(r).strip() for r in reasons if str(r).strip()][:10]  # 방어적으로 개수/타입 제한
+    other_text = (payload.get("other_text") or "").strip()[:500]
+
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    if company.get("is_admin"):
+        return jsonify({
+            "error": "관리자 계정은 이 기능으로 탈퇴할 수 없습니다. 다른 계정에 먼저 관리자 권한을 넘긴 뒤 다시 시도해주세요.",
+        }), 400
+
+    admin_emails = [c["email"] for c in auth["companies"].values() if c.get("is_admin")]
+    company_name = company["name"]
+    company_email = company["email"]
+
+    del auth["companies"][company_id]
+    save_auth(auth)
+    _raw_delete(f"roster_state:{company_id}")
+    session.pop("company_id", None)
+
+    for admin_email in admin_emails:
+        _send_account_deleted_email(admin_email, company_name, company_email, reasons, other_text)
+
+    return "", 204
 
 
 @app.route("/api/auth/forgot-password", methods=["POST"])
