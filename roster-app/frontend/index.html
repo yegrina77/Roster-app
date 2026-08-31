@@ -543,6 +543,20 @@
       <button class="btn-ghost" id="emp-cancel-btn" onclick="cancelEditEmployee()" style="display:none;" data-i18n="btn_cancel">취소</button>
     </div>
 
+    <div class="field" style="width:100%; margin-top:6px;">
+      <label data-i18n="label_fixed_pattern">고정 근무 요일 (선택 — 계약상 정해진 요일이 있다면)</label>
+      <div id="emp-fixed-pattern-days" style="display:flex; gap:12px; flex-wrap:wrap; margin-top:4px; font-size:13px;">
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" class="emp-fixed-day" value="mon"><span data-fixed-day-label="mon">월</span></label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" class="emp-fixed-day" value="tue"><span data-fixed-day-label="tue">화</span></label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" class="emp-fixed-day" value="wed"><span data-fixed-day-label="wed">수</span></label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" class="emp-fixed-day" value="thu"><span data-fixed-day-label="thu">목</span></label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" class="emp-fixed-day" value="fri"><span data-fixed-day-label="fri">금</span></label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" class="emp-fixed-day" value="sat"><span data-fixed-day-label="sat">토</span></label>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" class="emp-fixed-day" value="sun"><span data-fixed-day-label="sun">일</span></label>
+      </div>
+      <p class="desc" style="margin-top:4px; font-size:11px;" data-i18n="label_fixed_pattern_hint">지정해두면, 공휴일 판정 시 과거 근무 기록 대신 이 요일들을 바로 '평소 근무일'로 인정합니다.</p>
+    </div>
+
     <table id="employee-table">
       <thead>
         <tr>
@@ -667,6 +681,9 @@ const I18N = {
     emp_desc: '이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.',
     label_id: "ID", label_name: "이름", label_department: "부서",
     label_min_hours: "주당 최소시간", label_target_days: "주간 근무일수 (권장)", label_any: "상관없음",
+    label_fixed_pattern: "고정 근무 요일 (선택 — 계약상 정해진 요일이 있다면)",
+    label_fixed_pattern_hint: "지정해두면, 공휴일 판정 시 과거 근무 기록 대신 이 요일들을 바로 '평소 근무일'로 인정합니다.",
+    ph_fixed_pattern_usual: "계약상 고정 근무일", ph_fixed_pattern_not_usual: "계약상 고정 근무일 아님",
     opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
     modal_training_added_title: "Training 인원이 등록되었습니다",
     modal_employee_added_title: "등록 완료", modal_employee_added_msg: "직원이 추가되었습니다.",
@@ -862,6 +879,9 @@ const I18N = {
     emp_desc: '氏名、週の最低勤務時間、週の目標勤務日数を登録し、「ルール」で個別の制約を設定してください。',
     label_id: "ID", label_name: "氏名", label_department: "部署",
     label_min_hours: "週の最低時間", label_target_days: "週の勤務日数(推奨)", label_any: "指定なし",
+    label_fixed_pattern: "固定勤務曜日(任意 — 契約上決まっている曜日があれば)",
+    label_fixed_pattern_hint: "設定しておくと、祝日判定時に過去の勤務記録の代わりにこの曜日を「通常の勤務日」として認識します。",
+    ph_fixed_pattern_usual: "契約上の固定勤務日", ph_fixed_pattern_not_usual: "契約上の固定勤務日ではない",
     opt_0h: "0時間", opt_5h: "5時間", opt_30h: "30時間", opt_40h: "40時間",
     modal_training_added_title: "Trainingスタッフが登録されました",
     modal_employee_added_title: "登録完了", modal_employee_added_msg: "スタッフが追加されました。",
@@ -1057,6 +1077,9 @@ const I18N = {
     emp_desc: 'Enter name, weekly minimum hours, and target working days, then set individual constraints under "Rules".',
     label_id: "ID", label_name: "Name", label_department: "Department",
     label_min_hours: "Min hours/week", label_target_days: "Target days/week (preferred)", label_any: "No preference",
+    label_fixed_pattern: "Fixed Working Days (optional — if contractually set)",
+    label_fixed_pattern_hint: "If set, these days are treated as 'usual working days' for public holiday purposes instead of looking at past roster history.",
+    ph_fixed_pattern_usual: "Fixed contracted working day", ph_fixed_pattern_not_usual: "Not a fixed contracted working day",
     opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
     modal_training_added_title: "Training employee registered",
     modal_employee_added_title: "Added", modal_employee_added_msg: "Employee has been added.",
@@ -1280,6 +1303,9 @@ function applyI18nStatic() {
   document.querySelectorAll("[data-i18n]").forEach(el => {
     const key = el.getAttribute("data-i18n");
     el.innerHTML = t(key);
+  });
+  document.querySelectorAll("[data-fixed-day-label]").forEach(el => {
+    el.textContent = DAY_LABEL[el.getAttribute("data-fixed-day-label")];
   });
   document.querySelectorAll(".lang-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.lang === currentLang);
@@ -2364,6 +2390,8 @@ function startEditEmployee(e) {
   document.getElementById("emp-target-days-any").checked = isAny;
   document.getElementById("emp-target-days").disabled = isAny;
   document.getElementById("emp-target-days").value = isAny ? "" : e.target_days_per_week;
+  const fixedPattern = e.fixed_work_pattern || [];
+  document.querySelectorAll(".emp-fixed-day").forEach(cb => { cb.checked = fixedPattern.includes(cb.value); });
   document.getElementById("emp-submit-btn").textContent = t("btn_save_edit");
   document.getElementById("emp-cancel-btn").style.display = "inline-block";
   document.getElementById("emp-name").focus();
@@ -2379,6 +2407,7 @@ function cancelEditEmployee() {
   document.getElementById("emp-target-days").value = "";
   document.getElementById("emp-target-days").disabled = false;
   document.getElementById("emp-target-days-any").checked = false;
+  document.querySelectorAll(".emp-fixed-day").forEach(cb => { cb.checked = false; });
   document.getElementById("emp-submit-btn").textContent = t("btn_add_employee");
   document.getElementById("emp-cancel-btn").style.display = "none";
 }
@@ -2391,6 +2420,7 @@ async function submitEmployee() {
   const isAny = document.getElementById("emp-target-days-any").checked;
   const targetDaysRaw = document.getElementById("emp-target-days").value;
   const target_days_per_week = isAny || targetDaysRaw === "" ? null : Number(targetDaysRaw);
+  const fixed_work_pattern = [...document.querySelectorAll(".emp-fixed-day:checked")].map(cb => cb.value);
   if (!id || !name) { showMessageModal(t("modal_input_check_title"), t("modal_id_name_required"), true); return; }
 
   const isNewEmployee = !editingEmployeeId;
@@ -2399,7 +2429,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, min_hours_per_week, target_days_per_week, fixed_work_pattern})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -2408,7 +2438,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, min_hours_per_week, target_days_per_week, fixed_work_pattern}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
@@ -3056,7 +3086,12 @@ function showPublicHolidayModal(info) {
         const line = document.createElement("div");
         line.className = "modal-item-detail";
         const workNote = r.worked_on_holiday ? t("ph_worked") : t("ph_not_worked");
-        if (r.is_usual_working_day === null || r.is_usual_working_day === undefined) {
+        if (r.used_fixed_pattern) {
+          // 이 직원은 계약상 고정 근무 요일이 지정되어 있어서, 회사의 정책(threshold/actual_only)
+          // 대신 그 고정 패턴으로 판정했습니다 — 관리자가 헷갈리지 않도록 구분해서 보여줍니다.
+          const dayNote = r.is_usual_working_day ? t("ph_fixed_pattern_usual") : t("ph_fixed_pattern_not_usual");
+          line.textContent = `${r.employee_name} — ${dayNote}, ${workNote}`;
+        } else if (r.is_usual_working_day === null || r.is_usual_working_day === undefined) {
           // actual_only 정책: 과거 근무 기록을 안 보므로 "평소 근무일" 판정 자체가 없습니다.
           line.textContent = `${r.employee_name} — ${workNote}`;
         } else {
