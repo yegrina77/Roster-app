@@ -1802,11 +1802,6 @@ def _default_public_holiday_policy():
         "method": "threshold",  # "threshold" | "actual_only"
         "window_weeks": FREQUENCY_WINDOW_WEEKS,
         "min_weeks_worked": HOLIDAY_OWD_THRESHOLD,
-        # method가 "actual_only"일 때만 쓰입니다: 공휴일에 실제로 일한 경우 어떤 대우를
-        # 줄지 — "A"(1.5배 + 대체휴무) 또는 "C"(1.5배만, 대체휴무 없음). 일하지 않은 경우는
-        # 항상 "해당 없음"으로 처리됩니다(과거 기록을 안 보므로 "평소 근무일이라 쉬어도
-        # 하루치 급여를 준다"는 판단 자체를 할 수 없기 때문입니다).
-        "actual_only_worked_category": "C",
     }
 
 
@@ -1830,11 +1825,8 @@ def _validate_public_holiday_policy(payload):
             return None, "min_weeks_worked는 1 이상, window_weeks 이하여야 합니다."
         policy["window_weeks"] = window_weeks
         policy["min_weeks_worked"] = min_weeks_worked
-    else:  # actual_only
-        worked_category = payload.get("actual_only_worked_category")
-        if worked_category not in ("A", "C"):
-            return None, "actual_only_worked_category는 'A' 또는 'C'여야 합니다."
-        policy["actual_only_worked_category"] = worked_category
+    # method == "actual_only"인 경우 추가 필드가 없습니다 — 일했으면 항상 1.5배+대체휴무로
+    # 고정 처리합니다 (get_public_holiday_info 참고).
 
     return policy, None
 
@@ -1924,12 +1916,10 @@ def get_public_holiday_info(company_id, week_key):
                 else:
                     category = 4
             else:  # actual_only — 과거 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만 봅니다.
+                # 일했으면 항상 1.5배+대체휴무(카테고리 1), 아니면 해당 없음(카테고리 4)으로 고정합니다.
                 count = None
                 is_usual_day = None
-                if worked:
-                    category = 1 if policy["actual_only_worked_category"] == "A" else 3
-                else:
-                    category = 4
+                category = 1 if worked else 4
 
             rows.append({
                 "employee_id": emp_id, "employee_name": e["name"],
