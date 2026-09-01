@@ -521,15 +521,16 @@ def _assignment_duration_hours(a, shift_times):
 
 def _compute_week_payroll(state, week_key):
     """이 주(week_key)의 예상 인건비(Labour Cost)를, 요일별/직원별로 계산합니다.
-    스케줄(로스터)에 배정된 시간 × 시급을 기본으로 하되, 공휴일이 낀 날은
-    _public_holiday_category()로 A/B/C/D를 판정해서 그에 맞는 배율을 적용합니다:
-      - A(1)/C(3) = 실제 일함 → 1.5배
-      - B(2) = 평소 근무일인데 안 일함 → 하루치 평균급여 지급(추정치 — 아래 참고)
-      - D(4) = 해당 없음 → 0
+    스케줄(로스터)에 배정된 시간 × 시급을 기본으로 하되:
+      - 공휴일이 낀 날은 _public_holiday_category()로 A/B/C/D를 판정해서 그에 맞는
+        배율을 적용합니다: A(1)/C(3)=1.5배, B(2)=하루치 평균급여, D(4)=0
+      - 공휴일이 아닌 날에 유급(paid) 또는 병가(sick) Leave Request가 있으면, 실제
+        배정된 시간이 없어도 하루치 평균급여를 지급합니다(회사가 이미 지급을 약속한
+        시간이므로). 무급(unpaid) Leave Request나 수동 Off는 원래대로 $0입니다.
 
-    ⚠️ B 카테고리의 "하루치 평균급여"는 실제 과거 지급 내역(relevant daily pay)이 아니라,
-    이 직원의 주당 최소시간(min_hours_per_week)을 목표 근무일수(target_days_per_week)로
-    나눈 추정값입니다 — 정확한 금액은 회계/노무 담당자 확인을 권장합니다.
+    ⚠️ "하루치 평균급여"는 실제 과거 지급 내역(relevant daily pay)이 아니라, 이 직원의
+    주당 최소시간(min_hours_per_week)을 목표 근무일수(target_days_per_week)로 나눈
+    추정값입니다 — 정확한 금액은 회계/노무 담당자 확인을 권장합니다.
 
     ⚠️ 지금은 "스케줄상 예정된" 비용만 계산합니다. 실제 클락인/아웃 데이터가 없어서
     "실제 지급액"은 아직 계산할 수 없습니다.
@@ -569,23 +570,27 @@ def _compute_week_payroll(state, week_key):
         weekly_hours = 0.0
         weekly_pay = 0.0
         per_day = {}
+        avg_day_hours = _average_day_hours(e)
+        leave_info = _leave_info_by_day(e, week_key)
 
         for day in DAYS:
             day_assignments = assignments_by_emp_day.get((emp_id, day), [])
             hours = sum(_assignment_duration_hours(a, shift_times) for a in day_assignments)
             worked = len(day_assignments) > 0
             category = None
+            leave_type = leave_info.get(day)
 
             if day in holiday_by_day:
                 category, _count, _is_usual = _public_holiday_category(state, policy, emp_id, day, week_key, worked)
                 if category in (1, 3):
                     pay = hours * wage * 1.5 if wage is not None else None
                 elif category == 2:
-                    target_days = e.get("target_days_per_week") or 5
-                    avg_day_hours = (e.get("min_hours_per_week") or 0) / target_days
                     pay = avg_day_hours * wage if wage is not None else None
                 else:
                     pay = 0.0 if wage is not None else None
+            elif leave_type and _is_paid_leave(leave_type) and not worked:
+                # 유급/병가 리브 — 실제 배정된 시간이 없어도 하루치 평균급여를 지급합니다.
+                pay = avg_day_hours * wage if wage is not None else None
             else:
                 pay = hours * wage if wage is not None else None
 
@@ -594,6 +599,7 @@ def _compute_week_payroll(state, week_key):
                 "pay": round(pay, 2) if pay is not None else None,
                 "is_public_holiday": day in holiday_by_day,
                 "category": category,
+                "leave_type": leave_type,
             }
             weekly_hours += hours
             day_totals[day]["scheduled_hours"] += hours
@@ -678,9 +684,20 @@ def _sanitize_wage(value):
     return round(wage, 2)
 
 
+LEAVE_TYPES = ("paid", "unpaid", "sick")  # sick도 유급으로 취급합니다 (아래 _is_paid_leave 참고)
+
+
+def _is_paid_leave(leave_type):
+    """유급(paid) 또는 병가(sick)면 True — 급여 계산과 스케줄러의 최소시간 크레딧에서
+    "이미 지급이 약속된 시간"으로 취급합니다. 무급(unpaid)이거나 값이 없으면 False."""
+    return leave_type in ("paid", "sick")
+
+
 def _prune_expired_leave_requests(leave_requests):
     """이미 끝난(오늘보다 종료일이 이른) Leave Request는 걸러내고, 사유(reason) 글자수도
-    방어적으로 최대 200자로 제한합니다."""
+    방어적으로 최대 200자로 제한하며, leave_type을 정해진 값으로 정규화합니다.
+    leave_type이 없거나 잘못된 값이면 안전하게 "unpaid"로 취급합니다 — 잘못 입력됐다고
+    실수로 급여가 더 나가면 안 되기 때문에, 애매하면 항상 무급 쪽으로 기웁니다."""
     today = date.today()
     result = []
     for lr in (leave_requests or []):
@@ -691,6 +708,7 @@ def _prune_expired_leave_requests(leave_requests):
         if end >= today:
             lr = dict(lr)
             lr["reason"] = str(lr.get("reason") or "").strip()[:200]
+            lr["leave_type"] = lr.get("leave_type") if lr.get("leave_type") in LEAVE_TYPES else "unpaid"
             result.append(lr)
     return result
 
@@ -702,10 +720,12 @@ def _week_dates(week_key):
     return [monday + timedelta(days=i) for i in range(7)]
 
 
-def _leave_forced_days(employee_dict, week_key):
-    """이 직원의 Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들을 반환합니다."""
+def _leave_info_by_day(employee_dict, week_key):
+    """이 직원의 Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들을
+    {day: leave_type} 형태로 반환합니다. 하루에 여러 Leave Request가 겹치면 먼저
+    찾은 것을 씁니다(정상적인 사용에서는 겹칠 일이 없습니다)."""
     week_dates = _week_dates(week_key)
-    forced = []
+    info = {}
     for i, day in enumerate(DAYS):
         the_date = week_dates[i]
         for lr in employee_dict.get("leave_requests", []):
@@ -715,9 +735,32 @@ def _leave_forced_days(employee_dict, week_key):
             except (KeyError, ValueError, TypeError):
                 continue
             if start <= the_date <= end:
-                forced.append(day)
+                info[day] = lr.get("leave_type") if lr.get("leave_type") in LEAVE_TYPES else "unpaid"
                 break
-    return forced
+    return info
+
+
+def _leave_forced_days(employee_dict, week_key):
+    """이 직원의 Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들을 반환합니다."""
+    return list(_leave_info_by_day(employee_dict, week_key).keys())
+
+
+def _average_day_hours(employee_dict):
+    """이 직원의 '하루 평균 근무시간' 추정치입니다 — 주당 최소시간을 목표 근무일수로
+    나눈 값이며, 실제 과거 지급 내역(relevant daily pay)이 아니라 추정치입니다.
+    유급/병가 리브 하루치 크레딧, 공휴일 카테고리 B(평소 근무일인데 안 일함) 계산에
+    공통으로 씁니다."""
+    target_days = employee_dict.get("target_days_per_week") or 5
+    return (employee_dict.get("min_hours_per_week") or 0) / target_days
+
+
+def _credited_leave_hours(employee_dict, week_key):
+    """이번 주에 유급/병가 리브로 인정되는 시간의 합계입니다(스케줄러의 최소시간
+    크레딧, 급여 계산 양쪽에서 재사용)."""
+    leave_info = _leave_info_by_day(employee_dict, week_key)
+    avg_hours = _average_day_hours(employee_dict)
+    paid_days = sum(1 for lt in leave_info.values() if _is_paid_leave(lt))
+    return paid_days * avg_hours
 
 
 @app.route("/")
@@ -1794,6 +1837,7 @@ def generate_week_schedule(company_id, week_key):
             carry_in_streak=_carry_in_streak(state, e["id"], week_key),
             recent_night_count=night_count,
             recent_weekend_count=weekend_count,
+            credited_off_hours=_credited_leave_hours(e, week_key),
         ))
 
     requirements = [

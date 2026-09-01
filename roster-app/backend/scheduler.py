@@ -115,6 +115,10 @@ class Employee:
     carry_in_streak: int = 0  # 전주 끝자락부터 이어져온 연속 근무일수 (2단계 계산의 시작점)
     recent_night_count: int = 0
     recent_weekend_count: int = 0
+    credited_off_hours: float = 0.0  # 유급/병가 리브로 이미 "채운 걸로 인정"할 시간
+    # (하드: min_hours_per_week 계산 시 실제 배정 시간에 이만큼을 더한 걸로 칩니다 —
+    # 유급으로 쉰 시간은 회사가 이미 지급을 약속한 시간이라, 나머지 요일에 억지로
+    # 근무를 몰아넣지 않아도 되게 하기 위함입니다. 무급 리브/수동 Off는 여기 안 들어갑니다.)
 
 
 @dataclass
@@ -248,11 +252,25 @@ def solve_schedule(
                 model.Add(x[(e.id, day, shift)] == 0)
 
     for e in employees:
+        # 이번 주에 강제 휴무일(캘린더 직접 지정 또는 Leave Request)이 있으면, 평소의
+        # 주당 최소시간(min_hours_per_week)을 두 단계로 조정합니다:
+        #   1) 유급/병가 리브(credited_off_hours)는 이미 채운 시간으로 그대로 인정합니다.
+        #   2) 그러고도 남는 목표치는, 무급 리브/수동 Off 등으로 못 나오는 날이 있으면
+        #      "남은 근무 가능 일수 비율"을 상한으로 삼아 더 줄여줍니다 — 안 그러면
+        #      무급으로 여러 날 못 나온 직원 한 명 때문에 전체 스케줄 자체가 통째로
+        #      INFEASIBLE(생성 불가) 처리되는 문제가 있었습니다.
+        available_days = 7 - len(e.forced_off_days)
+        target_after_credit = max(0.0, e.min_hours_per_week - e.credited_off_hours)
+        if available_days <= 0 or target_after_credit <= 0:
+            effective_min_hours = 0.0
+        else:
+            proportional_cap = e.min_hours_per_week * available_days / 7
+            effective_min_hours = min(target_after_credit, proportional_cap)
         total_hours_x1000 = sum(
             x[(e.id, day, shift)] * round(hours_map[shift] * 1000)
             for day in DAYS for shift in shift_types
         )
-        model.Add(total_hours_x1000 >= round(e.min_hours_per_week * 1000))
+        model.Add(total_hours_x1000 >= round(effective_min_hours * 1000))
 
     for e in employees:
         for i in range(len(DAYS) - 1):
