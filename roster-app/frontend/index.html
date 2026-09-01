@@ -497,6 +497,7 @@
         <span id="auth-company-name"></span>
         <button class="btn-ghost btn-sm" id="admin-nav-btn" onclick="showAdminPage()" style="display:none;" data-i18n="admin_nav_btn">👑 Admin</button>
         <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
+        <button class="btn-ghost btn-sm" id="manager-nav-btn" onclick="showManagerPage()" style="display:none;" data-i18n="manager_nav_btn">🧑‍💼 매니저 관리</button>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
         <button class="btn-ghost btn-sm" id="delete-account-btn" onclick="startDeleteAccount()" style="color:#ef4444;" data-i18n="account_delete_btn">회원탈퇴</button>
       </div>
@@ -737,6 +738,7 @@ const I18N = {
     rules_leave_desc: "날짜 구간을 등록하면, 그 기간이 포함된 어느 주든 자동으로 휴무 처리됩니다. 등록한 마지막 날짜가 지나면 이 목록에서 자동으로 사라집니다.",
     leave_reason_placeholder: "사유 (선택, 최대 200자)",
     btn_leave_add: "추가", modal_leave_range_invalid: "종료일은 시작일보다 빠를 수 없습니다.",
+    modal_leave_end_in_past: "종료일이 이미 지난 날짜입니다. 이미 끝난 휴가는 자동으로 목록에서 사라지니, 오늘 이후 날짜로 입력해주세요.",
     leave_label: "LEAVE",
     freq_badge_tooltip: "이번 주를 포함해 연속으로 이 요일에 근무한 주 수 (중간에 쉰 주가 있으면 초기화됨 - 참고용, 강제 아님)",
     ph_title: "Public Holidays", btn_add_generic: "추가",
@@ -798,6 +800,16 @@ const I18N = {
     auth_network_error: "네트워크 연결을 확인해주세요.",
     auth_pending_default_msg: "가입 요청이 접수되었습니다. 관리자 승인 후 이메일로 안내드립니다.",
     admin_pending_nav_btn: "📋 승인 대기", admin_pending_title: "가입 승인 대기 목록",
+    manager_nav_btn: "🧑‍💼 매니저 관리", manager_page_title: "매니저 계정 관리",
+    manager_page_sub: "사장 본인의 비밀번호를 공유하지 않고도, 매니저마다 별도의 로그인 계정을 만들어줄 수 있습니다. 매니저는 급여 관련 페이지에 접근할 수 있습니다.",
+    manager_page_empty: "등록된 매니저 계정이 없습니다.",
+    manager_created_at: "등록일: {date}",
+    manager_delete_confirm_title: "매니저 계정 삭제", manager_delete_confirm_msg: "'{name}' 매니저 계정을 삭제합니다. 이 계정으로는 더 이상 로그인할 수 없게 됩니다. 계속할까요?",
+    manager_add_title: "새 매니저 추가",
+    manager_name_placeholder: "매니저 이름", manager_email_placeholder: "이메일", manager_password_placeholder: "비밀번호",
+    manager_password_hint: "이 비밀번호는 이메일로 전송되지 않습니다 — 직접(전화, 대면 등)으로 매니저에게 알려주세요.",
+    manager_add_btn: "매니저 추가",
+    manager_badge: "(매니저)",
     admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
     admin_pending_requested_at: "요청일", btn_approve: "승인", btn_reject: "거절",
     dept_mgmt_title: "부서 및 근무유형 관리",
@@ -933,6 +945,7 @@ const I18N = {
     rules_leave_desc: "Register a date range and it will automatically be treated as a day off in any week that overlaps it. It disappears from this list automatically once the last day has passed.",
     leave_reason_placeholder: "Reason (optional, max 200 chars)",
     btn_leave_add: "Add", modal_leave_range_invalid: "The end date cannot be before the start date.",
+    modal_leave_end_in_past: "The end date is already in the past. Finished leave requests are automatically removed from the list, so please pick a date today or later.",
     leave_label: "LEAVE",
     freq_badge_tooltip: "Consecutive weeks (including this one) worked on this weekday - resets if a week off breaks the streak. Informational only, not enforced.",
     ph_title: "Public Holidays", btn_add_generic: "Add",
@@ -994,6 +1007,16 @@ const I18N = {
     auth_network_error: "Please check your network connection.",
     auth_pending_default_msg: "Your signup request has been submitted. You'll be notified by email once reviewed.",
     admin_pending_nav_btn: "📋 Pending Requests", admin_pending_title: "Pending Signup Requests",
+    manager_nav_btn: "🧑‍💼 Managers", manager_page_title: "Manage Manager Accounts",
+    manager_page_sub: "Create separate login accounts for managers without sharing your own password. Managers can access payroll-related pages.",
+    manager_page_empty: "No manager accounts yet.",
+    manager_created_at: "Added: {date}",
+    manager_delete_confirm_title: "Delete Manager Account", manager_delete_confirm_msg: "This will delete the manager account '{name}'. They will no longer be able to log in. Continue?",
+    manager_add_title: "Add a New Manager",
+    manager_name_placeholder: "Manager's name", manager_email_placeholder: "Email", manager_password_placeholder: "Password",
+    manager_password_hint: "This password is not emailed — please share it with the manager directly (phone, in person, etc.).",
+    manager_add_btn: "Add Manager",
+    manager_badge: "(Manager)",
     admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
     admin_pending_requested_at: "Requested", btn_approve: "Approve", btn_reject: "Reject",
     dept_mgmt_title: "Departments & Shift Types",
@@ -1176,10 +1199,11 @@ async function checkAuthAndInit() {
   }
   if (me) {
     currentCompany = me;
-    document.getElementById("auth-company-name").textContent = me.name;
+    document.getElementById("auth-company-name").textContent = me.name + (me.role === "manager" ? ` ${t("manager_badge")}` : "");
     document.getElementById("admin-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
-    document.getElementById("delete-account-btn").style.display = me.is_admin ? "none" : "inline-block";
+    document.getElementById("delete-account-btn").style.display = (me.is_admin || me.role !== "owner") ? "none" : "inline-block";
+    document.getElementById("manager-nav-btn").style.display = me.role === "owner" ? "inline-block" : "none";
     hideAuthScreen();
     await initAppData();
   } else {
@@ -1257,10 +1281,11 @@ async function submitAuth() {
     return;
   }
     currentCompany = data;
-    document.getElementById("auth-company-name").textContent = data.name;
+    document.getElementById("auth-company-name").textContent = data.name + (data.role === "manager" ? ` ${t("manager_badge")}` : "");
     document.getElementById("admin-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
-    document.getElementById("delete-account-btn").style.display = data.is_admin ? "none" : "inline-block";
+    document.getElementById("delete-account-btn").style.display = (data.is_admin || data.role !== "owner") ? "none" : "inline-block";
+    document.getElementById("manager-nav-btn").style.display = data.role === "owner" ? "inline-block" : "none";
     document.getElementById("auth-email").value = "";
     document.getElementById("auth-password").value = "";
     document.getElementById("auth-name").value = "";
@@ -1588,6 +1613,145 @@ async function showPendingSignupsPage() {
     item.appendChild(btnRow);
     box.appendChild(item);
   });
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showManagerPage() {
+  let managers;
+  try {
+    managers = await api("/api/managers");
+  } catch (e) {
+    return;
+  }
+  if (!managers) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "560px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("manager_page_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("manager_page_sub");
+  box.appendChild(sub);
+
+  const list = document.createElement("div");
+  list.style.cssText = "margin: 12px 0;";
+  if (!managers.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = t("manager_page_empty");
+    list.appendChild(empty);
+  }
+  managers.forEach(m => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    const titleLine = document.createElement("div");
+    titleLine.className = "modal-item-title";
+    titleLine.textContent = m.name;
+    const detailLine = document.createElement("div");
+    detailLine.className = "modal-item-detail";
+    detailLine.textContent = `${m.email} — ${tf("manager_created_at", {date: m.created_at || "-"})}`;
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn-danger btn-sm";
+    removeBtn.textContent = t("btn_delete");
+    removeBtn.style.marginTop = "6px";
+    removeBtn.onclick = async () => {
+      const confirmed = await showConfirmModal(
+        t("manager_delete_confirm_title"), tf("manager_delete_confirm_msg", {name: m.name}),
+        t("btn_delete"), t("btn_cancel"),
+      );
+      if (!confirmed) return;
+      await api(`/api/managers/${m.id}`, {method: "DELETE"});
+      overlay.remove();
+      showManagerPage();
+    };
+    item.appendChild(titleLine);
+    item.appendChild(detailLine);
+    item.appendChild(removeBtn);
+    list.appendChild(item);
+  });
+  box.appendChild(list);
+
+  const addBlock = document.createElement("div");
+  addBlock.style.cssText = "border-top: 1px solid var(--line-strong); padding-top: 12px; margin-top: 6px;";
+  const addTitle = document.createElement("div");
+  addTitle.style.cssText = "font-weight:600; margin-bottom:8px; font-size:13px;";
+  addTitle.textContent = t("manager_add_title");
+  addBlock.appendChild(addTitle);
+
+  const nameInput = document.createElement("input");
+  nameInput.placeholder = t("manager_name_placeholder");
+  nameInput.style.cssText = "width:100%; margin-bottom:6px;";
+  const emailInput = document.createElement("input");
+  emailInput.type = "email";
+  emailInput.placeholder = t("manager_email_placeholder");
+  emailInput.style.cssText = "width:100%; margin-bottom:6px;";
+  const passwordInput = document.createElement("input");
+  passwordInput.type = "password";
+  passwordInput.placeholder = t("manager_password_placeholder");
+  passwordInput.style.cssText = "width:100%; margin-bottom:6px;";
+  const hint = document.createElement("div");
+  hint.className = "modal-item-detail";
+  hint.style.marginBottom = "8px";
+  hint.textContent = t("manager_password_hint");
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-bottom:8px;";
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "btn-primary btn-sm";
+  addBtn.textContent = t("manager_add_btn");
+  addBtn.onclick = async () => {
+    const name = nameInput.value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!name || !email || !password) {
+      errLine.textContent = t("auth_fill_all");
+      errLine.style.display = "block";
+      return;
+    }
+    addBtn.disabled = true;
+    const res = await fetch("/api/managers", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name, email, password}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      errLine.textContent = data.error || t("modal_request_failed");
+      errLine.style.display = "block";
+      addBtn.disabled = false;
+      return;
+    }
+    overlay.remove();
+    showManagerPage();
+  };
+
+  addBlock.appendChild(nameInput);
+  addBlock.appendChild(emailInput);
+  addBlock.appendChild(passwordInput);
+  addBlock.appendChild(hint);
+  addBlock.appendChild(errLine);
+  addBlock.appendChild(addBtn);
+  box.appendChild(addBlock);
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
@@ -2021,6 +2185,14 @@ function buildRulesPanel(e) {
     if (!startInput.value || !endInput.value) return;
     if (startInput.value > endInput.value) {
       showMessageModal(t("modal_input_check_title"), t("modal_leave_range_invalid"), true);
+      return;
+    }
+    // 종료일이 오늘보다 과거면, 저장 후 다음 조회 시점에 "이미 끝난 휴가"로 간주되어
+    // 자동으로 목록에서 조용히 사라집니다. 그 상태로 저장했다가 나중에 "사라졌다"고
+    // 헷갈리시는 것보다, 입력하는 지금 바로 알려드리는 게 낫습니다.
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (endInput.value < todayStr) {
+      showMessageModal(t("modal_input_check_title"), t("modal_leave_end_in_past"), true);
       return;
     }
     rulesDraft.leave_requests.push({start_date: startInput.value, end_date: endInput.value, reason: reasonInput.value.trim().slice(0, 200)});
