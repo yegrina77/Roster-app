@@ -498,6 +498,7 @@
         <button class="btn-ghost btn-sm" id="admin-nav-btn" onclick="showAdminPage()" style="display:none;" data-i18n="admin_nav_btn">👑 Admin</button>
         <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
         <button class="btn-ghost btn-sm" id="manager-nav-btn" onclick="showManagerPage()" style="display:none;" data-i18n="manager_nav_btn">🧑‍💼 매니저 관리</button>
+        <button class="btn-ghost btn-sm" id="payroll-nav-btn" onclick="showPayrollPage()" style="display:none;" data-i18n="payroll_nav_btn">💰 급여</button>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
         <button class="btn-ghost btn-sm" id="delete-account-btn" onclick="startDeleteAccount()" style="color:#ef4444;" data-i18n="account_delete_btn">회원탈퇴</button>
       </div>
@@ -521,6 +522,7 @@
       <div class="field"><label data-i18n="label_department">부서</label>
         <select id="emp-department"></select>
       </div>
+      <div class="field"><label data-i18n="label_hourly_wage">시급</label><input id="emp-wage" type="number" min="0" step="0.5" placeholder="25.00" style="width:80px;"></div>
       <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
         <select id="emp-min-hours">
           <option value="0" data-i18n="opt_0h">0시간</option>
@@ -655,6 +657,7 @@ const I18N = {
     emp_desc: '이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.',
     label_id: "ID", label_name: "이름", label_department: "부서",
     label_min_hours: "주당 최소시간", label_target_days: "주간 근무일수 (권장)", label_any: "상관없음",
+    label_hourly_wage: "시급",
     opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
     modal_training_added_title: "Training 인원이 등록되었습니다",
     modal_employee_added_title: "등록 완료", modal_employee_added_msg: "직원이 추가되었습니다.",
@@ -810,6 +813,14 @@ const I18N = {
     manager_password_hint: "이 비밀번호는 이메일로 전송되지 않습니다 — 직접(전화, 대면 등)으로 매니저에게 알려주세요.",
     manager_add_btn: "매니저 추가",
     manager_badge: "(매니저)",
+    payroll_nav_btn: "💰 급여", payroll_title: "예상 급여 / Labour Cost",
+    payroll_sub: "{week} 주 기준 — 스케줄(로스터)에 배정된 시간을 기준으로 계산한 예상 인건비입니다.",
+    payroll_extra_badge: "Extra (공휴일 포함)",
+    payroll_actual_note: "⚠️ 지금은 스케줄 기준 예상 금액만 표시됩니다. 실제 출퇴근(클락인/아웃) 기능이 추가되면 실제 지급액과의 차액도 함께 보여드릴 예정입니다.",
+    payroll_by_day_title: "요일별 예상 인건비", payroll_by_employee_title: "직원별 이번 주 예상 급여",
+    payroll_col_day: "요일", payroll_col_hours: "시간", payroll_col_cost: "예상 인건비",
+    payroll_col_employee: "직원", payroll_col_wage: "시급", payroll_col_scheduled_pay: "이번 주 예상 지급액",
+    payroll_wage_not_set: "시급 미설정", payroll_total: "이번 주 총 예상 인건비: ${amount}",
     admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
     admin_pending_requested_at: "요청일", btn_approve: "승인", btn_reject: "거절",
     dept_mgmt_title: "부서 및 근무유형 관리",
@@ -862,6 +873,7 @@ const I18N = {
     emp_desc: 'Enter name, weekly minimum hours, and target working days, then set individual constraints under "Rules".',
     label_id: "ID", label_name: "Name", label_department: "Department",
     label_min_hours: "Min hours/week", label_target_days: "Target days/week (preferred)", label_any: "No preference",
+    label_hourly_wage: "Hourly Wage",
     opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
     modal_training_added_title: "Training employee registered",
     modal_employee_added_title: "Added", modal_employee_added_msg: "Employee has been added.",
@@ -1017,6 +1029,14 @@ const I18N = {
     manager_password_hint: "This password is not emailed — please share it with the manager directly (phone, in person, etc.).",
     manager_add_btn: "Add Manager",
     manager_badge: "(Manager)",
+    payroll_nav_btn: "💰 Payroll", payroll_title: "Estimated Payroll / Labour Cost",
+    payroll_sub: "Week of {week} — estimated labour cost based on hours assigned in the roster.",
+    payroll_extra_badge: "Extra (Public Holiday)",
+    payroll_actual_note: "⚠️ This currently shows scheduled (estimated) cost only. Once clock-in/out is added, actual pay and the difference will be shown here too.",
+    payroll_by_day_title: "Estimated Cost by Day", payroll_by_employee_title: "This Week's Estimated Pay by Employee",
+    payroll_col_day: "Day", payroll_col_hours: "Hours", payroll_col_cost: "Est. Cost",
+    payroll_col_employee: "Employee", payroll_col_wage: "Wage", payroll_col_scheduled_pay: "Est. Pay This Week",
+    payroll_wage_not_set: "Wage not set", payroll_total: "Total estimated labour cost this week: ${amount}",
     admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
     admin_pending_requested_at: "Requested", btn_approve: "Approve", btn_reject: "Reject",
     dept_mgmt_title: "Departments & Shift Types",
@@ -1204,6 +1224,7 @@ async function checkAuthAndInit() {
     document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (me.is_admin || me.role !== "owner") ? "none" : "inline-block";
     document.getElementById("manager-nav-btn").style.display = me.role === "owner" ? "inline-block" : "none";
+    document.getElementById("payroll-nav-btn").style.display = (me.role === "owner" || me.role === "manager") ? "inline-block" : "none";
     hideAuthScreen();
     await initAppData();
   } else {
@@ -1286,6 +1307,7 @@ async function submitAuth() {
     document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (data.is_admin || data.role !== "owner") ? "none" : "inline-block";
     document.getElementById("manager-nav-btn").style.display = data.role === "owner" ? "inline-block" : "none";
+    document.getElementById("payroll-nav-btn").style.display = (data.role === "owner" || data.role === "manager") ? "inline-block" : "none";
     document.getElementById("auth-email").value = "";
     document.getElementById("auth-password").value = "";
     document.getElementById("auth-name").value = "";
@@ -1752,6 +1774,134 @@ async function showManagerPage() {
   addBlock.appendChild(errLine);
   addBlock.appendChild(addBtn);
   box.appendChild(addBlock);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showPayrollPage() {
+  let data;
+  try {
+    data = await api(`/api/weeks/${currentWeekKey}/payroll`);
+  } catch (e) {
+    return;
+  }
+  if (!data) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "760px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("payroll_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = tf("payroll_sub", {week: currentWeekKey});
+  box.appendChild(sub);
+
+  if (data.has_public_holiday) {
+    const phBadge = document.createElement("div");
+    phBadge.style.cssText = "display:inline-block; background:var(--closing2-bg); color:var(--closing2); font-size:11px; font-weight:600; padding:3px 8px; border-radius:4px; margin-bottom:8px;";
+    const names = data.public_holidays.map(h => h.name || h.date).join(", ");
+    phBadge.textContent = `${t("payroll_extra_badge")} — ${names}`;
+    box.appendChild(phBadge);
+  }
+
+  const noteLine = document.createElement("div");
+  noteLine.className = "modal-item-detail";
+  noteLine.style.marginBottom = "10px";
+  noteLine.textContent = t("payroll_actual_note");
+  box.appendChild(noteLine);
+
+  // 요일별 표
+  const dayTitle = document.createElement("div");
+  dayTitle.style.cssText = "font-weight:600; font-size:13px; margin-bottom:6px;";
+  dayTitle.textContent = t("payroll_by_day_title");
+  box.appendChild(dayTitle);
+
+  const dayTable = document.createElement("table");
+  dayTable.style.cssText = "width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:16px;";
+  const dayThead = document.createElement("thead");
+  dayThead.innerHTML = `
+    <tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
+      <th style="padding:5px 6px;">${t("payroll_col_day")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_cost")}</th>
+      <th style="padding:5px 6px;"></th>
+    </tr>
+  `;
+  dayTable.appendChild(dayThead);
+  const dayTbody = document.createElement("tbody");
+  DAYS.forEach(day => {
+    const d = data.days[day];
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid var(--line);";
+    const extraTag = d.is_public_holiday ? `<span style="color:var(--closing2); font-weight:600;">${t("payroll_extra_badge")}</span>` : "";
+    tr.innerHTML = `
+      <td style="padding:5px 6px;">${DAY_LABEL[day]}</td>
+      <td style="padding:5px 6px; text-align:right;">${d.scheduled_hours.toFixed(1)}h</td>
+      <td style="padding:5px 6px; text-align:right;">$${d.scheduled_cost.toFixed(2)}</td>
+      <td style="padding:5px 6px;">${extraTag}</td>
+    `;
+    dayTbody.appendChild(tr);
+  });
+  dayTable.appendChild(dayTbody);
+  box.appendChild(dayTable);
+
+  // 직원별 표
+  const empTitle = document.createElement("div");
+  empTitle.style.cssText = "font-weight:600; font-size:13px; margin-bottom:6px;";
+  empTitle.textContent = t("payroll_by_employee_title");
+  box.appendChild(empTitle);
+
+  const empTable = document.createElement("table");
+  empTable.style.cssText = "width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:12px;";
+  const empThead = document.createElement("thead");
+  empThead.innerHTML = `
+    <tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
+      <th style="padding:5px 6px;">${t("payroll_col_employee")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_wage")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_scheduled_pay")}</th>
+    </tr>
+  `;
+  empTable.appendChild(empThead);
+  const empTbody = document.createElement("tbody");
+  data.employees.forEach(row => {
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid var(--line);";
+    const wageCell = row.has_wage_set ? `$${row.hourly_wage.toFixed(2)}` : `<span style="color:var(--text-muted);">${t("payroll_wage_not_set")}</span>`;
+    const payCell = row.has_wage_set ? `$${row.weekly_pay.toFixed(2)}` : "—";
+    tr.innerHTML = `
+      <td style="padding:5px 6px;">${row.employee_name}</td>
+      <td style="padding:5px 6px; text-align:right;">${wageCell}</td>
+      <td style="padding:5px 6px; text-align:right;">${row.weekly_hours.toFixed(1)}h</td>
+      <td style="padding:5px 6px; text-align:right; font-weight:600;">${payCell}</td>
+    `;
+    empTbody.appendChild(tr);
+  });
+  empTable.appendChild(empTbody);
+  box.appendChild(empTable);
+
+  const totalLine = document.createElement("div");
+  totalLine.style.cssText = "text-align:right; font-weight:700; font-size:14px; margin-bottom:10px;";
+  totalLine.textContent = tf("payroll_total", {amount: data.total_scheduled_cost.toFixed(2)});
+  box.appendChild(totalLine);
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
@@ -2336,6 +2486,7 @@ function startEditEmployee(e) {
   document.getElementById("emp-name").value = e.name;
   ensureDepartmentSelectOptions();
   document.getElementById("emp-department").value = e.department || "kitchen";
+  document.getElementById("emp-wage").value = e.hourly_wage != null ? e.hourly_wage : "";
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
   const isAny = e.target_days_per_week == null;
   document.getElementById("emp-target-days-any").checked = isAny;
@@ -2352,6 +2503,7 @@ function cancelEditEmployee() {
   document.getElementById("emp-id").value = "";
   document.getElementById("emp-name").value = "";
   document.getElementById("emp-department").value = "kitchen";
+  document.getElementById("emp-wage").value = "";
   document.getElementById("emp-min-hours").value = "30";
   document.getElementById("emp-target-days").value = "";
   document.getElementById("emp-target-days").disabled = false;
@@ -2364,6 +2516,8 @@ async function submitEmployee() {
   const id = document.getElementById("emp-id").value.trim();
   const name = document.getElementById("emp-name").value.trim();
   const department = document.getElementById("emp-department").value || "kitchen";
+  const wageRaw = document.getElementById("emp-wage").value.trim();
+  const hourly_wage = wageRaw === "" ? null : Number(wageRaw);
   const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
   const isAny = document.getElementById("emp-target-days-any").checked;
   const targetDaysRaw = document.getElementById("emp-target-days").value;
@@ -2376,7 +2530,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, hourly_wage, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -2385,7 +2539,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, hourly_wage, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
