@@ -1927,6 +1927,49 @@ def generate_week_schedule(company_id, week_key):
     if min_hours_errors:
         return jsonify({"error": " ".join(min_hours_errors)}), 400
 
+    # ---- 부서별 총 용량(capacity) vs 최소시간 합계 사전 검증 ----
+    # 근무 요건(required_count)은 "최소 이만큼 필요하다"일 뿐 아니라, 스케줄러 안에서
+    # "절대 이 인원을 넘길 수 없다"는 하드 상한으로도 동시에 쓰입니다(한 시프트에
+    # 필요인원보다 더 많은 사람을 몰아넣지 않기 위함). 그래서 어떤 부서 직원들의
+    # 최소시간 합계가, 그 부서의 이번 주 근무 요건(required_count × 시간)을 다 더한
+    # "총 용량"보다 크면 — 아무리 잘 배치해도 물리적으로 다 못 채웁니다. 인원 자체가
+    # 부족한 게 아니라, 오히려 "필요인원 칸이 너무 적어서" 넘치는 경우도 여기 해당됩니다.
+    shift_dept_map = {st["id"]: st["department_id"] for st in state["shift_types"]}
+    dept_capacity_hours = {}
+    for r in week["requirements"]:
+        dept = shift_dept_map.get(r["shift_type"])
+        if dept is None:
+            continue
+        hours = shift_hours_map.get(r["shift_type"], 0)
+        dept_capacity_hours[dept] = dept_capacity_hours.get(dept, 0) + r["required_count"] * hours
+
+    dept_demand_hours = {}
+    dept_employee_names = {}
+    for e in employees:
+        available_days = 7 - len(e.forced_off_days)
+        target_after_credit = max(0.0, e.min_hours_per_week - e.credited_off_hours)
+        if available_days <= 0 or target_after_credit <= 0:
+            continue
+        proportional_cap = e.min_hours_per_week * available_days / 7
+        effective_min_hours = min(target_after_credit, proportional_cap)
+        dept_demand_hours[e.department] = dept_demand_hours.get(e.department, 0) + effective_min_hours
+        dept_employee_names.setdefault(e.department, []).append(e.name)
+
+    capacity_errors = []
+    for dept, demand in dept_demand_hours.items():
+        capacity = dept_capacity_hours.get(dept, 0)
+        if demand > capacity + 0.01:
+            capacity_errors.append(
+                f"Department '{dept}': employees there need at least {demand:.1f}h combined this week "
+                f"({', '.join(dept_employee_names[dept])}), but this week's shift requirements for that "
+                f"department only add up to {capacity:.1f}h of total capacity (required headcount × "
+                f"shift length, added across all shifts). Either raise the required headcount for some "
+                f"shifts in this department, or lower some employees' minimum hours."
+            )
+
+    if capacity_errors:
+        return jsonify({"error": " ".join(capacity_errors)}), 400
+
     shift_types, shift_defs, departments = _scheduler_shift_defs(state)
     result = solve_schedule(
         employees, requirements,
