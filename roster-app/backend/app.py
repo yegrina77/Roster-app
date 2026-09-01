@@ -27,7 +27,7 @@ import secrets
 import requests
 from datetime import date, timedelta, datetime, timezone
 from functools import wraps
-from flask import Flask, request, jsonify, send_from_directory, session
+from flask import Flask, request, jsonify, send_from_directory, session, g
 
 from scheduler import (
     Employee, ShiftRequirement, solve_schedule, DAYS, SHIFT_TYPES,
@@ -307,6 +307,19 @@ def _valid_email(email):
     return bool(email) and re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email) is not None
 
 
+def _email_in_use(auth, email):
+    """이 이메일이 이미 어떤 회사의 사장(owner) 계정이거나, 어떤 회사의 매니저 계정으로
+    쓰이고 있는지 전체 시스템에서 확인합니다. 이메일은 로그인 시 유일한 식별자로 쓰이기
+    때문에, 사장이든 매니저든 전체에서 겹치면 안 됩니다."""
+    for c in auth["companies"].values():
+        if c["email"] == email:
+            return True
+        for u in (c.get("users") or {}).values():
+            if u["email"] == email:
+                return True
+    return False
+
+
 def _password_error(password):
     """비밀번호가 규칙(8자 이상, 숫자 포함, 특수문자 포함)을 만족하지 않으면 에러 메시지를,
     통과하면 None을 돌려줍니다."""
@@ -329,25 +342,71 @@ ONLINE_THRESHOLD_SECONDS = 90  # 이 시간 이내에 요청이 있었으면 "�
 def require_login(f):
     """이 데코레이터가 붙은 API는 로그인(세션에 company_id가 있는지)을 먼저 확인하고,
     통과하면 첫 번째 인자로 company_id를 넘겨줍니다. 이걸로 회사(매장)마다 데이터가
-    완전히 분리됩니다 — 로그인 안 하면 어떤 데이터도 못 보고 못 바꿉니다."""
+    완전히 분리됩니다 — 로그인 안 하면 어떤 데이터도 못 보고 못 바꿉니다.
+
+    한 회사 안에는 사장(owner, company 레코드 자체의 이메일/비밀번호로 로그인) 한 명과
+    매니저(manager, company["users"]에 별도 계정으로 등록) 여러 명이 있을 수 있습니다.
+    둘 다 로그인하면 이 데코레이터를 통과하지만, 누가 로그인했는지는
+    g.role("owner"|"manager"), g.user_id, g.user_name, g.user_email로 구분해서
+    각 API 안에서 필요하면 추가로 권한을 확인할 수 있게 해둡니다."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         company_id = session.get("company_id")
         if not company_id:
             return jsonify({"error": "Login required."}), 401
+        auth = load_auth()
+        company = auth["companies"].get(company_id)
+        if not company:
+            session.clear()
+            return jsonify({"error": "Login required."}), 401
+
+        user_id = session.get("user_id")
+        if user_id:
+            user = (company.get("users") or {}).get(user_id)
+            if not user:
+                # 매니저 계정이 그 사이 삭제됐을 수 있습니다 — 세션을 정리하고 다시 로그인하게 합니다.
+                session.clear()
+                return jsonify({"error": "Login required."}), 401
+            g.role = "manager"
+            g.user_id = user_id
+            g.user_name = user.get("name", "")
+            g.user_email = user.get("email", "")
+        else:
+            g.role = "owner"
+            g.user_id = None
+            g.user_name = company.get("contact_name", "")
+            g.user_email = company.get("email", "")
+        g.company_id = company_id
+
         _last_active[company_id] = time.time()
+        return f(company_id, *args, **kwargs)
+    return wrapper
+
+
+def require_owner(f):
+    """require_login과 같지만, 사장(owner) 본인만 통과시킵니다. 매니저 계정 생성/삭제,
+    회사 전체 탈퇴처럼 "매니저에게는 맡길 수 없는" 민감한 작업에 붙입니다."""
+    @wraps(f)
+    @require_login
+    def wrapper(company_id, *args, **kwargs):
+        if g.role != "owner":
+            return jsonify({"error": "이 작업은 사장(owner) 계정만 할 수 있습니다."}), 403
         return f(company_id, *args, **kwargs)
     return wrapper
 
 
 def require_admin(f):
     """관리자(맨 처음 가입한 계정)만 접근 가능한 API에 붙입니다. 다른 회사 데이터를
-    직접 다루지 않고, 가입자 통계만 볼 수 있게 하는 용도입니다."""
+    직접 다루지 않고, 가입자 통계만 볼 수 있게 하는 용도입니다. 이 회사 소속 매니저
+    계정은(사장이 아니라면) 여기 통과시키지 않습니다 — 이 패널은 전체 회사 데이터를
+    다루는 민감한 영역이라, 그 회사의 사장 본인만 접근하게 제한합니다."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         company_id = session.get("company_id")
         if not company_id:
             return jsonify({"error": "Login required."}), 401
+        if session.get("user_id"):
+            return jsonify({"error": "Admin access only."}), 403
         auth = load_auth()
         company = auth["companies"].get(company_id)
         if not company or not company.get("is_admin"):
@@ -886,7 +945,7 @@ def register():
         return jsonify({"error": pw_error}), 400
 
     auth = load_auth()
-    if any(c["email"] == email for c in auth["companies"].values()):
+    if _email_in_use(auth, email):
         return jsonify({"error": "This email is already registered."}), 400
     if any(r["email"] == email for r in auth.get("pending_signups", {}).values()):
         return jsonify({"error": "A request with this email is already pending approval."}), 400
@@ -927,7 +986,7 @@ def register():
         session.permanent = True
         return jsonify({
             "id": company_id, "name": name, "contact_name": contact_name, "phone": phone, "email": email,
-            "is_admin": True, "enabled_features": _default_features(), "employee_limit": employee_limit,
+            "role": "owner", "is_admin": True, "enabled_features": _default_features(), "employee_limit": employee_limit,
         }), 201
 
     # 두 번째 가입자부터는 관리자 승인이 필요합니다. 계정을 바로 만들지 않고
@@ -955,6 +1014,28 @@ def register():
     }), 202
 
 
+def _session_payload(company, role, user=None):
+    """login()/me()에서 공통으로 쓰는, 로그인한 사용자 정보를 응답 JSON으로 만드는 헬퍼입니다.
+    role이 'manager'면 user(그 매니저의 레코드)의 이름/이메일을 쓰고, 'owner'면 회사(사장)
+    레코드 자체의 이름/이메일을 씁니다. is_admin(시스템 관리자 패널 접근 권한)은 사장 본인
+    로그인일 때만 true가 될 수 있습니다 — 매니저는 그 회사가 시스템 관리자 회사여도
+    시스템 관리자 패널에 접근할 수 없습니다."""
+    if role == "manager" and user:
+        display_name = user.get("name", "")
+        display_email = user.get("email", "")
+    else:
+        display_name = company.get("contact_name", "")
+        display_email = company.get("email", "")
+    return {
+        "id": company["id"], "name": company["name"],
+        "contact_name": display_name, "phone": company.get("phone", ""),
+        "email": display_email, "role": role,
+        "is_admin": bool(company.get("is_admin")) and role == "owner",
+        "enabled_features": company.get("enabled_features") or _default_features(),
+        "employee_limit": company.get("employee_limit"),
+    }
+
+
 @app.route("/api/auth/login", methods=["POST"])
 def login():
     payload = request.get_json(silent=True) or {}
@@ -962,29 +1043,35 @@ def login():
     password = payload.get("password") or ""
 
     auth = load_auth()
-    match = None
+
+    # 먼저 사장(owner) 계정으로 매칭을 시도합니다 — company 레코드 자체의 이메일입니다.
     for c in auth["companies"].values():
         if c["email"] == email:
-            match = c
-            break
+            if not _verify_password(password, c["password_hash"]):
+                return jsonify({"error": "Incorrect email or password."}), 401
+            session.clear()
+            session["company_id"] = c["id"]
+            session.permanent = True
+            return jsonify(_session_payload(c, "owner"))
 
-    if not match or not _verify_password(password, match["password_hash"]):
-        return jsonify({"error": "Incorrect email or password."}), 401
+    # 사장 계정 중엔 없었으니, 각 회사에 등록된 매니저 계정들도 찾아봅니다.
+    for c in auth["companies"].values():
+        for user_id, u in (c.get("users") or {}).items():
+            if u["email"] == email:
+                if not _verify_password(password, u["password_hash"]):
+                    return jsonify({"error": "Incorrect email or password."}), 401
+                session.clear()
+                session["company_id"] = c["id"]
+                session["user_id"] = user_id
+                session.permanent = True
+                return jsonify(_session_payload(c, "manager", u))
 
-    session["company_id"] = match["id"]
-    session.permanent = True
-    return jsonify({
-        "id": match["id"], "name": match["name"],
-        "contact_name": match.get("contact_name", ""), "phone": match.get("phone", ""),
-        "email": match["email"],
-        "is_admin": bool(match.get("is_admin")), "enabled_features": match.get("enabled_features") or _default_features(),
-        "employee_limit": match.get("employee_limit"),
-    })
+    return jsonify({"error": "Incorrect email or password."}), 401
 
 
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
-    session.pop("company_id", None)
+    session.clear()
     return "", 204
 
 
@@ -996,24 +1083,28 @@ def me():
     auth = load_auth()
     company = auth["companies"].get(company_id)
     if not company:
-        session.pop("company_id", None)
+        session.clear()
         return jsonify(None)
-    return jsonify({
-        "id": company["id"], "name": company["name"],
-        "contact_name": company.get("contact_name", ""), "phone": company.get("phone", ""),
-        "email": company["email"],
-        "is_admin": bool(company.get("is_admin")), "enabled_features": company.get("enabled_features") or _default_features(),
-        "employee_limit": company.get("employee_limit"),
-    })
+
+    user_id = session.get("user_id")
+    if user_id:
+        user = (company.get("users") or {}).get(user_id)
+        if not user:
+            session.clear()
+            return jsonify(None)
+        return jsonify(_session_payload(company, "manager", user))
+
+    return jsonify(_session_payload(company, "owner"))
 
 
 @app.route("/api/auth/account", methods=["DELETE"])
-@require_login
+@require_owner
 def delete_account(company_id):
-    """회사(매장) 계정이 스스로 탈퇴합니다. 탈퇴 사유(체크박스+기타 텍스트)를 받아서
-    관리자에게 이메일로 통보한 뒤, 계정과 저장된 로스터 데이터를 전부 삭제합니다.
-    되돌릴 수 없는 작업이라, 관리자 계정 본인은 이 API로 탈퇴할 수 없게 막아둡니다
-    (관리자가 없어지면 아무도 승인/관리를 못 하게 되므로)."""
+    """회사(매장) 계정이 스스로 탈퇴합니다(사장 본인만 가능 — 매니저는 회사 전체를
+    탈퇴시킬 수 없습니다). 탈퇴 사유(체크박스+기타 텍스트)를 받아서 관리자에게 이메일로
+    통보한 뒤, 계정과 저장된 로스터 데이터를 전부 삭제합니다. 되돌릴 수 없는 작업이라,
+    관리자 계정 본인은 이 API로 탈퇴할 수 없게 막아둡니다(관리자가 없어지면 아무도
+    승인/관리를 못 하게 되므로)."""
     payload = request.get_json(silent=True) or {}
     reasons = payload.get("reasons") or []
     if not isinstance(reasons, list):
@@ -1037,11 +1128,105 @@ def delete_account(company_id):
     del auth["companies"][company_id]
     save_auth(auth)
     _raw_delete(f"roster_state:{company_id}")
-    session.pop("company_id", None)
+    session.clear()
 
     for admin_email in admin_emails:
         _send_account_deleted_email(admin_email, company_name, company_email, reasons, other_text)
 
+    return "", 204
+
+
+def _send_manager_created_email(manager_email, manager_name, company_name):
+    # 비밀번호는 이메일 평문으로 보내지 않습니다 — 사장이 매니저에게 직접(전화, 대면 등)
+    # 알려주는 방식이 안전하기 때문에, 이 메일은 "계정이 만들어졌다"는 안내만 담습니다.
+    return _send_email(
+        manager_email,
+        f"{company_name} — Manager account created",
+        (
+            f"<p>Hi {manager_name},</p>"
+            f"<p>A manager account for <b>{company_name}</b> on RosterFlow has been created for you "
+            f"({manager_email}). Please contact your manager to get your login password.</p>"
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# 매니저 계정 관리 (사장 전용) — 사장은 자기 비밀번호를 매니저에게 공유하지 않고도,
+# 매니저마다 별도의 로그인 계정을 만들어줄 수 있습니다. 누가 무엇을 했는지 나중에
+# 구분할 수 있고(계정을 공유하지 않으므로), 매니저 계정을 지우면 그 즉시 접근이
+# 끊깁니다.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/managers", methods=["GET"])
+@require_owner
+def list_managers(company_id):
+    """사장 전용: 이 회사에 등록된 매니저 계정 목록을 보여줍니다(비밀번호는 당연히 뺍니다)."""
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    users = (company or {}).get("users") or {}
+    managers = [
+        {"id": u["id"], "email": u["email"], "name": u.get("name", ""), "created_at": u.get("created_at")}
+        for u in users.values()
+    ]
+    managers.sort(key=lambda u: u.get("created_at") or "")
+    return jsonify(managers)
+
+
+@app.route("/api/managers", methods=["POST"])
+@require_owner
+def create_manager(company_id):
+    """사장 전용: 이 회사에 새 매니저 계정을 만듭니다. 비밀번호는 사장이 직접 정해서
+    매니저에게 따로(직접, 전화 등으로) 알려주는 방식입니다 — 이메일로 비밀번호를
+    그대로 보내는 건 안전하지 않아서 하지 않습니다."""
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+
+    if not name or not email or not password:
+        return jsonify({"error": "이름, 이메일, 비밀번호를 모두 입력해주세요."}), 400
+    if not _valid_email(email):
+        return jsonify({"error": "이메일 형식이 올바르지 않습니다."}), 400
+    pw_error = _password_error(password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
+
+    auth = load_auth()
+    if _email_in_use(auth, email):
+        return jsonify({"error": "이미 사용 중인 이메일입니다."}), 400
+
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+
+    user_id = secrets.token_hex(8)
+    company.setdefault("users", {})[user_id] = {
+        "id": user_id,
+        "email": email,
+        "name": name,
+        "password_hash": _hash_password(password),
+        "created_at": date.today().isoformat(),
+    }
+    save_auth(auth)
+    _send_manager_created_email(email, name, company["name"])
+    return jsonify({"id": user_id, "email": email, "name": name}), 201
+
+
+@app.route("/api/managers/<user_id>", methods=["DELETE"])
+@require_owner
+def delete_manager(company_id, user_id):
+    """사장 전용: 매니저 계정을 삭제합니다. 그 매니저가 로그인해 있었다면, 다음 요청부터
+    자동으로 세션이 무효화되고 다시 로그인해야 합니다(require_login이 매번 users
+    딕셔너리에서 다시 확인하기 때문입니다)."""
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    users = company.get("users") or {}
+    if user_id not in users:
+        return jsonify({"error": "Manager not found."}), 404
+    del users[user_id]
+    save_auth(auth)
     return "", 204
 
 
