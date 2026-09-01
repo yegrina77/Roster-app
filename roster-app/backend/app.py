@@ -1894,6 +1894,39 @@ def generate_week_schedule(company_id, week_key):
     if pin_errors:
         return jsonify({"error": " ".join(pin_errors)}), 400
 
+    # ---- 최소시간 사전 검증 ----
+    # 어떤 직원의 이번 주 실효 최소시간(유급 리브 크레딧 반영 후)이, 남은 근무 가능
+    # 일수 + 그 부서에서 가능한 가장 긴 근무유형만으로도 원천적으로 채울 수 없는
+    # 수준이면 계산을 돌리기 전에 미리 걸러내서, 정확히 어떤 직원과 어떤 요일 때문인지
+    # 알려줍니다 (안 그러면 이것도 "원인불명 INFEASIBLE"로 실패해버립니다).
+    shift_hours_map = _effective_shift_hours(state)
+    dept_max_shift_hours = {}
+    for st in state["shift_types"]:
+        dept_max_shift_hours.setdefault(st["department_id"], []).append(shift_hours_map.get(st["id"], 0))
+    dept_max_shift_hours = {d: max(hrs) if hrs else 0 for d, hrs in dept_max_shift_hours.items()}
+
+    min_hours_errors = []
+    for e in employees:
+        available_days = 7 - len(e.forced_off_days)
+        target_after_credit = max(0.0, e.min_hours_per_week - e.credited_off_hours)
+        if available_days <= 0 or target_after_credit <= 0:
+            continue
+        proportional_cap = e.min_hours_per_week * available_days / 7
+        effective_min_hours = min(target_after_credit, proportional_cap)
+        max_possible = available_days * dept_max_shift_hours.get(e.department, 0)
+        if effective_min_hours > max_possible + 0.01:
+            min_hours_errors.append(
+                f"{e.name}: needs at least {effective_min_hours:.1f}h this week, but is only "
+                f"available {available_days} day(s) (forced off on: {', '.join(e.forced_off_days) or 'none'}), "
+                f"and the longest shift in their department ('{e.department}') is "
+                f"{dept_max_shift_hours.get(e.department, 0):.1f}h — so at most {max_possible:.1f}h is "
+                f"reachable. Check for leftover Off marks copied from a previous week, or adjust their "
+                f"minimum hours / off days."
+            )
+
+    if min_hours_errors:
+        return jsonify({"error": " ".join(min_hours_errors)}), 400
+
     shift_types, shift_defs, departments = _scheduler_shift_defs(state)
     result = solve_schedule(
         employees, requirements,
