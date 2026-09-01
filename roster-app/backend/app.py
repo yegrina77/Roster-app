@@ -2204,8 +2204,6 @@ def _weekday_total_count(state, employee_id, day, week_key, window=FREQUENCY_WIN
     return count
 
 
-@app.route("/api/weeks/<week_key>/public-holiday-info", methods=["GET"])
-@require_login
 def _public_holiday_category(state, policy, emp_id, day, week_key, worked):
     """공휴일 요일(day)에 이 직원이 A/B/C/D 중 어느 카테고리에 해당하는지 계산합니다
     (1=A: 평소근무일+일함, 2=B: 평소근무일+안일함, 3=C: 평소근무일아님+일함, 4=D: 해당없음).
@@ -2230,6 +2228,8 @@ def _public_holiday_category(state, policy, emp_id, day, week_key, worked):
     return category, count, is_usual_day
 
 
+@app.route("/api/weeks/<week_key>/public-holiday-info", methods=["GET"])
+@require_login
 def get_public_holiday_info(company_id, week_key):
     """이 주(week_key)에 Public Holiday가 포함되어 있으면, 이 회사가 설정한 정책
     (Settings > 공휴일 정책)에 따라 직원별 적용 항목(1.5배+Lieu / 평소급여만 / 1.5배만 /
