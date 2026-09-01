@@ -1996,6 +1996,7 @@ def generate_week_schedule(company_id, week_key):
             ("cross_department", "다른 부서 근무유형 배정 금지 규칙"),
         ]
         found_causes = []
+        min_hours_is_cause = False
         for relax_key, relax_label_ko in relax_candidates:
             trial = solve_schedule(
                 employees, requirements,
@@ -2011,16 +2012,47 @@ def generate_week_schedule(company_id, week_key):
             )
             if trial.status != "INFEASIBLE":
                 found_causes.append(relax_label_ko)
+                if relax_key == "min_hours":
+                    min_hours_is_cause = True
 
-        if found_causes:
+        # ---- 2단계 진단: 최소시간이 원인이면, 정확히 어느 직원 때문인지까지 찾아봅니다 ----
+        culprit_names = []
+        if min_hours_is_cause:
+            for e in employees:
+                if e.min_hours_per_week <= 0:
+                    continue
+                trial = solve_schedule(
+                    employees, requirements,
+                    exclude_solutions=exclude_solutions or None,
+                    random_seed=random_seed,
+                    pinned=pinned or None,
+                    shift_hours=_effective_shift_hours(state),
+                    shift_types=shift_types,
+                    shift_defs=shift_defs,
+                    departments=departments,
+                    relax_min_hours_employee_ids={e.id},
+                    time_limit_seconds=3.0,
+                )
+                if trial.status != "INFEASIBLE":
+                    culprit_names.append(e.name)
+
+        if culprit_names:
+            result.diagnostics = [
+                "스케줄을 만들 수 없는 이유를 자동으로 찾아봤습니다. "
+                f"{', '.join(culprit_names)} 직원의 주당 최소시간을 이번 주에 채울 수 있는 "
+                "자리가 부족합니다 — 그 직원이 속한 부서의 이번 주 근무 요건(칸 수)이 "
+                "너무 적거나, 그 직원만 접근 가능한 요일/근무유형이 너무 제한되어 있을 "
+                "수 있습니다. 이 직원의 최소시간을 낮추거나, 근무 요건을 늘려보세요."
+            ]
+        elif found_causes:
             result.diagnostics = [
                 "스케줄을 만들 수 없는 이유를 자동으로 찾아봤습니다. 다음 규칙(들)이 "
                 "다른 규칙과 충돌하고 있는 것으로 보입니다 — 이 중 하나를 완화하면 "
                 "생성이 가능해집니다: " + " / ".join(found_causes) + "."
                 " 관련된 직원의 규칙 설정이나 이번 주 근무 요건을 확인해주세요."
             ]
-        # found_causes가 비어있으면(=하나씩 빼봐도 안 풀리면) 여러 규칙이 동시에
-        # 얽혀있다는 뜻이라, 기존의 일반 안내 메시지(diagnostics)를 그대로 둡니다.
+        # 둘 다 비어있으면(=하나씩 빼봐도 안 풀리면) 여러 규칙이 동시에 얽혀있다는
+        # 뜻이라, 기존의 일반 안내 메시지(diagnostics)를 그대로 둡니다.
 
     result_dict = {
         "status": result.status,

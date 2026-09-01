@@ -184,6 +184,7 @@ def solve_schedule(
     shift_defs: Optional[dict] = None,
     departments: Optional[list[str]] = None,
     relax: Optional[set] = None,
+    relax_min_hours_employee_ids: Optional[set] = None,
     time_limit_seconds: float = 10.0,
 ) -> ScheduleResult:
     """shift_types/shift_defs/departments를 안 넘기면 코드에 기본 내장된 구성(Kitchen/Sushi/...)을
@@ -195,7 +196,11 @@ def solve_schedule(
     스케줄을 만들 때는 항상 비워둡니다 — INFEASIBLE이 났을 때, app.py가 "어떤 규칙 하나를
     빼면 풀리는지"를 자동으로 찾아내서 사용자에게 정확한 원인을 알려주는 진단 용도로만
     씁니다. 가능한 이름: "min_hours", "forbidden_consecutive", "blocked_shift_types",
-    "cross_department"."""
+    "cross_department".
+
+    relax_min_hours_employee_ids: "min_hours"가 원인으로 의심될 때, 이 세트에 담긴
+    직원 id들만 콕 집어서 최소시간 규칙을 꺼봅니다 — "규칙 자체"가 아니라 "정확히 어느
+    직원 때문인지"까지 찾아내는 2단계 진단용입니다."""
     relax = relax or frozenset()
     shift_types = shift_types if shift_types is not None else SHIFT_TYPES
     shift_defs = shift_defs if shift_defs is not None else SHIFT_DEFS
@@ -272,7 +277,7 @@ def solve_schedule(
         #      "남은 근무 가능 일수 비율"을 상한으로 삼아 더 줄여줍니다 — 안 그러면
         #      무급으로 여러 날 못 나온 직원 한 명 때문에 전체 스케줄 자체가 통째로
         #      INFEASIBLE(생성 불가) 처리되는 문제가 있었습니다.
-        if "min_hours" in relax:
+        if "min_hours" in relax or e.id in (relax_min_hours_employee_ids or set()):
             continue
         available_days = 7 - len(e.forced_off_days)
         target_after_credit = max(0.0, e.min_hours_per_week - e.credited_off_hours)
