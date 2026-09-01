@@ -419,6 +419,20 @@
     <div style="display:flex; gap:6px; margin-bottom:18px;">
       <button class="btn-ghost btn-sm" id="auth-tab-login" onclick="switchAuthMode('login')" data-i18n="auth_tab_login">로그인</button>
       <button class="btn-ghost btn-sm" id="auth-tab-register" onclick="switchAuthMode('register')" data-i18n="auth_tab_register">회원가입</button>
+      <button class="btn-ghost btn-sm" id="auth-tab-employee" onclick="switchAuthMode('employee')" data-i18n="auth_tab_employee">직원 로그인</button>
+    </div>
+
+    <div id="auth-employee-fields" style="display:none;">
+      <div class="field" style="margin-bottom:10px; width:100%;">
+        <label data-i18n="auth_employee_id">직원 ID</label>
+        <input id="auth-employee-id" style="width:100%;" placeholder="e001">
+      </div>
+      <div class="field" style="margin-bottom:6px; width:100%;">
+        <label data-i18n="auth_employee_pin">PIN (6자리 숫자)</label>
+        <input id="auth-employee-pin" type="password" inputmode="numeric" maxlength="6" style="width:100%; letter-spacing:4px;" placeholder="••••••">
+      </div>
+      <button class="btn-primary" id="auth-employee-submit-btn" onclick="submitEmployeeAuth()" style="width:100%; padding:11px; margin-top:6px;" data-i18n="auth_tab_employee">직원 로그인</button>
+      <div id="auth-employee-error" style="color:var(--danger); font-size:12px; margin-top:12px; display:none;"></div>
     </div>
 
     <div id="auth-register-fields" style="display:none;">
@@ -497,8 +511,14 @@
         <span id="auth-company-name"></span>
         <button class="btn-ghost btn-sm" id="admin-nav-btn" onclick="showAdminPage()" style="display:none;" data-i18n="admin_nav_btn">👑 Admin</button>
         <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
-        <button class="btn-ghost btn-sm" id="manager-nav-btn" onclick="showManagerPage()" style="display:none;" data-i18n="manager_nav_btn">🧑‍💼 매니저 관리</button>
-        <button class="btn-ghost btn-sm" id="payroll-nav-btn" onclick="showPayrollPage()" style="display:none;" data-i18n="payroll_nav_btn">💰 급여</button>
+        <div style="position:relative; display:inline-block;" id="manager-menu-wrap">
+          <button class="btn-ghost btn-sm" id="manager-menu-btn" onclick="toggleManagerMenu()" style="display:none;" data-i18n="manager_menu_btn">⚙️ 관리자 메뉴</button>
+          <div id="manager-menu-dropdown" style="display:none; position:absolute; top:100%; right:0; background:var(--bg-panel); border:1px solid var(--line-strong); border-radius:6px; padding:4px; z-index:50; min-width:170px; box-shadow:0 4px 12px rgba(0,0,0,0.35);">
+            <button class="btn-ghost btn-sm" id="manager-menu-managers-item" style="display:block; width:100%; text-align:left; white-space:nowrap;" onclick="closeManagerMenuAnd(showManagerPage)" data-i18n="manager_nav_btn">🧑‍💼 매니저 관리</button>
+            <button class="btn-ghost btn-sm" style="display:block; width:100%; text-align:left; white-space:nowrap;" onclick="closeManagerMenuAnd(showPayrollPage)" data-i18n="payroll_nav_btn">💰 급여</button>
+            <button class="btn-ghost btn-sm" style="display:block; width:100%; text-align:left; white-space:nowrap;" onclick="closeManagerMenuAnd(showEmployeePinsPage)" data-i18n="pins_nav_btn">🔑 직원 PIN 조회</button>
+          </div>
+        </div>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
         <button class="btn-ghost btn-sm" id="delete-account-btn" onclick="startDeleteAccount()" style="color:#ef4444;" data-i18n="account_delete_btn">회원탈퇴</button>
       </div>
@@ -614,15 +634,35 @@
       <button class="btn-primary" id="generate-btn" onclick="generateSchedule()" data-i18n="btn_generate">스케줄 자동 생성</button>
       <button class="btn-ghost" id="regenerate-btn" onclick="regenerateSchedule()" style="display:none;" data-i18n="btn_regenerate">🔄 다른 조합으로 다시 생성</button>
       <button class="btn-ghost" id="lock-btn" onclick="toggleWeekLock()" style="display:none;">🔒</button>
+      <button class="btn-primary" id="publish-btn" onclick="publishWeek()" style="display:none; background:var(--cyan, #06b6d4);" data-i18n="btn_publish">📢 퍼블리시</button>
+      <button class="btn-ghost" id="agreements-btn" onclick="showAgreementsStatus()" style="display:none;" data-i18n="btn_agreements">✅ 확인 현황</button>
       <button class="btn-ghost" id="save-manual-btn" onclick="saveManualAdjustments()" style="display:none;" data-i18n="btn_save_changes">변경사항 저장</button>
       <button class="btn-ghost" id="reset-schedule-btn" onclick="resetWeekSchedule()" style="display:none;" data-i18n="btn_reset_schedule">🗑️ 스케줄 초기화</button>
       <button class="btn-ghost" id="ph-detail-btn" onclick="showPublicHolidayDetail()" style="display:none;" data-i18n="btn_ph_detail">🎌 Public Holiday 확인</button>
+      <button class="btn-primary" id="publish-btn" onclick="publishWeek()" style="display:none; background:var(--cyan);" data-i18n="btn_publish">📤 퍼블리시</button>
+      <button class="btn-ghost" id="agreements-btn" onclick="showAgreementsPage()" style="display:none;" data-i18n="btn_agreements">✅ 확인 현황</button>
       <button class="btn-ghost" id="pattern-suggest-btn" onclick="checkPatternSuggestions()" style="margin-left:auto;" data-i18n="btn_pattern">📊 지난 수정 패턴에서 규칙 제안 보기</button>
     </div>
     <div id="schedule-output" style="margin-top:20px;"></div>
   </section>
 
 </main>
+
+<div id="employee-view" style="display:none; max-width:640px; margin:0 auto; padding:24px 16px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+    <div>
+      <h1 id="emp-view-company-name" style="font-size:18px; margin:0 0 4px;"></h1>
+      <p id="emp-view-name" style="font-size:13px; color:var(--text-muted); margin:0;"></p>
+    </div>
+    <button class="btn-ghost btn-sm" onclick="logoutEmployeeUser()" data-i18n="auth_logout">로그아웃</button>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <button class="btn-ghost btn-sm" onclick="navigateEmployeeWeek(-7)">◀</button>
+    <div id="emp-view-week-label" style="font-weight:600; font-size:14px; flex:1; text-align:center;"></div>
+    <button class="btn-ghost btn-sm" onclick="navigateEmployeeWeek(7)">▶</button>
+  </div>
+  <div id="emp-view-content"></div>
+</div>
 
 <script>
 const DAYS = ["mon","tue","wed","thu","fri","sat","sun"];
@@ -773,6 +813,10 @@ const I18N = {
     shift_time_modified: "수정됨", btn_reset_default: "기본값으로",
     auth_intro: "회사(매장) 계정으로 로그인하거나, 새로 등록하세요.",
     auth_tab_login: "로그인", auth_tab_register: "회원가입",
+    auth_tab_employee: "직원 로그인", auth_employee_id: "직원 ID", auth_employee_pin: "PIN (6자리 숫자)",
+    emp_view_greeting: "{name}님, 안녕하세요", emp_view_not_published: "아직 게시된 스케줄이 없습니다.",
+    emp_view_no_shifts: "이번 주는 배정된 근무가 없습니다.", emp_view_agree_btn: "확인했습니다",
+    emp_view_agreed_at: "{date}에 확인함",
     auth_company_name: "회사(매장) 이름", auth_contact_name: "담당자 이름", auth_phone: "전화번호 (선택)",
     auth_employee_limit: "예상 직원 수",
     auth_email: "이메일", auth_password: "비밀번호",
@@ -809,9 +853,13 @@ const I18N = {
     auth_network_error: "네트워크 연결을 확인해주세요.",
     auth_pending_default_msg: "가입 요청이 접수되었습니다. 관리자 승인 후 이메일로 안내드립니다.",
     admin_pending_nav_btn: "📋 승인 대기", admin_pending_title: "가입 승인 대기 목록",
+    manager_menu_btn: "⚙️ 관리자 메뉴", pins_nav_btn: "🔑 직원 PIN 조회",
     manager_nav_btn: "🧑‍💼 매니저 관리", manager_page_title: "매니저 계정 관리",
     manager_page_sub: "사장 본인의 비밀번호를 공유하지 않고도, 매니저마다 별도의 로그인 계정을 만들어줄 수 있습니다. 매니저는 급여 관련 페이지에 접근할 수 있습니다.",
     manager_page_empty: "등록된 매니저 계정이 없습니다.",
+    pins_page_title: "직원 PIN 조회", pins_page_sub: "직원이 로그인 PIN을 잊어버렸을 때 여기서 확인하거나 재발급할 수 있습니다.",
+    pins_regenerate_btn: "재발급", pins_regenerate_confirm_title: "PIN 재발급",
+    pins_regenerate_confirm_msg: "'{name}' 직원의 PIN을 새로 발급합니다. 기존 PIN은 더 이상 쓸 수 없게 됩니다. 계속할까요?",
     manager_created_at: "등록일: {date}",
     manager_delete_confirm_title: "매니저 계정 삭제", manager_delete_confirm_msg: "'{name}' 매니저 계정을 삭제합니다. 이 계정으로는 더 이상 로그인할 수 없게 됩니다. 계속할까요?",
     manager_add_title: "새 매니저 추가",
@@ -853,6 +901,12 @@ const I18N = {
     auth_reset_submit: "비밀번호 변경",
     auth_reset_done: "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해주세요.",
     btn_reset_schedule: "🗑️ 스케줄 초기화",
+    btn_publish: "📢 퍼블리시", btn_agreements: "✅ 확인 현황",
+    publish_confirm_title: "스케줄 퍼블리시", publish_confirm_msg: "이 주 스케줄을 직원들에게 공개합니다. 동시에 이 주가 잠기며, 수정하려면 잠금을 먼저 풀어야 하고(그러면 직원 확인 기록도 초기화됩니다). 계속할까요?",
+    publish_done_title: "퍼블리시 완료", publish_done_msg: "직원들이 이제 자신의 로스터를 확인할 수 있습니다.",
+    publish_reset_title: "퍼블리시 취소됨", publish_reset_msg: "이 주의 잠금을 풀어서, 퍼블리시 상태와 직원들의 확인 기록이 초기화되었습니다. 수정 후 다시 퍼블리시해주세요.",
+    agreements_title: "직원별 확인 현황", agreements_sub: "{agreed}/{total}명 확인함",
+    agreements_agreed: "확인함", agreements_pending: "대기중",
     confirm_reset_title: "이번 주 스케줄을 초기화할까요?",
     confirm_reset_msg: "이번 주에 배정된 모든 근무(자동·수동 포함)가 지워지고, 스케줄을 아예 생성하지 않은 상태로 돌아갑니다. 근무요건과 이미 지정한 Off(휴무), Leave Request는 그대로 유지됩니다. 되돌릴 수 없습니다.",
     confirm_reset_yes: "네, 초기화", confirm_reset_no: "취소",
@@ -993,6 +1047,10 @@ const I18N = {
     shift_time_modified: "Modified", btn_reset_default: "Reset to default",
     auth_intro: "Log in with your company (store) account, or register a new one.",
     auth_tab_login: "Log In", auth_tab_register: "Sign Up",
+    auth_tab_employee: "Employee Login", auth_employee_id: "Employee ID", auth_employee_pin: "PIN (6 digits)",
+    emp_view_greeting: "Hi, {name}", emp_view_not_published: "No published schedule yet.",
+    emp_view_no_shifts: "No shifts assigned this week.", emp_view_agree_btn: "I've seen this",
+    emp_view_agreed_at: "Agreed on {date}",
     auth_company_name: "Company (Store) Name", auth_contact_name: "Contact Name", auth_phone: "Phone Number (optional)",
     auth_employee_limit: "Expected Number of Employees",
     auth_email: "Email", auth_password: "Password",
@@ -1029,9 +1087,13 @@ const I18N = {
     auth_network_error: "Please check your network connection.",
     auth_pending_default_msg: "Your signup request has been submitted. You'll be notified by email once reviewed.",
     admin_pending_nav_btn: "📋 Pending Requests", admin_pending_title: "Pending Signup Requests",
+    manager_menu_btn: "⚙️ Admin Menu", pins_nav_btn: "🔑 Employee PINs",
     manager_nav_btn: "🧑‍💼 Managers", manager_page_title: "Manage Manager Accounts",
     manager_page_sub: "Create separate login accounts for managers without sharing your own password. Managers can access payroll-related pages.",
     manager_page_empty: "No manager accounts yet.",
+    pins_page_title: "Employee PINs", pins_page_sub: "Look up or reissue a login PIN if an employee forgets theirs.",
+    pins_regenerate_btn: "Regenerate", pins_regenerate_confirm_title: "Regenerate PIN",
+    pins_regenerate_confirm_msg: "This will issue a new PIN for '{name}'. Their old PIN will stop working. Continue?",
     manager_created_at: "Added: {date}",
     manager_delete_confirm_title: "Delete Manager Account", manager_delete_confirm_msg: "This will delete the manager account '{name}'. They will no longer be able to log in. Continue?",
     manager_add_title: "Add a New Manager",
@@ -1073,6 +1135,12 @@ const I18N = {
     auth_reset_submit: "Change Password",
     auth_reset_done: "Your password has been changed. Please log in with your new password.",
     btn_reset_schedule: "🗑️ Reset Schedule",
+    btn_publish: "📢 Publish", btn_agreements: "✅ Agreement Status",
+    publish_confirm_title: "Publish Schedule", publish_confirm_msg: "This will publish this week's schedule to employees. It will also lock the week — to edit it afterward you'll need to unlock it first (which resets employee agreements). Continue?",
+    publish_done_title: "Published", publish_done_msg: "Employees can now view their roster.",
+    publish_reset_title: "Publish Cancelled", publish_reset_msg: "Unlocking this week reset its published status and employee agreements. Please re-publish after making changes.",
+    agreements_title: "Employee Agreement Status", agreements_sub: "{agreed}/{total} agreed",
+    agreements_agreed: "Agreed", agreements_pending: "Pending",
     confirm_reset_title: "Reset this week's schedule?",
     confirm_reset_msg: "All shifts assigned this week (auto and manual) will be cleared, returning to a state as if no schedule was ever generated. Shift requirements, existing Off marks, and Leave Requests are kept. This cannot be undone.",
     confirm_reset_yes: "Yes, reset", confirm_reset_no: "Cancel",
@@ -1197,11 +1265,25 @@ function switchAuthMode(mode) {
   authMode = mode;
   document.getElementById("auth-tab-login").classList.toggle("active", mode === "login");
   document.getElementById("auth-tab-register").classList.toggle("active", mode === "register");
+  document.getElementById("auth-tab-employee").classList.toggle("active", mode === "employee");
   document.getElementById("auth-register-fields").style.display = mode === "register" ? "block" : "none";
   document.getElementById("auth-password-hint").style.display = mode === "register" ? "block" : "none";
   document.getElementById("auth-submit-btn").textContent = mode === "login" ? t("auth_tab_login") : t("auth_tab_register");
   document.getElementById("auth-error").style.display = "none";
   document.getElementById("auth-success").style.display = "none";
+
+  // 직원 로그인은 이메일/비밀번호 로그인과 완전히 별개 필드라, 이 모드일 때는 그
+  // 필드들을 아예 감추고 직원 전용 필드만 보여줍니다.
+  const isEmployee = mode === "employee";
+  document.getElementById("auth-employee-fields").style.display = isEmployee ? "block" : "none";
+  document.getElementById("auth-email").closest(".field").style.display = isEmployee ? "none" : "block";
+  document.getElementById("auth-password").closest(".field").style.display = isEmployee ? "none" : "block";
+  document.getElementById("auth-submit-btn").style.display = isEmployee ? "none" : "block";
+  document.getElementById("auth-forgot-link-row").style.display = isEmployee ? "none" : "block";
+  if (isEmployee) {
+    document.getElementById("auth-register-fields").style.display = "none";
+    document.getElementById("auth-password-hint").style.display = "none";
+  }
 }
 
 function showAuthScreen() {
@@ -1238,10 +1320,24 @@ async function checkAuthAndInit() {
     document.getElementById("admin-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (me.is_admin || me.role !== "owner") ? "none" : "inline-block";
-    document.getElementById("manager-nav-btn").style.display = me.role === "owner" ? "inline-block" : "none";
-    document.getElementById("payroll-nav-btn").style.display = (me.role === "owner" || me.role === "manager") ? "inline-block" : "none";
+    document.getElementById("manager-menu-btn").style.display = (me.role === "owner" || me.role === "manager") ? "inline-block" : "none";
+    document.getElementById("manager-menu-managers-item").style.display = me.role === "owner" ? "block" : "none";
     hideAuthScreen();
     await initAppData();
+    return;
+  }
+
+  // 사장/매니저 세션이 없으면, 직원 로그인 세션이 있는지도 확인합니다 — 둘은 완전히
+  // 별개의 세션이라 각자 자기 API로만 확인할 수 있습니다.
+  let empMe;
+  try {
+    const res = await fetch("/api/employee-auth/me", {credentials: "same-origin"});
+    empMe = await res.json();
+  } catch (e) {
+    empMe = null;
+  }
+  if (empMe) {
+    await showEmployeeView(empMe);
   } else {
     showAuthScreen();
   }
@@ -1321,8 +1417,8 @@ async function submitAuth() {
     document.getElementById("admin-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (data.is_admin || data.role !== "owner") ? "none" : "inline-block";
-    document.getElementById("manager-nav-btn").style.display = data.role === "owner" ? "inline-block" : "none";
-    document.getElementById("payroll-nav-btn").style.display = (data.role === "owner" || data.role === "manager") ? "inline-block" : "none";
+    document.getElementById("manager-menu-btn").style.display = (data.role === "owner" || data.role === "manager") ? "inline-block" : "none";
+    document.getElementById("manager-menu-managers-item").style.display = data.role === "owner" ? "block" : "none";
     document.getElementById("auth-email").value = "";
     document.getElementById("auth-password").value = "";
     document.getElementById("auth-name").value = "";
@@ -1339,6 +1435,135 @@ async function logoutUser() {
   document.getElementById("auth-email").value = "";
   document.getElementById("auth-password").value = "";
   showAuthScreen();
+}
+
+async function submitEmployeeAuth() {
+  const errBox = document.getElementById("auth-employee-error");
+  errBox.style.display = "none";
+  const employee_id = document.getElementById("auth-employee-id").value.trim();
+  const pin = document.getElementById("auth-employee-pin").value.trim();
+  if (!employee_id || !pin) {
+    errBox.textContent = t("auth_fill_all");
+    errBox.style.display = "block";
+    return;
+  }
+  const res = await fetch("/api/employee-auth/login", {
+    method: "POST", credentials: "same-origin",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({employee_id, pin}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    errBox.textContent = data.error || t("modal_request_failed");
+    errBox.style.display = "block";
+    return;
+  }
+  document.getElementById("auth-employee-id").value = "";
+  document.getElementById("auth-employee-pin").value = "";
+  await showEmployeeView(data);
+}
+
+async function logoutEmployeeUser() {
+  await fetch("/api/employee-auth/logout", {method: "POST", credentials: "same-origin"});
+  document.getElementById("employee-view").style.display = "none";
+  showAuthScreen();
+  switchAuthMode("employee");
+}
+
+let empViewWeekKey = null;
+
+async function showEmployeeView(empMe) {
+  document.getElementById("auth-screen").style.display = "none";
+  document.getElementById("main-app").style.display = "none";
+  document.getElementById("auth-company-info").style.display = "none";
+  document.getElementById("employee-view").style.display = "block";
+  document.getElementById("emp-view-company-name").textContent = empMe.company_name;
+  document.getElementById("emp-view-name").textContent = tf("emp_view_greeting", {name: empMe.name});
+  if (!empViewWeekKey) empViewWeekKey = mondayKeyFromDate(new Date());
+  await loadEmployeeWeek();
+}
+
+function navigateEmployeeWeek(deltaDays) {
+  empViewWeekKey = addDaysToKey(empViewWeekKey, deltaDays);
+  loadEmployeeWeek();
+}
+
+async function loadEmployeeWeek() {
+  document.getElementById("emp-view-week-label").textContent = formatWeekLabel(empViewWeekKey);
+  const content = document.getElementById("emp-view-content");
+  content.innerHTML = "";
+
+  const res = await fetch(`/api/employee-auth/weeks/${empViewWeekKey}`, {credentials: "same-origin"});
+  if (res.status === 401) { showAuthScreen(); switchAuthMode("employee"); return; }
+  const data = await res.json().catch(() => null);
+  if (!data) return;
+
+  if (!data.published) {
+    const empty = document.createElement("div");
+    empty.style.cssText = "text-align:center; padding:40px 20px; color:var(--text-muted);";
+    empty.textContent = t("emp_view_not_published");
+    content.appendChild(empty);
+    return;
+  }
+
+  if (!data.shifts.length) {
+    const empty = document.createElement("div");
+    empty.style.cssText = "text-align:center; padding:24px 20px; color:var(--text-muted);";
+    empty.textContent = t("emp_view_no_shifts");
+    content.appendChild(empty);
+  } else {
+    const list = document.createElement("div");
+    list.style.cssText = "display:flex; flex-direction:column; gap:8px; margin-bottom:20px;";
+    DAYS.forEach(day => {
+      const shift = data.shifts.find(s => s.day === day);
+      if (!shift) return;
+      const row = document.createElement("div");
+      row.style.cssText = "background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:8px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center;";
+      const left = document.createElement("div");
+      const dayLine = document.createElement("div");
+      dayLine.style.fontWeight = "600";
+      dayLine.textContent = DAY_LABEL[day];
+      const nameLine = document.createElement("div");
+      nameLine.style.cssText = "font-size:12px; color:var(--text-muted);";
+      nameLine.textContent = shift.shift_name;
+      left.appendChild(dayLine);
+      left.appendChild(nameLine);
+      const time = document.createElement("div");
+      time.style.cssText = "font-family:monospace; font-size:13px;";
+      time.textContent = `${shift.start} - ${shift.end}`;
+      row.appendChild(left);
+      row.appendChild(time);
+      list.appendChild(row);
+    });
+    content.appendChild(list);
+  }
+
+  const agreeBox = document.createElement("div");
+  agreeBox.style.cssText = "text-align:center; padding-top:10px;";
+  if (data.agreed) {
+    const doneMsg = document.createElement("div");
+    doneMsg.style.cssText = "color:var(--opening, #22c55e); font-weight:600;";
+    doneMsg.textContent = "✅ " + tf("emp_view_agreed_at", {date: (data.agreed_at || "").slice(0, 10)});
+    agreeBox.appendChild(doneMsg);
+  } else {
+    const agreeBtn = document.createElement("button");
+    agreeBtn.className = "btn-primary";
+    agreeBtn.style.cssText = "width:100%; padding:12px;";
+    agreeBtn.textContent = t("emp_view_agree_btn");
+    agreeBtn.onclick = async () => {
+      agreeBtn.disabled = true;
+      const res = await fetch(`/api/employee-auth/weeks/${empViewWeekKey}/agree`, {
+        method: "POST", credentials: "same-origin",
+      });
+      if (res.ok) {
+        loadEmployeeWeek();
+      } else {
+        agreeBtn.disabled = false;
+      }
+    };
+    agreeBox.appendChild(agreeBtn);
+  }
+  content.appendChild(agreeBox);
 }
 
 function startDeleteAccount() {
@@ -1664,6 +1889,22 @@ async function showPendingSignupsPage() {
   document.body.appendChild(overlay);
 }
 
+function toggleManagerMenu() {
+  const dropdown = document.getElementById("manager-menu-dropdown");
+  dropdown.style.display = dropdown.style.display === "none" ? "block" : "none";
+}
+function closeManagerMenuAnd(fn) {
+  document.getElementById("manager-menu-dropdown").style.display = "none";
+  fn();
+}
+document.addEventListener("click", (ev) => {
+  const wrap = document.getElementById("manager-menu-wrap");
+  const dropdown = document.getElementById("manager-menu-dropdown");
+  if (wrap && dropdown && !wrap.contains(ev.target)) {
+    dropdown.style.display = "none";
+  }
+});
+
 async function showManagerPage() {
   let managers;
   try {
@@ -1789,6 +2030,83 @@ async function showManagerPage() {
   addBlock.appendChild(errLine);
   addBlock.appendChild(addBtn);
   box.appendChild(addBlock);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showEmployeePinsPage() {
+  let pins;
+  try {
+    pins = await api("/api/employees/pins");
+  } catch (e) {
+    return;
+  }
+  if (!pins) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "500px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("pins_page_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("pins_page_sub");
+  box.appendChild(sub);
+
+  if (!pins.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = t("rules_none");
+    box.appendChild(empty);
+  }
+
+  pins.forEach(p => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    row.style.cssText = "display:flex; align-items:center; justify-content:space-between; gap:10px;";
+    const info = document.createElement("div");
+    const nameLine = document.createElement("div");
+    nameLine.className = "modal-item-title";
+    nameLine.textContent = `${p.name} (${p.id})`;
+    const pinLine = document.createElement("div");
+    pinLine.style.cssText = "font-family:monospace; font-size:16px; letter-spacing:2px; color:var(--cyan); margin-top:2px;";
+    pinLine.textContent = p.pin;
+    info.appendChild(nameLine);
+    info.appendChild(pinLine);
+    const regenBtn = document.createElement("button");
+    regenBtn.className = "btn-ghost btn-sm";
+    regenBtn.textContent = t("pins_regenerate_btn");
+    regenBtn.onclick = async () => {
+      const confirmed = await showConfirmModal(
+        t("pins_regenerate_confirm_title"), tf("pins_regenerate_confirm_msg", {name: p.name}),
+        t("pins_regenerate_btn"), t("btn_cancel"),
+      );
+      if (!confirmed) return;
+      await api(`/api/employees/${p.id}/regenerate-pin`, {method: "POST"});
+      overlay.remove();
+      showEmployeePinsPage();
+    };
+    row.appendChild(info);
+    row.appendChild(regenBtn);
+    box.appendChild(row);
+  });
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
@@ -2713,13 +3031,16 @@ function mondayKeyFromDate(date) {
 }
 
 function updateWeekLabel() {
-  const mondayDate = keyToDate(currentWeekKey);
-  const sundayKey = addDaysToKey(currentWeekKey, 6);
+  document.getElementById("week-label").textContent = formatWeekLabel(currentWeekKey);
+  document.getElementById("week-date-picker").value = currentWeekKey;
+}
+
+function formatWeekLabel(weekKey) {
+  const mondayDate = keyToDate(weekKey);
+  const sundayKey = addDaysToKey(weekKey, 6);
   const sundayDate = keyToDate(sundayKey);
   const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
-  document.getElementById("week-label").textContent =
-    `${fmt(mondayDate)}(${DAY_LABEL.mon}) ${t("week_range_join")} ${fmt(sundayDate)}(${DAY_LABEL.sun})`;
-  document.getElementById("week-date-picker").value = currentWeekKey;
+  return `${fmt(mondayDate)}(${DAY_LABEL.mon}) ${t("week_range_join")} ${fmt(sundayDate)}(${DAY_LABEL.sun})`;
 }
 
 function navigateWeek(deltaDays) {
@@ -3480,6 +3801,7 @@ async function loadWeek() {
   window._weekOffDays = week.off_days || {};
   window._requirements = week.requirements || [];
   weekLocked = !!week.locked;
+  weekPublished = !!week.published;
   renderRequirementGrid();
   updateLockButtonUI();
   await refreshWeekdayFrequency();
@@ -3496,6 +3818,7 @@ async function loadWeek() {
     document.getElementById("regenerate-btn").style.display = "none";
     renderCalendarArea();
   }
+  updateLockButtonUI();
 
   lastLoadedWeekKey = currentWeekKey;
   await checkPublicHolidayForWeek();
@@ -3623,6 +3946,7 @@ let currentAssignments = [];
 let scheduleGenerated = false;
 let seenAssignmentSets = []; // "다시 생성" 시 반복 방지용 - 이 주에서 지금까지 본 조합들 (탭 새로고침하면 초기화)
 let weekLocked = false; // 이 주가 잠겨있으면 수정 관련 조작이 전부 막힙니다
+let weekPublished = false; // 이 주가 직원들에게 퍼블리시됐는지
 
 function updateLockButtonUI() {
   const lockBtn = document.getElementById("lock-btn");
@@ -3638,6 +3962,88 @@ function updateLockButtonUI() {
   [generateBtn, regenerateBtn, saveManualBtn, saveReqBtn, resetScheduleBtn].forEach(btn => {
     if (btn) btn.disabled = weekLocked;
   });
+
+  const isManagerOrOwner = currentCompany && (currentCompany.role === "owner" || currentCompany.role === "manager");
+  const publishBtn = document.getElementById("publish-btn");
+  const agreementsBtn = document.getElementById("agreements-btn");
+  if (publishBtn) {
+    publishBtn.style.display = (isManagerOrOwner && scheduleGenerated && !weekPublished) ? "inline-block" : "none";
+  }
+  if (agreementsBtn) {
+    agreementsBtn.style.display = (isManagerOrOwner && weekPublished) ? "inline-block" : "none";
+  }
+}
+
+async function publishWeek() {
+  const confirmed = await showConfirmModal(
+    t("publish_confirm_title"), t("publish_confirm_msg"),
+    t("btn_publish"), t("btn_cancel"),
+  );
+  if (!confirmed) return;
+  await api(`/api/weeks/${currentWeekKey}/publish`, {method: "POST"});
+  weekPublished = true;
+  weekLocked = true;
+  updateLockButtonUI();
+  showMessageModal(t("publish_done_title"), t("publish_done_msg"), false);
+}
+
+async function showAgreementsStatus() {
+  let data;
+  try {
+    data = await api(`/api/weeks/${currentWeekKey}/agreements`);
+  } catch (e) {
+    return;
+  }
+  if (!data) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "480px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("agreements_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  const agreedCount = data.agreements.filter(a => a.agreed).length;
+  sub.textContent = tf("agreements_sub", {agreed: agreedCount, total: data.agreements.length});
+  box.appendChild(sub);
+
+  data.agreements.forEach(a => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    row.style.cssText = "display:flex; align-items:center; justify-content:space-between;";
+    const name = document.createElement("div");
+    name.className = "modal-item-title";
+    name.textContent = a.employee_name;
+    const status = document.createElement("div");
+    if (a.agreed) {
+      status.style.color = "var(--opening, #22c55e)";
+      status.textContent = "✅ " + t("agreements_agreed");
+    } else {
+      status.style.color = "var(--text-muted)";
+      status.textContent = "⏳ " + t("agreements_pending");
+    }
+    row.appendChild(name);
+    row.appendChild(status);
+    box.appendChild(row);
+  });
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
 
 async function toggleWeekLock() {
@@ -3648,7 +4054,12 @@ async function toggleWeekLock() {
     body: JSON.stringify({locked: newLocked})
   });
   weekLocked = result.locked;
+  const wasPublished = weekPublished;
+  weekPublished = !!result.published;
   updateLockButtonUI();
+  if (result.republish_reset && wasPublished) {
+    showMessageModal(t("publish_reset_title"), t("publish_reset_msg"), false);
+  }
   if (scheduleGenerated) {
     renderSchedule({
       status: "MANUAL", assignments: currentAssignments,
@@ -3753,6 +4164,7 @@ async function copyPreviousWeekSchedule(prevAssignments) {
   scheduleGenerated = true;
   seenAssignmentSets = [copied.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}))];
   document.getElementById("regenerate-btn").style.display = "inline-block";
+  updateLockButtonUI();
   await refreshWeekdayFrequency();
   renderSchedule(result);
   showMessageModal(
@@ -3806,6 +4218,7 @@ async function runAutoGenerate() {
   scheduleGenerated = true;
   seenAssignmentSets = [result.assignments.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type}))];
   document.getElementById("regenerate-btn").style.display = "inline-block";
+  updateLockButtonUI();
   await refreshWeekdayFrequency();
   renderSchedule(result);
 
@@ -3906,6 +4319,7 @@ async function regenerateSchedule() {
   scheduleGenerated = true;
   seenAssignmentSets.push(result.assignments.map(a => ({employee_id: a.employee_id, day: a.day, shift_type: a.shift_type})));
   if (seenAssignmentSets.length > 5) seenAssignmentSets = seenAssignmentSets.slice(-5);
+  updateLockButtonUI();
   await refreshWeekdayFrequency();
   renderSchedule(result);
 
@@ -4459,6 +4873,7 @@ function openAddAssignmentModal(employeeId, employeeName, day) {
       scheduleGenerated = true;
       overlay.remove();
       renderCalendarArea();
+      updateLockButtonUI();
       showMessageModal(t("modal_add_placed_title"), `${employeeName} · ${DAY_LABEL[day]} · ${SHIFT_LABEL[shift]}`, false);
     };
     return item;
