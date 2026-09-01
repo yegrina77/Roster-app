@@ -823,6 +823,7 @@ const I18N = {
     payroll_col_employee: "직원", payroll_col_wage: "시급", payroll_col_scheduled_pay: "이번 주 예상 지급액",
     payroll_wage_not_set: "시급 미설정", payroll_total: "이번 주 총 예상 인건비: ${amount}",
     payroll_leave_included: "유급/병가 리브 {n}일 포함",
+    payroll_ph_premium_included: "공휴일 1.5배 {n}일 포함", payroll_ph_avgpay_included: "공휴일 평균급여 {n}일 포함",
     admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
     admin_pending_requested_at: "요청일", btn_approve: "승인", btn_reject: "거절",
     dept_mgmt_title: "부서 및 근무유형 관리",
@@ -1041,6 +1042,7 @@ const I18N = {
     payroll_col_employee: "Employee", payroll_col_wage: "Wage", payroll_col_scheduled_pay: "Est. Pay This Week",
     payroll_wage_not_set: "Wage not set", payroll_total: "Total estimated labour cost this week: ${amount}",
     payroll_leave_included: "Includes {n} day(s) of paid/sick leave",
+    payroll_ph_premium_included: "Includes {n} day(s) at 1.5x (public holiday)", payroll_ph_avgpay_included: "Includes {n} day(s) of average pay (public holiday)",
     admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
     admin_pending_requested_at: "Requested", btn_approve: "Approve", btn_reject: "Reject",
     dept_mgmt_title: "Departments & Shift Types",
@@ -1892,8 +1894,14 @@ async function showPayrollPage() {
     const wageCell = row.has_wage_set ? `$${row.hourly_wage.toFixed(2)}` : `<span style="color:var(--text-muted);">${t("payroll_wage_not_set")}</span>`;
     const payCell = row.has_wage_set ? `$${row.weekly_pay.toFixed(2)}` : "—";
     const paidLeaveDays = Object.values(row.per_day).filter(d => d.leave_type === "paid" || d.leave_type === "sick").length;
-    const nameCell = paidLeaveDays > 0
-      ? `${row.employee_name}<br><span style="font-size:10px; color:var(--text-muted);">${tf("payroll_leave_included", {n: paidLeaveDays})}</span>`
+    const phPremiumDays = Object.values(row.per_day).filter(d => d.is_public_holiday && (d.category === 1 || d.category === 3)).length;
+    const phAvgPayDays = Object.values(row.per_day).filter(d => d.is_public_holiday && d.category === 2).length;
+    const notes = [];
+    if (paidLeaveDays > 0) notes.push(tf("payroll_leave_included", {n: paidLeaveDays}));
+    if (phPremiumDays > 0) notes.push(tf("payroll_ph_premium_included", {n: phPremiumDays}));
+    if (phAvgPayDays > 0) notes.push(tf("payroll_ph_avgpay_included", {n: phAvgPayDays}));
+    const nameCell = notes.length > 0
+      ? `${row.employee_name}<br><span style="font-size:10px; color:var(--text-muted);">${notes.join(" · ")}</span>`
       : row.employee_name;
     tr.innerHTML = `
       <td style="padding:5px 6px;">${nameCell}</td>
