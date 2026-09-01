@@ -544,6 +544,10 @@
       <button class="btn-ghost" id="emp-cancel-btn" onclick="cancelEditEmployee()" style="display:none;" data-i18n="btn_cancel">취소</button>
     </div>
 
+    <div style="margin-top:6px; margin-bottom:4px;">
+      <input id="emp-search" type="text" placeholder="🔍" data-i18n-placeholder="emp_search_placeholder" style="width:100%; max-width:280px;" oninput="renderEmployeeTable()">
+    </div>
+
     <table id="employee-table">
       <thead>
         <tr>
@@ -655,6 +659,7 @@ const I18N = {
     header_desc: "직원과 근무 요건을 등록하면, 아래 캘린더에서 바로 휴무를 지정하거나 스케줄을 자동 생성할 수 있습니다.",
     emp_title: "직원",
     emp_desc: '이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.',
+    emp_search_placeholder: "이름 또는 ID로 검색", emp_search_empty: "검색 결과가 없습니다.",
     label_id: "ID", label_name: "이름", label_department: "부서",
     label_min_hours: "주당 최소시간", label_target_days: "주간 근무일수 (권장)", label_any: "상관없음",
     label_hourly_wage: "시급",
@@ -874,6 +879,7 @@ const I18N = {
     header_desc: "Register employees and shift requirements, then mark days off or auto-generate the schedule right from the calendar below.",
     emp_title: "Employees",
     emp_desc: 'Enter name, weekly minimum hours, and target working days, then set individual constraints under "Rules".',
+    emp_search_placeholder: "Search by name or ID", emp_search_empty: "No matching employees.",
     label_id: "ID", label_name: "Name", label_department: "Department",
     label_min_hours: "Min hours/week", label_target_days: "Target days/week (preferred)", label_any: "No preference",
     label_hourly_wage: "Hourly Wage",
@@ -1126,6 +1132,9 @@ function applyI18nStatic() {
   document.querySelectorAll("[data-i18n]").forEach(el => {
     const key = el.getAttribute("data-i18n");
     el.innerHTML = t(key);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+    el.placeholder = t(el.getAttribute("data-i18n-placeholder"));
   });
   document.querySelectorAll(".lang-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.lang === currentLang);
@@ -2145,6 +2154,12 @@ const EMPLOYEE_LIST_DEFAULT_COUNT = 5;
 async function loadEmployees() {
   const employees = await api("/api/employees");
   window._employees = employees;
+  renderEmployeeTable();
+  renderCalendarArea();
+}
+
+function renderEmployeeTable() {
+  const employees = window._employees || [];
   ensureDepartmentSelectOptions();
   const tbody = document.querySelector("#employee-table tbody");
   tbody.innerHTML = "";
@@ -2155,8 +2170,28 @@ async function loadEmployees() {
     if (openIdx >= EMPLOYEE_LIST_DEFAULT_COUNT) employeeListExpanded = true;
   }
 
-  const showAll = employeeListExpanded || employees.length <= EMPLOYEE_LIST_DEFAULT_COUNT;
-  const displayEmployees = showAll ? employees : employees.slice(0, EMPLOYEE_LIST_DEFAULT_COUNT);
+  // 검색어가 있으면 이름/ID 부분일치로 걸러내고, 검색 중일 때는 "더보기/접기"를 끄고
+  // 매칭되는 사람을 전부 보여줍니다 — 검색까지 했는데 몇 명만 보이면 오히려 혼란스러우니까요.
+  const searchInput = document.getElementById("emp-search");
+  const query = (searchInput ? searchInput.value : "").trim().toLowerCase();
+  const searching = query.length > 0;
+  const searchedEmployees = searching
+    ? employees.filter(e => e.name.toLowerCase().includes(query) || e.id.toLowerCase().includes(query))
+    : employees;
+
+  const showAll = searching || employeeListExpanded || searchedEmployees.length <= EMPLOYEE_LIST_DEFAULT_COUNT;
+  const displayEmployees = showAll ? searchedEmployees : searchedEmployees.slice(0, EMPLOYEE_LIST_DEFAULT_COUNT);
+
+  if (searching && !searchedEmployees.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 7;
+    td.style.cssText = "text-align:center; padding:14px; color:var(--text-muted); font-size:13px;";
+    td.textContent = t("emp_search_empty");
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
 
   displayEmployees.forEach(e => {
     const tr = document.createElement("tr");
@@ -2195,7 +2230,7 @@ async function loadEmployees() {
     }
   });
 
-  if (employees.length > EMPLOYEE_LIST_DEFAULT_COUNT) {
+  if (!searching && searchedEmployees.length > EMPLOYEE_LIST_DEFAULT_COUNT) {
     const toggleTr = document.createElement("tr");
     const toggleTd = document.createElement("td");
     toggleTd.colSpan = 7;
@@ -2205,17 +2240,15 @@ async function loadEmployees() {
     toggleBtn.className = "btn-ghost btn-sm";
     if (showAll) {
       toggleBtn.textContent = t("btn_show_less");
-      toggleBtn.onclick = () => { employeeListExpanded = false; loadEmployees(); };
+      toggleBtn.onclick = () => { employeeListExpanded = false; renderEmployeeTable(); };
     } else {
-      toggleBtn.textContent = tf("btn_show_more", {n: employees.length - EMPLOYEE_LIST_DEFAULT_COUNT});
-      toggleBtn.onclick = () => { employeeListExpanded = true; loadEmployees(); };
+      toggleBtn.textContent = tf("btn_show_more", {n: searchedEmployees.length - EMPLOYEE_LIST_DEFAULT_COUNT});
+      toggleBtn.onclick = () => { employeeListExpanded = true; renderEmployeeTable(); };
     }
     toggleTd.appendChild(toggleBtn);
     toggleTr.appendChild(toggleTd);
     tbody.appendChild(toggleTr);
   }
-
-  renderCalendarArea();
 }
 
 // 이 회사가 만든 부서/근무유형을 서버에서 불러와서, 화면 전체(직원 부서 선택,
