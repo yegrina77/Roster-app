@@ -183,11 +183,20 @@ def solve_schedule(
     shift_types: Optional[list[str]] = None,
     shift_defs: Optional[dict] = None,
     departments: Optional[list[str]] = None,
+    relax: Optional[set] = None,
+    time_limit_seconds: float = 10.0,
 ) -> ScheduleResult:
     """shift_types/shift_defs/departments를 안 넘기면 코드에 기본 내장된 구성(Kitchen/Sushi/...)을
     씁니다. 회사가 직접 만든 커스텀 부서·근무유형이 있으면, app.py에서 그 데이터를 이 형태로
     변환해서 넘겨줍니다 — 이 함수 자체는 "부서/근무유형이 뭐가 있는지" 전혀 모르는 채로,
-    넘겨받은 목록만 갖고 계산합니다."""
+    넘겨받은 목록만 갖고 계산합니다.
+
+    relax: 이 세트에 이름을 넣으면 그 하드 규칙을 이번 계산에서만 꺼둡니다. 정상적으로
+    스케줄을 만들 때는 항상 비워둡니다 — INFEASIBLE이 났을 때, app.py가 "어떤 규칙 하나를
+    빼면 풀리는지"를 자동으로 찾아내서 사용자에게 정확한 원인을 알려주는 진단 용도로만
+    씁니다. 가능한 이름: "min_hours", "forbidden_consecutive", "blocked_shift_types",
+    "cross_department"."""
+    relax = relax or frozenset()
     shift_types = shift_types if shift_types is not None else SHIFT_TYPES
     shift_defs = shift_defs if shift_defs is not None else SHIFT_DEFS
     departments = departments if departments is not None else DEPARTMENTS
@@ -239,6 +248,8 @@ def solve_schedule(
     for e in employees:
         for shift in e.blocked_shift_types:
             for day in DAYS:
+                if "blocked_shift_types" in relax:
+                    continue
                 model.Add(x[(e.id, day, shift)] == 0)
 
     # ---- 하드: 자동 생성 시 타 부서 근무유형 배정 금지 (수동 고정 배치는 예외) ----
@@ -249,6 +260,8 @@ def solve_schedule(
             for day in DAYS:
                 if (e.id, day, shift) in pinned_set:
                     continue  # 수동 배치는 부서 제한의 예외
+                if "cross_department" in relax:
+                    continue
                 model.Add(x[(e.id, day, shift)] == 0)
 
     for e in employees:
@@ -259,6 +272,8 @@ def solve_schedule(
         #      "남은 근무 가능 일수 비율"을 상한으로 삼아 더 줄여줍니다 — 안 그러면
         #      무급으로 여러 날 못 나온 직원 한 명 때문에 전체 스케줄 자체가 통째로
         #      INFEASIBLE(생성 불가) 처리되는 문제가 있었습니다.
+        if "min_hours" in relax:
+            continue
         available_days = 7 - len(e.forced_off_days)
         target_after_credit = max(0.0, e.min_hours_per_week - e.credited_off_hours)
         if available_days <= 0 or target_after_credit <= 0:
@@ -273,6 +288,8 @@ def solve_schedule(
         model.Add(total_hours_x1000 >= round(effective_min_hours * 1000))
 
     for e in employees:
+        if "forbidden_consecutive" in relax:
+            break
         for i in range(len(DAYS) - 1):
             today, tomorrow = DAYS[i], DAYS[i + 1]
             for (prev_shift, next_shift) in forbidden_consecutive:
@@ -395,7 +412,7 @@ def solve_schedule(
     total_pattern_penalty = sum(pattern_violation_vars) if pattern_violation_vars else 0
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 10.0
+    solver.parameters.max_time_in_seconds = time_limit_seconds
     solver.parameters.num_search_workers = 8
     if random_seed is not None:
         solver.parameters.random_seed = random_seed

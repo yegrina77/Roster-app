@@ -1982,6 +1982,46 @@ def generate_week_schedule(company_id, week_key):
         departments=departments,
     )
 
+    if result.status == "INFEASIBLE":
+        # ---- 자동 원인 진단 ----
+        # 여기까지 왔다는 건 pin/최소시간/부서용량처럼 미리 걸러낸 흔한 원인들은 다
+        # 아니라는 뜻입니다. 남은 하드 규칙들(최소시간, 마감→오픈 연속근무 금지, 금지된
+        # 근무유형, 타 부서 배정 금지)을 하나씩 꺼보면서 다시 계산해, "이걸 빼면
+        # 풀린다"를 자동으로 찾아 사용자에게 정확한 원인을 알려줍니다. 진단용 재계산은
+        # 시간제한을 짧게 둬서(3초) 너무 오래 걸리지 않게 합니다.
+        relax_candidates = [
+            ("min_hours", "이 직원(들)의 주당 최소시간 규칙"),
+            ("forbidden_consecutive", "마감 근무 다음날 오픈 근무 금지 규칙"),
+            ("blocked_shift_types", "이 직원(들)에게 금지된 근무유형 설정"),
+            ("cross_department", "다른 부서 근무유형 배정 금지 규칙"),
+        ]
+        found_causes = []
+        for relax_key, relax_label_ko in relax_candidates:
+            trial = solve_schedule(
+                employees, requirements,
+                exclude_solutions=exclude_solutions or None,
+                random_seed=random_seed,
+                pinned=pinned or None,
+                shift_hours=_effective_shift_hours(state),
+                shift_types=shift_types,
+                shift_defs=shift_defs,
+                departments=departments,
+                relax={relax_key},
+                time_limit_seconds=3.0,
+            )
+            if trial.status != "INFEASIBLE":
+                found_causes.append(relax_label_ko)
+
+        if found_causes:
+            result.diagnostics = [
+                "스케줄을 만들 수 없는 이유를 자동으로 찾아봤습니다. 다음 규칙(들)이 "
+                "다른 규칙과 충돌하고 있는 것으로 보입니다 — 이 중 하나를 완화하면 "
+                "생성이 가능해집니다: " + " / ".join(found_causes) + "."
+                " 관련된 직원의 규칙 설정이나 이번 주 근무 요건을 확인해주세요."
+            ]
+        # found_causes가 비어있으면(=하나씩 빼봐도 안 풀리면) 여러 규칙이 동시에
+        # 얽혀있다는 뜻이라, 기존의 일반 안내 메시지(diagnostics)를 그대로 둡니다.
+
     result_dict = {
         "status": result.status,
         "assignments": result.assignments,
