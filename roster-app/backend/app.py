@@ -395,6 +395,26 @@ def require_owner(f):
     return wrapper
 
 
+def require_employee_login(f):
+    """사장/매니저(회사) 로그인과 완전히 별개인, 직원 전용 로그인 세션을 확인합니다.
+    통과하면 (company_id, employee_dict)를 앞에 넘겨줍니다. 직원용 화면은 관리 기능이
+    전혀 없는 완전히 다른 화면이라, 세션 키 자체를 session["emp_company_id"] /
+    session["emp_employee_id"]로 분리해서 사장/매니저 세션과 절대 섞이지 않게 합니다."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        company_id = session.get("emp_company_id")
+        employee_id = session.get("emp_employee_id")
+        if not company_id or not employee_id:
+            return jsonify({"error": "Login required."}), 401
+        state = load_state(company_id)
+        employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+        if not employee:
+            session.clear()
+            return jsonify({"error": "Login required."}), 401
+        return f(company_id, employee, *args, **kwargs)
+    return wrapper
+
+
 def require_admin(f):
     """관리자(맨 처음 가입한 계정)만 접근 가능한 API에 붙입니다. 다른 회사 데이터를
     직접 다루지 않고, 가입자 통계만 볼 수 있게 하는 용도입니다. 이 회사 소속 매니저
@@ -668,7 +688,12 @@ def _scheduler_shift_defs(state):
 
 
 def empty_week():
-    return {"requirements": [], "off_days": {}, "schedule": None, "auto_assignments": [], "locked": False}
+    return {
+        "requirements": [], "off_days": {}, "schedule": None, "auto_assignments": [], "locked": False,
+        # published: 이 주 스케줄이 직원들에게 공개(퍼블리시)됐는지. agreements: 직원별
+        # {"agreed": bool, "agreed_at": ISO날짜|None} — 직원이 "확인" 버튼을 눌렀는지 추적합니다.
+        "published": False, "agreements": {},
+    }
 
 
 def _sanitize_wage(value):
@@ -682,6 +707,32 @@ def _sanitize_wage(value):
     if wage <= 0 or wage > 1000:
         return None
     return round(wage, 2)
+
+
+PIN_LENGTH = 6
+PIN_MAX_FAILED_ATTEMPTS = 5
+PIN_LOCKOUT_MINUTES = 15
+
+
+def _generate_pin():
+    """6자리 숫자 PIN을 무작위로 생성합니다(직원 로그인용)."""
+    return f"{secrets.randbelow(10 ** PIN_LENGTH):0{PIN_LENGTH}d}"
+
+
+def _employee_id_in_use_globally(auth, employee_id, exclude_company_id=None):
+    """직원 로그인이 '회사 선택' 없이 직원 ID + PIN만으로 이루어지기 때문에, 직원 ID는
+    이제 전체 시스템에서 고유해야 합니다. 모든 회사의 직원 목록을 뒤져서 이미 쓰이고
+    있는 ID인지 확인합니다."""
+    for c in auth["companies"].values():
+        if exclude_company_id is not None and c["id"] == exclude_company_id:
+            continue
+        try:
+            state = load_state(c["id"])
+        except Exception:
+            continue
+        if any(e["id"] == employee_id for e in state.get("employees", [])):
+            return True
+    return False
 
 
 LEAVE_TYPES = ("paid", "unpaid", "sick")  # sick도 유급으로 취급합니다 (아래 _is_paid_leave 참고)
@@ -1539,6 +1590,11 @@ def list_employees(company_id):
     for e in state["employees"]:
         e2 = dict(e)
         e2["leave_requests"] = _prune_expired_leave_requests(e.get("leave_requests", []))
+        # PIN은 여기서 절대 내려주지 않습니다 — 화면에 뒤섞여 노출되지 않도록, 전용
+        # 엔드포인트(/api/employees/pins)로만 조회할 수 있게 분리해뒀습니다.
+        e2.pop("pin", None)
+        e2.pop("pin_failed_attempts", None)
+        e2.pop("pin_locked_until", None)
         out.append(e2)
     return jsonify(out)
 
@@ -1556,8 +1612,13 @@ def add_employee(company_id):
     if any(e["id"] == payload["id"] for e in state["employees"]):
         return jsonify({"error": f"An employee with this id already exists: {payload['id']}"}), 400
 
-    # 가입할 때 신고한 예상 직원 수를 넘어서 등록하지 못하도록 막습니다.
+    # 직원 로그인이 ID+PIN만으로 이루어지기 때문에, 직원 ID는 전체 시스템에서 고유해야
+    # 합니다(다른 회사가 먼저 쓴 ID는 못 씀).
     auth = load_auth()
+    if _employee_id_in_use_globally(auth, payload["id"], exclude_company_id=company_id):
+        return jsonify({"error": f"This employee ID is already in use by another company: {payload['id']}. Please choose a different ID."}), 400
+
+    # 가입할 때 신고한 예상 직원 수를 넘어서 등록하지 못하도록 막습니다.
     company = auth["companies"].get(company_id)
     if company is not None:
         current_count = len(state["employees"])
@@ -1589,6 +1650,11 @@ def add_employee(company_id):
         "recent_weekend_count": payload.get("recent_weekend_count", 0),
         # 시급. 급여/Labour Cost 계산에 쓰입니다 — 설정 안 하면 None(급여 계산에서 제외).
         "hourly_wage": _sanitize_wage(payload.get("hourly_wage")),
+        # 직원 로그인용 PIN — 등록 시 자동으로 무작위 생성됩니다. 관리자/매니저가
+        # "직원 PIN 조회" 화면에서 확인하거나 재발급할 수 있습니다.
+        "pin": _generate_pin(),
+        "pin_failed_attempts": 0,
+        "pin_locked_until": None,
     }
     state["employees"].append(employee)
     save_state(company_id, state)
@@ -1628,6 +1694,169 @@ def delete_employee(company_id, employee_id):
     state["employees"] = [e for e in state["employees"] if e["id"] != employee_id]
     save_state(company_id, state)
     return "", 204
+
+
+@app.route("/api/employees/pins", methods=["GET"])
+@require_login
+def list_employee_pins(company_id):
+    """사장/매니저 전용: 직원들의 로그인 PIN을 조회합니다. 직원이 PIN을 잊어버렸을 때
+    확인하는 용도입니다 — 일반 직원 목록 API에는 PIN이 절대 포함되지 않고, 이 전용
+    엔드포인트로만 조회할 수 있습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    return jsonify([
+        {"id": e["id"], "name": e["name"], "pin": e.get("pin", "")}
+        for e in state["employees"]
+    ])
+
+
+@app.route("/api/employees/<employee_id>/regenerate-pin", methods=["POST"])
+@require_login
+def regenerate_employee_pin(company_id, employee_id):
+    """사장/매니저 전용: 이 직원의 PIN을 새로 발급하고, 잠금 상태도 같이 풀어줍니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    for e in state["employees"]:
+        if e["id"] == employee_id:
+            e["pin"] = _generate_pin()
+            e["pin_failed_attempts"] = 0
+            e["pin_locked_until"] = None
+            save_state(company_id, state)
+            return jsonify({"id": e["id"], "name": e["name"], "pin": e["pin"]})
+    return jsonify({"error": "Employee not found."}), 404
+
+
+# ---------------------------------------------------------------------------
+# 직원 전용 로그인 (사장/매니저 로그인과 완전히 분리) — 직원 ID + 6자리 PIN
+# ---------------------------------------------------------------------------
+
+@app.route("/api/employee-auth/login", methods=["POST"])
+def employee_login():
+    payload = request.get_json(silent=True) or {}
+    employee_id = (payload.get("employee_id") or "").strip()
+    pin = (payload.get("pin") or "").strip()
+    if not employee_id or not pin:
+        return jsonify({"error": "직원 ID와 PIN을 입력해주세요."}), 400
+
+    auth = load_auth()
+    for c in auth["companies"].values():
+        state = load_state(c["id"])
+        employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+        if employee is None:
+            continue
+
+        locked_until = employee.get("pin_locked_until")
+        if locked_until:
+            try:
+                if datetime.fromisoformat(locked_until) > datetime.now(timezone.utc):
+                    return jsonify({
+                        "error": f"PIN을 너무 많이 틀려서 잠겼습니다. {PIN_LOCKOUT_MINUTES}분 후 다시 시도하거나, 관리자에게 문의해주세요.",
+                    }), 423
+                else:
+                    # 잠금 시간이 지났으면, 실패 횟수도 같이 초기화해서 새로 5번의
+                    # 기회를 줍니다 — 안 그러면 잠금이 풀린 직후 한 번만 더 틀려도
+                    # 곧바로 재잠금되는 문제가 있었습니다.
+                    employee["pin_failed_attempts"] = 0
+                    employee["pin_locked_until"] = None
+            except ValueError:
+                pass
+
+        if employee.get("pin") == pin:
+            employee["pin_failed_attempts"] = 0
+            employee["pin_locked_until"] = None
+            save_state(c["id"], state)
+            session.clear()
+            session["emp_company_id"] = c["id"]
+            session["emp_employee_id"] = employee_id
+            session.permanent = True
+            return jsonify({"id": employee["id"], "name": employee["name"], "company_name": c["name"]})
+
+        employee["pin_failed_attempts"] = employee.get("pin_failed_attempts", 0) + 1
+        if employee["pin_failed_attempts"] >= PIN_MAX_FAILED_ATTEMPTS:
+            employee["pin_locked_until"] = (
+                datetime.now(timezone.utc) + timedelta(minutes=PIN_LOCKOUT_MINUTES)
+            ).isoformat()
+        save_state(c["id"], state)
+        return jsonify({"error": "직원 ID 또는 PIN이 올바르지 않습니다."}), 401
+
+    return jsonify({"error": "직원 ID 또는 PIN이 올바르지 않습니다."}), 401
+
+
+@app.route("/api/employee-auth/logout", methods=["POST"])
+def employee_logout():
+    session.clear()
+    return "", 204
+
+
+@app.route("/api/employee-auth/me", methods=["GET"])
+def employee_me():
+    company_id = session.get("emp_company_id")
+    employee_id = session.get("emp_employee_id")
+    if not company_id or not employee_id:
+        return jsonify(None)
+    state = load_state(company_id)
+    employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not employee:
+        session.clear()
+        return jsonify(None)
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    return jsonify({
+        "id": employee["id"], "name": employee["name"],
+        "company_name": company["name"] if company else "",
+    })
+
+
+@app.route("/api/employee-auth/weeks/<week_key>", methods=["GET"])
+@require_employee_login
+def employee_view_week(company_id, employee, week_key):
+    """직원 본인의 이번 주 로스터를 보여줍니다. 퍼블리시되지 않은 주는 아예 안
+    보여줍니다 — 관리자가 아직 작업 중인 초안을 직원이 미리 볼 이유가 없습니다."""
+    state = load_state(company_id)
+    week = state["weeks"].get(week_key)
+    if not week or not week.get("published"):
+        return jsonify({"published": False, "shifts": [], "agreed": False, "agreed_at": None})
+
+    schedule = week.get("schedule") or {}
+    assignments = schedule.get("assignments") or []
+    shift_times = _effective_shift_times(state)
+    shift_names = {s["id"]: s["name"] for s in state["shift_types"]}
+
+    my_shifts = []
+    for a in assignments:
+        if a["employee_id"] != employee["id"]:
+            continue
+        default_start, default_end = shift_times.get(a["shift_type"], ("", ""))
+        my_shifts.append({
+            "day": a["day"], "shift_type": a["shift_type"],
+            "shift_name": shift_names.get(a["shift_type"], a["shift_type"]),
+            "start": a.get("custom_start") or default_start,
+            "end": a.get("custom_end") or default_end,
+        })
+
+    agreement = (week.get("agreements") or {}).get(employee["id"], {})
+    return jsonify({
+        "published": True,
+        "shifts": my_shifts,
+        "agreed": bool(agreement.get("agreed")),
+        "agreed_at": agreement.get("agreed_at"),
+    })
+
+
+@app.route("/api/employee-auth/weeks/<week_key>/agree", methods=["POST"])
+@require_employee_login
+def employee_agree_week(company_id, employee, week_key):
+    state = load_state(company_id)
+    week = state["weeks"].get(week_key)
+    if not week or not week.get("published"):
+        return jsonify({"error": "This week has not been published yet."}), 400
+    week.setdefault("agreements", {})[employee["id"]] = {
+        "agreed": True, "agreed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    save_state(company_id, state)
+    return jsonify({"agreed": True})
 
 
 @app.route("/api/company/request-employee-limit-increase", methods=["POST"])
@@ -1706,6 +1935,8 @@ def create_week(company_id):
             "schedule": None,
             "auto_assignments": [],
             "locked": False,
+            "published": False,
+            "agreements": {},
         }
     else:
         new_week = empty_week()
@@ -1739,14 +1970,71 @@ def delete_week(company_id, week_key):
 @require_login
 def set_week_lock(company_id, week_key):
     """body: {locked: true/false} - 이 주차를 잠그거나 풉니다. 잠긴 동안엔 이 주의
-    근무요건/휴무지정/스케줄 생성·수동조정이 모두 서버에서도 거부됩니다."""
+    근무요건/휴무지정/스케줄 생성·수동조정이 모두 서버에서도 거부됩니다.
+
+    이미 퍼블리시된 주를 다시 풀면(unlock), 퍼블리시 상태도 함께 취소되고 직원들의
+    "확인(Agree)" 기록도 초기화됩니다 — 관리자가 이미 직원이 확인한 스케줄을 몰래
+    바꿔놓고 그대로 두는 걸 막기 위함입니다. 수정 후 다시 퍼블리시하면, 직원들은
+    바뀐 내용을 새로 확인해야 합니다."""
     state = load_state(company_id)
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json(silent=True) or {}
-    state["weeks"][week_key]["locked"] = bool(payload.get("locked", False))
+    new_locked = bool(payload.get("locked", False))
+    week = state["weeks"][week_key]
+    week["locked"] = new_locked
+    republish_reset = False
+    if not new_locked and week.get("published"):
+        week["published"] = False
+        week["agreements"] = {}
+        republish_reset = True
     save_state(company_id, state)
-    return jsonify({"locked": state["weeks"][week_key]["locked"]})
+    return jsonify({"locked": week["locked"], "published": week.get("published", False), "republish_reset": republish_reset})
+
+
+@app.route("/api/weeks/<week_key>/publish", methods=["POST"])
+@require_login
+def publish_week(company_id, week_key):
+    """사장/매니저 전용: 이 주의 스케줄을 직원들에게 공개합니다. 공개와 동시에 이 주를
+    자동으로 잠급니다(locked=True) — 직원이 이미 확인(Agree)한 스케줄을 몰래 바꾸는
+    상황을 막기 위해서입니다. 수정이 필요하면 먼저 잠금을 풀어야 하고, 그 순간
+    퍼블리시도 함께 취소되어 직원들의 확인 기록이 초기화됩니다(set_week_lock 참고)."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    state = load_state(company_id)
+    week = state["weeks"].get(week_key)
+    if not week:
+        return jsonify({"error": "This week does not exist."}), 404
+    if not week.get("schedule") or not (week["schedule"].get("assignments")):
+        return jsonify({"error": "게시할 스케줄이 없습니다. 먼저 스케줄을 생성해주세요."}), 400
+    week["published"] = True
+    week["locked"] = True
+    # 새로 퍼블리시하면 모든 직원의 확인(Agree) 상태를 초기화합니다 — 이전에 확인했던
+    # 기록이 있어도, 이번에 게시되는 내용은 "아직 확인 전"부터 다시 시작해야 합니다.
+    week["agreements"] = {}
+    save_state(company_id, state)
+    return jsonify({"published": True, "locked": True})
+
+
+@app.route("/api/weeks/<week_key>/agreements", methods=["GET"])
+@require_login
+def get_week_agreements(company_id, week_key):
+    """사장/매니저 전용: 이 주 스케줄을 직원별로 확인(Agree)했는지 여부를 보여줍니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    week = state["weeks"].get(week_key)
+    if not week:
+        return jsonify({"error": "This week does not exist."}), 404
+    agreements = week.get("agreements") or {}
+    rows = []
+    for e in state["employees"]:
+        a = agreements.get(e["id"], {})
+        rows.append({
+            "employee_id": e["id"], "employee_name": e["name"],
+            "agreed": bool(a.get("agreed")), "agreed_at": a.get("agreed_at"),
+        })
+    return jsonify({"published": bool(week.get("published")), "agreements": rows})
 
 
 def _week_locked(state, week_key):
