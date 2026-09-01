@@ -463,7 +463,8 @@ def empty_week():
 
 
 def _prune_expired_leave_requests(leave_requests):
-    """이미 끝난(오늘보다 종료일이 이른) Leave Request는 걸러냅니다."""
+    """이미 끝난(오늘보다 종료일이 이른) Leave Request는 걸러내고, 사유(reason) 글자수도
+    방어적으로 최대 200자로 제한합니다."""
     today = date.today()
     result = []
     for lr in (leave_requests or []):
@@ -472,6 +473,8 @@ def _prune_expired_leave_requests(leave_requests):
         except (KeyError, ValueError, TypeError):
             continue
         if end >= today:
+            lr = dict(lr)
+            lr["reason"] = str(lr.get("reason") or "").strip()[:200]
             result.append(lr)
     return result
 
