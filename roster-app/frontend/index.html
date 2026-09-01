@@ -411,7 +411,6 @@
   <div id="auth-login-box" style="position:relative; z-index:1; max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
     <div id="auth-lang-switcher" style="display:flex; gap:5px; justify-content:flex-end; margin-bottom:14px;">
       <button class="btn-ghost btn-sm lang-btn" data-lang="ko" onclick="setLanguagePreLogin('ko')">한국어</button>
-      <button class="btn-ghost btn-sm lang-btn" data-lang="ja" onclick="setLanguagePreLogin('ja')">日本語</button>
       <button class="btn-ghost btn-sm lang-btn" data-lang="en" onclick="setLanguagePreLogin('en')">English</button>
     </div>
     <h1 style="font-size:22px; margin:0 0 6px;" data-i18n="header_title">직원 로스터 관리</h1>
@@ -503,7 +502,6 @@
       </div>
       <div id="lang-switcher" style="display:flex; gap:6px; flex-shrink:0;">
         <button class="btn-ghost btn-sm lang-btn" data-lang="ko" onclick="setLanguage('ko')">한국어</button>
-        <button class="btn-ghost btn-sm lang-btn" data-lang="ja" onclick="setLanguage('ja')">日本語</button>
         <button class="btn-ghost btn-sm lang-btn" data-lang="en" onclick="setLanguage('en')">English</button>
       </div>
     </div>
@@ -639,24 +637,13 @@ const SHIFT_DEPT = {
 };
 
 // ---------------------------------------------------------------------------
-// 다국어(i18n) — 한국어 / 日本語 / English
+// 다국어(i18n) — 한국어 / English
 // 직원 이름은 등록된 그대로 표시되며 절대 번역되지 않습니다.
 // ---------------------------------------------------------------------------
 
 const DAY_LABEL_I18N = {
   ko: {mon:"월", tue:"화", wed:"수", thu:"목", fri:"금", sat:"토", sun:"일"},
-  ja: {mon:"月", tue:"火", wed:"水", thu:"木", fri:"金", sat:"土", sun:"日"},
   en: {mon:"Mon", tue:"Tue", wed:"Wed", thu:"Thu", fri:"Fri", sat:"Sat", sun:"Sun"},
-};
-const SHIFT_LABEL_I18N = {
-  ko: {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"스시1", sushi2:"스시2", sushi3:"스시3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"},
-  ja: {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"寿司1", sushi2:"寿司2", sushi3:"寿司3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"},
-  en: {opening:"Opening", helper:"Helper", closing1:"Closing1", closing2:"Closing2", sushi1:"Sushi 1", sushi2:"Sushi 2", sushi3:"Sushi 3", c_opening:"C.Opening", c_helper:"C.Helper", c_closing1:"C.Closing1", c_closing2:"C.Closing2", management:"Management", management_cashier:"Management & Cashier", training:"Training"},
-};
-const DEPARTMENT_LABEL_I18N = {
-  ko: {kitchen:"Kitchen", sushi:"스시", cashier:"Cashier", management:"Management", training:"Training"},
-  ja: {kitchen:"Kitchen", sushi:"寿司", cashier:"Cashier", management:"Management", training:"Training"},
-  en: {kitchen:"Kitchen", sushi:"Sushi", cashier:"Cashier", management:"Management", training:"Training"},
 };
 
 const I18N = {
@@ -748,6 +735,7 @@ const I18N = {
     summary_leave: "휴가신청 {n}건",
     rules_leave_title: "Leave Request (휴가 신청) — 최우선 하드 규칙",
     rules_leave_desc: "날짜 구간을 등록하면, 그 기간이 포함된 어느 주든 자동으로 휴무 처리됩니다. 등록한 마지막 날짜가 지나면 이 목록에서 자동으로 사라집니다.",
+    leave_reason_placeholder: "사유 (선택, 최대 200자)",
     btn_leave_add: "추가", modal_leave_range_invalid: "종료일은 시작일보다 빠를 수 없습니다.",
     leave_label: "LEAVE",
     freq_badge_tooltip: "이번 주를 포함해 연속으로 이 요일에 근무한 주 수 (중간에 쉰 주가 있으면 초기화됨 - 참고용, 강제 아님)",
@@ -855,201 +843,6 @@ const I18N = {
     reason_off: "휴무 지정", reason_blocked_type: "근무유형 전체 금지", reason_other_dept: "다른 부서 소속", reason_person: "명",
     week_range_join: "~",
   },
-  ja: {
-    header_title: "RosterFlow",
-    header_desc: "スタッフと勤務要件を登録すると、下のカレンダーで休みを指定したり、スケジュールを自動生成できます。",
-    emp_title: "スタッフ",
-    emp_desc: '氏名、週の最低勤務時間、週の目標勤務日数を登録し、「ルール」で個別の制約を設定してください。',
-    label_id: "ID", label_name: "氏名", label_department: "部署",
-    label_min_hours: "週の最低時間", label_target_days: "週の勤務日数(推奨)", label_any: "指定なし",
-    opt_0h: "0時間", opt_5h: "5時間", opt_30h: "30時間", opt_40h: "40時間",
-    modal_training_added_title: "Trainingスタッフが登録されました",
-    modal_employee_added_title: "登録完了", modal_employee_added_msg: "スタッフが追加されました。",
-    emp_limit_exceeded_title: "登録可能人数を超えています",
-    emp_limit_exceeded_msg: "登録可能な従業員数({limit}名)を超えました。現在{count}名が登録されています。",
-    emp_limit_request_btn: "上限引き上げをリクエスト", emp_limit_request_sent: "管理者にリクエストを送信しました。",
-    confirm_delete_employee_title: "本当に削除しますか?", confirm_delete_employee_msg: "このスタッフを削除すると元に戻せません。",
-    btn_yes: "はい", btn_no: "いいえ",
-    terms_popup_title: "利用規約とプライバシーポリシーに同意しますか?",
-    terms_popup_message: "登録を進めるには、サービス利用規約(Terms & Conditions)とプライバシーポリシー(Privacy Policy)に同意する必要があります。アカウントデータの保存、メール送信(パスワード再設定など)、会社ごとのデータ分離運用に関する内容が含まれています。",
-    btn_agree: "同意する", btn_disagree: "同意しない",
-    modal_training_added_msg: "Trainingは開始・終了時間が決まっていません。カレンダーでこのスタッフの勤務を直接追加し、ブロックをクリックして実際の勤務時間を毎回手動で設定してください。",
-    btn_add_employee: "スタッフ追加", btn_save_edit: "変更を保存", btn_cancel: "キャンセル",
-    th_min_hours: "最低時間/週", th_target_days: "目標勤務日", th_rules: "ルール",
-    btn_rule_settings: "ルール設定", btn_edit: "編集", btn_delete: "削除",
-    rules_none: "設定されたルールなし",
-    req_title: "勤務要件",
-    req_desc: '各セルに必要人数を直接入力してください(0または空欄はその要件なし)。数字を変えるとそれがそのまま修正になります — 入力後「保存」を一度押してください。',
-    btn_save: "保存", btn_saved_check: "保存済み ✓",
-    sched_title: "スケジュール",
-    btn_prev_week: "◀ 前の週", btn_next_week: "次の週 ▶",
-    sched_desc: '空いているセルをクリックして勤務(Opening/Helper/Closing1/Closing2)を追加するか、<b>Off(休み)</b>に指定できます。Offに指定すると自動生成時にそのスタッフはその日は絶対に配置されません。準備ができたら自動生成を押してください。休み指定と勤務要件は<b>週ごとに別々に</b>保存されます。',
-    btn_generate: "スケジュール自動生成", btn_regenerate: "🔄 別の組み合わせで再生成",
-    btn_save_changes: "変更を保存", btn_pattern: "📊 過去の修正パターンからルール提案を見る",
-    name_col: "氏名", off_label: "OFF ✕", off_tooltip: "クリックすると休み指定が解除されます",
-    auto_placed: "自動配置", manual_placed: "手動配置",
-    legend_off: "Off(休み)", legend_hint: "ドラッグ:入れ替え · 空セルクリック:追加/Off指定 · ブロッククリック:時間修正/削除",
-    rules_pref_off: "希望休(優先度2位 — 必要人数の充足の次に最大限守られます)",
-    rules_pref_shift: "希望勤務曜日・勤務タイプ", rules_dept_suffix: "部署、複数選択可)",
-    rules_block_shift: "勤務タイプ全体の配置禁止", rules_block_shift_suffix: "部署内で、すべての曜日でそのタイプを絶対に配置しない)",
-    rules_pattern: "休みパターン(推奨 - 最大限守ろうとしますが必要に応じて調整される場合があります)",
-    pattern_none: "指定なし", pattern_consecutive: "連続休み (Consecutive)", pattern_split: "分散休み (Split)",
-    hard_off_note: "この休み希望を必ず守る(必須)",
-    btn_close: "閉じる", btn_confirm: "確認",
-    modal_input_check_title: "入力内容をご確認ください", modal_id_name_required: "IDと氏名は必須です。",
-    modal_request_failed: "リクエストを処理できませんでした",
-    modal_save_done: "保存完了", modal_save_msg: "今週の勤務要件が保存されました。",
-    modal_copy_done: "コピー完了",
-    modal_copy_prev_title: "前週と同じにしますか?",
-    modal_copy_prev_msg: "直前の週に確定したスケジュールがあります。そのまま今週にもコピーして使用できます。(曜日基準でそのままコピーされるため、今週の休み指定などと異なる場合がありますのでコピー後にご確認ください。)",
-    modal_copy_no: "いいえ、新規作成", modal_copy_yes: "はい、同じにする",
-    modal_computing: "計算中...", modal_regenerating: "別の組み合わせを検索中...",
-    modal_copying: "前週のスケジュールをコピー中...",
-    modal_copy_done_msg: "前週と同じスケジュールに設定しました。必要に応じてドラッグで調整するか、「変更を保存」を押して確定してください。",
-    modal_new_week_title: "新しい週", modal_new_week_msg: "勤務要件は前週のものが自動的に引き継がれます。休み(Off)指定も前週と同じにしますか?",
-    modal_new_week_cancel: "キャンセル (前の画面へ)", modal_new_week_new: "いいえ、休みは新規設定", modal_new_week_copy: "はい、休みも同じにする",
-    modal_saved_toast: "変更内容が保存されました。",
-    modal_add_placed_title: "配置完了",
-    modal_add_title_off: "Off (休みに指定)", modal_add_off_detail: "自動生成時、この日は絶対に配置されません。",
-    modal_add_own_dept: "(所属部署)", modal_add_other_dept: "(他部署・手動配置)",
-    modal_add_sub: "勤務を追加するか、Off(休み)に指定してください。",
-    modal_edit_time_sub: "出退勤時間を手動で変更できます。",
-    btn_delete_this: "この配置を削除",
-    modal_diag_title: "確認が必要な項目があります", modal_diag_sub: "以下の内容を確認してルールを調整してください。",
-    diag_missing: "名不足", diag_pool: "全スタッフ", diag_blocked: "名がルールにより配置不可",
-    diag_daycount_title: "— 目標勤務日数未達成", diag_daycount_detail1: "目標 ", diag_daycount_detail2: "日中、実際には ", diag_daycount_detail3: "日配置されました。",
-    diag_prefoff_title: "— 希望休に配置されました",
-    diag_prefoff_detail1: "曜日は休みたいとのことでしたが、必要人数を満たすため今回は配置されました。",
-    diag_consecutive_title: "— 連続勤務7日超過",
-    diag_consecutive_detail: "前週から続く勤務を含めて{days}日連続で配置されました。人員不足などで他の方法が見つかりませんでした。",
-    diag_pattern_title: "— 休みパターン未反映",
-    diag_pattern_detail: "{pattern}を希望されましたが、今週は別の形で休みが配置されました。",
-    diag_preference_title: "— 希望勤務の一部のみ反映",
-    diag_preference_detail: "希望された勤務{total}件中{fulfilled}件のみ反映されました。",
-    diag_fairness_title: "— 勤務の偏りの可能性",
-    diag_fairness_detail: "直近の{type}勤務が{n}回と多めですが、今週も配置されました。",
-    fairness_type_night: "クローズ", fairness_type_weekend: "週末",
-    pattern_modal_title: "過去の修正パターンから見つかったルール提案",
-    pattern_modal_sub: "自動生成されたスケジュールと最終保存されたスケジュールを比較し、3週間以上繰り返された修正パターンのみ提案します。適用するかどうかはご自身で選択してください。",
-    pattern_empty: "まだ繰り返された修正パターンは見つかっていません。数週間ご利用の上、再度ご確認ください。",
-    pattern_apply: "適用する", pattern_applied: "適用済み",
-    banner_unmet: "一部の要件を満たせませんでした。ポップアップまたは下の診断内容をご確認ください。",
-    banner_manual: "手動で調整されたスケジュールです。",
-    banner_ok: "すべての要件を満たすスケジュールを生成しました。",
-    empty_no_employees: "スタッフを先に登録すると、ここにカレンダーが表示されます。",
-    btn_lock: "ロック", btn_unlock: "ロック解除",
-    banner_locked: "この週はロックされています。ドラッグ・追加・削除・自動生成はすべて無効です。編集するにはロックを解除してください。",
-    btn_show_more: "もっと見る (他{n}人)", btn_show_less: "折りたたむ",
-    summary_leave: "休暇申請{n}件",
-    rules_leave_title: "Leave Request (休暇申請) — 最優先ハードルール",
-    rules_leave_desc: "日付範囲を登録すると、その期間を含むどの週でも自動的に休みとして扱われます。登録した最終日を過ぎると、このリストから自動的に消えます。",
-    btn_leave_add: "追加", modal_leave_range_invalid: "終了日は開始日より前にできません。",
-    leave_label: "休暇",
-    freq_badge_tooltip: "今週を含め、この曜日に連続して勤務した週数(休んだ週があればリセット・参考用、強制ではありません)",
-    ph_title: "Public Holidays", btn_add_generic: "追加",
-    ph_desc: "1年分の祝日を事前に登録しておくと、その日付を含む週に移動した際に自動でお知らせし、スタッフごとにニュージーランド労働法の基準を確認できます。",
-    ph_policy_btn: "⚙️ 判定基準の設定",
-    ph_policy_title: "祝日判定基準", ph_policy_sub: "スタッフが祝日に「通常の勤務日」だったかを判断する基準を、会社に合わせて設定してください。",
-    ph_policy_method_threshold_title: "直近の勤務比率基準",
-    ph_policy_method_threshold_desc: "直近N週のうちM週以上その曜日に勤務していれば通常の勤務日とみなします。",
-    ph_policy_window_prefix: "直近", ph_policy_window_mid: "週中", ph_policy_window_suffix: "週以上勤務",
-    ph_policy_method_actual_title: "過去の記録を見ず、その日の勤務有無のみ",
-    ph_policy_method_actual_desc: "過去の勤務記録を見ず、この祝日に実際に勤務したかどうかだけで判断します。勤務した場合は1.5倍+代休、しなかった場合は対象外になります。",
-    ph_date: "日付", ph_name: "名前", modal_ph_date_required: "日付は必須です。",
-    modal_ph_week_title: "今週はPublic Holidayがある週です",
-    modal_ph_week_sub: "以下の祝日について、スタッフごとにニュージーランド労働法基準の適用項目を確認してください。(参考用の計算のため、実際の支払い前にご確認をお勧めします)",
-    ph_cat1: "1.5倍給与 + Lieu Day", ph_cat2: "通常の日給のみ支給(Lieu Dayなし)",
-    ph_cat3: "1.5倍給与のみ(Lieu Dayなし)", ph_cat4: "該当なし",
-    ph_usual_day: "通常勤務曜日(直近8週中{n}週)", ph_not_usual_day: "通常勤務曜日ではない(直近8週中{n}週)",
-    ph_worked: "この祝日に勤務した", ph_not_worked: "この祝日に勤務していない",
-    btn_ph_detail: "🎌 Public Holidayを確認",
-    modal_ph_simple_sub: "以下の日付が今週に含まれています。スケジュールを完成させて「変更を保存」を押すと、その時点でスタッフごとの労働法適用項目を計算してお見せします。気になるときは横の「Public Holidayを確認」ボタンでいつでも再確認できます。",
-    shift_time_title: "勤務タイプの基本時間",
-    shift_time_desc: "繁忙期でない時は開始を30分遅らせたり終了を30分早めたりと、勤務タイプごとの基本開始・終了時間を状況に合わせて調整できます。ここで変更すると、新しく生成されるスケジュールと、まだ個別修正していない既存の配置の両方に反映されます(ブロックを個別に修正した時間はそのまま維持されます)。",
-    shift_time_modified: "変更済み", btn_reset_default: "デフォルトに戻す",
-    auth_intro: "会社(店舗)アカウントでログインするか、新規登録してください。",
-    auth_tab_login: "ログイン", auth_tab_register: "新規登録",
-    auth_company_name: "会社(店舗)名", auth_contact_name: "担当者名", auth_phone: "電話番号(任意)",
-    auth_employee_limit: "想定される従業員数",
-    auth_email: "メールアドレス", auth_password: "パスワード",
-    auth_logout: "ログアウト", auth_fill_all: "すべての項目を入力してください。",
-    account_delete_btn: "退会",
-    account_delete_title: "退会",
-    account_delete_warning: "退会すると、アカウントと登録された全てのスタッフ・スケジュールデータが完全に削除され、元に戻せません。",
-    account_delete_reason_price: "価格が負担",
-    account_delete_reason_missing_features: "必要な機能がない",
-    account_delete_reason_switching: "他のサービスに移行",
-    account_delete_reason_closed_business: "事業をもう営んでいない",
-    account_delete_reason_other: "その他",
-    account_delete_other_placeholder: "詳しい理由を教えていただけると助かります(任意)",
-    account_delete_reason_required: "退会理由を1つ以上選択してください。",
-    account_delete_final_confirm_title: "本当に退会しますか?",
-    account_delete_final_confirm_msg: "この操作は元に戻せません。アカウントと全データが即座に削除されます。",
-    account_delete_confirm_btn: "退会する",
-    admin_col_actions: "管理",
-    admin_force_delete_btn: "強制退会",
-    admin_force_delete_confirm_title: "会社を強制退会",
-    admin_force_delete_confirm_msg: "'{name}' のアカウントと全データを削除します。この操作は元に戻せません。続けますか?",
-    auth_invalid_email: "メールアドレスの形式が正しくありません。",
-    auth_password_too_short: "パスワードは8文字以上で、数字と特殊文字をそれぞれ1つ以上含めてください。",
-    auth_password_hint: "8文字以上、数字1つ以上、特殊文字1つ以上を含む",
-    admin_nav_btn: "👑 管理者", admin_page_title: "登録会社一覧 (管理者専用)",
-    admin_page_sub: "合計{n}社が登録されています。他社のスタッフ・スケジュールデータは表示されず、件数のみ表示されます。",
-    admin_col_name: "会社(店舗)名", admin_col_email: "メールアドレス", admin_col_signup_date: "登録日",
-    admin_col_employees: "スタッフ数", admin_col_employee_limit: "登録上限", admin_col_weeks: "保存された週数", admin_badge_you: "自分(管理者)",
-    admin_row_click_hint: "会社をクリックすると、その会社で使う機能をオン/オフできます。",
-    admin_features_title: "{name} — 機能設定", admin_features_sub: "チェックを外した機能は、その会社の画面から完全に非表示になります。",
-    admin_col_online: "接続", admin_online_now: "現在接続中",
-    admin_last_active: "{n}分前に最終活動", admin_never_active: "活動記録なし",
-    admin_online_legend: "🟢 直近90秒以内に活動 = 接続中 ・ ⚪ それ以外 = 接続していません。デプロイ前の参考程度にご利用ください。",
-    auth_network_error: "ネットワーク接続をご確認ください。",
-    auth_pending_default_msg: "登録リクエストを受け付けました。管理者の承認後にメールでご案内します。",
-    admin_pending_nav_btn: "📋 承認待ち", admin_pending_title: "登録承認待ちリスト",
-    admin_pending_sub: "以下のリクエストを確認して承認または却下できます。", admin_pending_empty: "承認待ちのリクエストはありません。",
-    admin_pending_requested_at: "申請日", btn_approve: "承認", btn_reject: "却下",
-    dept_mgmt_title: "部署・勤務タイプ管理",
-    dept_mgmt_desc: "店舗によって部署構成が異なる場合があります(例: Larder, Protein, Dessert, FOHなど)。ここで部署と勤務タイプを自由に追加・編集・削除して、自店舗に合わせて調整してください。",
-    btn_delete_dept: "部署を削除", btn_add_dept: "部署を追加", dept_new_name_placeholder: "新しい部署名 (例: Larder)",
-    confirm_delete_dept_title: "この部署を削除しますか?",
-    confirm_delete_dept_msg: "「{name}」部署とその中のすべての勤務タイプが削除されます。この操作は元に戻せません。",
-    btn_delete_shift: "削除", btn_add_shift: "勤務タイプを追加", shift_new_name_placeholder: "新しい勤務タイプ名",
-    confirm_delete_shift_title: "この勤務タイプを削除しますか?",
-    confirm_delete_shift_msg: "「{name}」勤務タイプが削除されます。この操作は元に戻せません。",
-    shift_is_closing: "クローズ勤務", shift_blocked_after_closing: "クローズ翌日の配置禁止",
-    modal_network_error: "ネットワーク接続を確認して、もう一度お試しください。",
-    auth_forgot_link: "パスワードをお忘れですか?",
-    auth_forgot_title: "パスワード再設定",
-    auth_forgot_intro: "登録されたメールアドレスを入力すると、再設定リンクをお送りします。",
-    auth_forgot_submit: "再設定リンクを送る",
-    auth_forgot_sent: "入力されたメールアドレスに再設定リンクを送信しました(登録されている場合)。メールをご確認ください。",
-    auth_back_to_login: "ログインに戻る",
-    auth_reset_title: "新しいパスワード設定",
-    auth_reset_intro: "新しく使用するパスワードを入力してください。",
-    auth_reset_new_password: "新しいパスワード(8文字以上)",
-    auth_reset_submit: "パスワードを変更",
-    auth_reset_done: "パスワードが変更されました。新しいパスワードでログインしてください。",
-    btn_reset_schedule: "🗑️ スケジュールをリセット",
-    confirm_reset_title: "今週のスケジュールをリセットしますか?",
-    confirm_reset_msg: "今週配置されたすべての勤務(自動・手動含む)が消去され、スケジュールを全く生成していない状態に戻ります。勤務要件と、既に指定したOff(休み)、Leave Requestはそのまま維持されます。元に戻せません。",
-    confirm_reset_yes: "はい、リセット", confirm_reset_no: "キャンセル",
-    modal_reset_done_title: "リセット完了", modal_reset_done_msg: "今週のスケジュールがリセットされました。",
-    modal_regen_dept_title: "別の組み合わせで再生成",
-    modal_regen_dept_sub: "再生成する部署を選択してください(複数選択可)。チェックしていない部署と手動配置はそのまま維持されます。",
-    modal_regen_dept_required: "再生成する部署を1つ以上選択してください。",
-    confirm_regen_title: "別の組み合わせで再生成しますか?",
-    confirm_regen_msg: "現在の状態(手動配置を除く)は新しい組み合わせに完全に置き換えられ、元に戻すことはできません。続けますか?",
-    confirm_regen_yes: "はい、再生成する", confirm_regen_no: "キャンセル",
-    pattern_title_off: "— {day}曜日によく休みに変更される",
-    pattern_detail_off: "自動生成では勤務に配置されましたが、直近{n}週間の最終スケジュールではその曜日に勤務していないことが確認されます。「希望休」に追加しますか?",
-    pattern_title_block: "— {shift}勤務からよく除外される",
-    pattern_detail_block: "自動生成で{shift}に配置されましたが、直近{n}回、他の人に変更されました。「勤務タイプ全体禁止」に追加しますか?",
-    pattern_title_pref: "— {day}曜日{shift}によく手動配置される",
-    pattern_detail_pref: "自動生成にはなかったのに、直近{n}週間、直接この場所に入れています。「希望勤務」に追加しますか?",
-    day_suffix: "日", summary_pref_off: "希望休{n}日", summary_pattern_consecutive: "連続休み希望", summary_pattern_split: "分散休み希望",
-    summary_blocked: "禁止タイプ {list}", summary_pref_count: "希望{n}件",
-    reason_off: "休み指定", reason_blocked_type: "勤務タイプ全体禁止", reason_other_dept: "他部署所属", reason_person: "名",
-    week_range_join: "〜",
-  },
   en: {
     header_title: "RosterFlow",
     header_desc: "Register employees and shift requirements, then mark days off or auto-generate the schedule right from the calendar below.",
@@ -1138,6 +931,7 @@ const I18N = {
     summary_leave: "{n} leave request(s)",
     rules_leave_title: "Leave Request — top-priority hard rule",
     rules_leave_desc: "Register a date range and it will automatically be treated as a day off in any week that overlaps it. It disappears from this list automatically once the last day has passed.",
+    leave_reason_placeholder: "Reason (optional, max 200 chars)",
     btn_leave_add: "Add", modal_leave_range_invalid: "The end date cannot be before the start date.",
     leave_label: "LEAVE",
     freq_badge_tooltip: "Consecutive weeks (including this one) worked on this weekday - resets if a week off breaks the streak. Informational only, not enforced.",
@@ -1248,6 +1042,9 @@ const I18N = {
 };
 
 let currentLang = localStorage.getItem("roster_lang") || "en";
+// 예전에 일본어(ja)를 쓰던 브라우저가 남아있을 수 있어서, 더 이상 지원하지 않는 언어가
+// 저장되어 있으면 영어로 안전하게 대체합니다.
+if (currentLang !== "ko" && currentLang !== "en") currentLang = "en";
 
 function enableClickToOpenDatePicker(input) {
   input.addEventListener("click", () => {
@@ -2185,7 +1982,9 @@ function buildRulesPanel(e) {
     const row = document.createElement("div");
     row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12px;";
     const label = document.createElement("span");
-    label.textContent = `${lr.start_date} ${t("week_range_join")} ${lr.end_date}`;
+    label.textContent = lr.reason
+      ? `${lr.start_date} ${t("week_range_join")} ${lr.end_date} — ${lr.reason}`
+      : `${lr.start_date} ${t("week_range_join")} ${lr.end_date}`;
     const removeBtn = document.createElement("button");
     removeBtn.className = "btn-danger btn-sm";
     removeBtn.textContent = t("btn_delete");
@@ -2210,6 +2009,11 @@ function buildRulesPanel(e) {
   const endInput = document.createElement("input");
   endInput.type = "date";
   enableClickToOpenDatePicker(endInput);
+  const reasonInput = document.createElement("input");
+  reasonInput.type = "text";
+  reasonInput.maxLength = 200;
+  reasonInput.placeholder = t("leave_reason_placeholder");
+  reasonInput.style.cssText = "flex:1; min-width:120px;";
   const addLeaveBtn = document.createElement("button");
   addLeaveBtn.className = "btn-ghost btn-sm";
   addLeaveBtn.textContent = t("btn_leave_add");
@@ -2219,12 +2023,13 @@ function buildRulesPanel(e) {
       showMessageModal(t("modal_input_check_title"), t("modal_leave_range_invalid"), true);
       return;
     }
-    rulesDraft.leave_requests.push({start_date: startInput.value, end_date: endInput.value});
+    rulesDraft.leave_requests.push({start_date: startInput.value, end_date: endInput.value, reason: reasonInput.value.trim().slice(0, 200)});
     loadEmployees();
   };
   leaveAddRow.appendChild(startInput);
   leaveAddRow.appendChild(dash);
   leaveAddRow.appendChild(endInput);
+  leaveAddRow.appendChild(reasonInput);
   leaveAddRow.appendChild(addLeaveBtn);
   leaveBlock.appendChild(leaveAddRow);
   if (isFeatureEnabled("leave_request")) {
@@ -4023,11 +3828,11 @@ function renderSchedule(result) {
 }
 
 function isLeaveDay(emp, day) {
-  if (!emp || !emp.leave_requests || !emp.leave_requests.length) return false;
+  if (!emp || !emp.leave_requests || !emp.leave_requests.length) return null;
   const dayIndex = DAYS.indexOf(day);
-  if (dayIndex < 0) return false;
+  if (dayIndex < 0) return null;
   const theDate = addDaysToKey(currentWeekKey, dayIndex);
-  return emp.leave_requests.some(lr => theDate >= lr.start_date && theDate <= lr.end_date);
+  return emp.leave_requests.find(lr => theDate >= lr.start_date && theDate <= lr.end_date) || null;
 }
 
 const BREAK_HOURS = 1; // 근무 9시간이든 8시간이든, 실제 근무는 이 시간만큼 뺀 값으로 집계합니다.
@@ -4124,9 +3929,17 @@ function buildCalendarGrid() {
         leaveBlock.style.background = "var(--closing2-bg)";
         leaveBlock.style.color = "var(--closing2)";
         leaveBlock.style.borderStyle = "solid";
-        leaveBlock.textContent = t("leave_label");
-        leaveBlock.title = "";
         leaveBlock.style.cursor = "default";
+        const leaveLabel = document.createElement("div");
+        leaveLabel.textContent = t("leave_label");
+        leaveBlock.appendChild(leaveLabel);
+        if (isLeaveOff.reason) {
+          const reasonLine = document.createElement("div");
+          reasonLine.style.cssText = "font-size:9.5px; font-weight:normal; opacity:0.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;";
+          reasonLine.textContent = isLeaveOff.reason;
+          leaveBlock.title = isLeaveOff.reason;
+          leaveBlock.appendChild(reasonLine);
+        }
         cell.appendChild(leaveBlock);
       } else if (isForcedOff) {
         const offBlock = document.createElement("div");
