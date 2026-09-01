@@ -499,6 +499,150 @@ def _effective_shift_hours(state):
     return hours
 
 
+PAYROLL_BREAK_HOURS = 1  # 프론트엔드 캘린더의 "요일별 총 근무시간" 표시와 반드시 같은 기준을
+# 써야 하므로(assignmentDurationHours()의 BREAK_HOURS와 동일한 값), 근무 9시간이든 8시간이든
+# 실제 유급 근무는 이 시간만큼 뺀 값으로 계산합니다.
+
+
+def _assignment_duration_hours(a, shift_times):
+    """근무 배정(assignment) 하나의 실제 근무시간(휴게시간 차감)을 계산합니다.
+    프론트엔드의 assignmentDurationHours()와 정확히 같은 로직이어야 합니다 — 캘린더
+    상단에 뜨는 '요일별 총 근무시간'과 급여 계산의 기준 시간이 서로 다르면 안 되므로."""
+    default_start, default_end = shift_times.get(a["shift_type"], ("09:00", "17:00"))
+    start = a.get("custom_start") or default_start
+    end = a.get("custom_end") or default_end
+    sh, sm = map(int, start.split(":"))
+    eh, em = map(int, end.split(":"))
+    minutes = (eh * 60 + em) - (sh * 60 + sm)
+    if minutes < 0:
+        minutes += 24 * 60  # 자정을 넘어가는 근무 대비
+    return max(0.0, minutes / 60 - PAYROLL_BREAK_HOURS)
+
+
+def _compute_week_payroll(state, week_key):
+    """이 주(week_key)의 예상 인건비(Labour Cost)를, 요일별/직원별로 계산합니다.
+    스케줄(로스터)에 배정된 시간 × 시급을 기본으로 하되, 공휴일이 낀 날은
+    _public_holiday_category()로 A/B/C/D를 판정해서 그에 맞는 배율을 적용합니다:
+      - A(1)/C(3) = 실제 일함 → 1.5배
+      - B(2) = 평소 근무일인데 안 일함 → 하루치 평균급여 지급(추정치 — 아래 참고)
+      - D(4) = 해당 없음 → 0
+
+    ⚠️ B 카테고리의 "하루치 평균급여"는 실제 과거 지급 내역(relevant daily pay)이 아니라,
+    이 직원의 주당 최소시간(min_hours_per_week)을 목표 근무일수(target_days_per_week)로
+    나눈 추정값입니다 — 정확한 금액은 회계/노무 담당자 확인을 권장합니다.
+
+    ⚠️ 지금은 "스케줄상 예정된" 비용만 계산합니다. 실제 클락인/아웃 데이터가 없어서
+    "실제 지급액"은 아직 계산할 수 없습니다.
+    """
+    shift_times = _effective_shift_times(state)
+    y, m, d = map(int, week_key.split("-"))
+    monday = date(y, m, d)
+    week_dates = [monday + timedelta(days=i) for i in range(7)]
+
+    holiday_by_day = {}
+    for h in state["public_holidays"]:
+        try:
+            hd = date.fromisoformat(h["date"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if hd in week_dates:
+            holiday_by_day[DAYS[week_dates.index(hd)]] = h
+
+    week = state["weeks"].get(week_key)
+    assignments = ((week.get("schedule") or {}).get("assignments") if week else None) or []
+    policy = state["public_holiday_policy"]
+
+    assignments_by_emp_day = {}
+    for a in assignments:
+        assignments_by_emp_day.setdefault((a["employee_id"], a["day"]), []).append(a)
+
+    day_totals = {
+        d: {"scheduled_hours": 0.0, "scheduled_cost": 0.0, "is_public_holiday": d in holiday_by_day}
+        for d in DAYS
+    }
+    employee_rows = []
+    total_cost = 0.0
+
+    for e in state["employees"]:
+        wage = e.get("hourly_wage")
+        emp_id = e["id"]
+        weekly_hours = 0.0
+        weekly_pay = 0.0
+        per_day = {}
+
+        for day in DAYS:
+            day_assignments = assignments_by_emp_day.get((emp_id, day), [])
+            hours = sum(_assignment_duration_hours(a, shift_times) for a in day_assignments)
+            worked = len(day_assignments) > 0
+            category = None
+
+            if day in holiday_by_day:
+                category, _count, _is_usual = _public_holiday_category(state, policy, emp_id, day, week_key, worked)
+                if category in (1, 3):
+                    pay = hours * wage * 1.5 if wage is not None else None
+                elif category == 2:
+                    target_days = e.get("target_days_per_week") or 5
+                    avg_day_hours = (e.get("min_hours_per_week") or 0) / target_days
+                    pay = avg_day_hours * wage if wage is not None else None
+                else:
+                    pay = 0.0 if wage is not None else None
+            else:
+                pay = hours * wage if wage is not None else None
+
+            per_day[day] = {
+                "hours": round(hours, 2),
+                "pay": round(pay, 2) if pay is not None else None,
+                "is_public_holiday": day in holiday_by_day,
+                "category": category,
+            }
+            weekly_hours += hours
+            day_totals[day]["scheduled_hours"] += hours
+            if pay is not None:
+                weekly_pay += pay
+                day_totals[day]["scheduled_cost"] += pay
+
+        has_wage = wage is not None
+        employee_rows.append({
+            "employee_id": emp_id, "employee_name": e["name"],
+            "hourly_wage": wage, "has_wage_set": has_wage,
+            "weekly_hours": round(weekly_hours, 2),
+            "weekly_pay": round(weekly_pay, 2) if has_wage else None,
+            "per_day": per_day,
+        })
+        if has_wage:
+            total_cost += weekly_pay
+
+    for day in DAYS:
+        day_totals[day]["scheduled_hours"] = round(day_totals[day]["scheduled_hours"], 2)
+        day_totals[day]["scheduled_cost"] = round(day_totals[day]["scheduled_cost"], 2)
+
+    return {
+        "week_key": week_key,
+        "has_public_holiday": bool(holiday_by_day),
+        "public_holidays": [
+            {"date": h["date"], "name": h.get("name", ""), "day": day}
+            for day, h in holiday_by_day.items()
+        ],
+        "days": day_totals,
+        "employees": employee_rows,
+        "total_scheduled_cost": round(total_cost, 2),
+    }
+
+
+@app.route("/api/weeks/<week_key>/payroll", methods=["GET"])
+@require_login
+def get_week_payroll(company_id, week_key):
+    """이 주의 예상 인건비(Labour Cost)를 요일별/직원별로 계산해서 보여줍니다.
+    사장 또는 매니저만 볼 수 있습니다 — 급여 정보라 민감하기 때문에, 나중에 직원 본인
+    로그인이 생기더라도 이 페이지는 계속 사장/매니저 전용으로 남아야 합니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    if week_key not in state["weeks"]:
+        return jsonify({"error": "Week not found."}), 404
+    return jsonify(_compute_week_payroll(state, week_key))
+
+
 def _scheduler_shift_defs(state):
     """이 회사가 만든 부서/근무유형(state["departments"], state["shift_types"])을,
     scheduler.py의 solve_schedule()이 이해하는 형태로 변환합니다. 이렇게 하면 스케줄
@@ -519,6 +663,19 @@ def _scheduler_shift_defs(state):
 
 def empty_week():
     return {"requirements": [], "off_days": {}, "schedule": None, "auto_assignments": [], "locked": False}
+
+
+def _sanitize_wage(value):
+    """시급 입력값을 검증합니다. 숫자가 아니거나 0 이하/비정상적으로 큰 값(시간당 $1000
+    초과 — 오타 방지용 상한)이면 None(미설정)으로 취급합니다. None이면 급여 계산에서
+    이 직원은 제외되고, 화면에 '시급 미설정'으로 표시됩니다."""
+    try:
+        wage = float(value)
+    except (TypeError, ValueError):
+        return None
+    if wage <= 0 or wage > 1000:
+        return None
+    return round(wage, 2)
 
 
 def _prune_expired_leave_requests(leave_requests):
@@ -1387,6 +1544,8 @@ def add_employee(company_id):
         "leave_requests": _prune_expired_leave_requests(payload.get("leave_requests", [])),
         "recent_night_count": payload.get("recent_night_count", 0),
         "recent_weekend_count": payload.get("recent_weekend_count", 0),
+        # 시급. 급여/Labour Cost 계산에 쓰입니다 — 설정 안 하면 None(급여 계산에서 제외).
+        "hourly_wage": _sanitize_wage(payload.get("hourly_wage")),
     }
     state["employees"].append(employee)
     save_state(company_id, state)
@@ -1404,11 +1563,13 @@ def update_employee(company_id, employee_id):
     ALLOWED_FIELDS = {
         "name", "department", "min_hours_per_week", "target_days_per_week",
         "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
-        "leave_requests", "recent_night_count", "recent_weekend_count",
+        "leave_requests", "recent_night_count", "recent_weekend_count", "hourly_wage",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "leave_requests" in updates:
         updates["leave_requests"] = _prune_expired_leave_requests(updates["leave_requests"])
+    if "hourly_wage" in updates:
+        updates["hourly_wage"] = _sanitize_wage(updates["hourly_wage"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             state["employees"][i].update(updates)
@@ -2045,6 +2206,30 @@ def _weekday_total_count(state, employee_id, day, week_key, window=FREQUENCY_WIN
 
 @app.route("/api/weeks/<week_key>/public-holiday-info", methods=["GET"])
 @require_login
+def _public_holiday_category(state, policy, emp_id, day, week_key, worked):
+    """공휴일 요일(day)에 이 직원이 A/B/C/D 중 어느 카테고리에 해당하는지 계산합니다
+    (1=A: 평소근무일+일함, 2=B: 평소근무일+안일함, 3=C: 평소근무일아님+일함, 4=D: 해당없음).
+    get_public_holiday_info와 payroll 계산에서 공통으로 씁니다 — 두 군데서 서로 다른
+    기준으로 계산되면 안 되기 때문에 반드시 이 함수 하나만 씁니다."""
+    if policy["method"] == "threshold":
+        count = _weekday_total_count(state, emp_id, day, week_key, window=policy["window_weeks"])
+        is_usual_day = count >= policy["min_weeks_worked"]
+        if is_usual_day and worked:
+            category = 1
+        elif is_usual_day and not worked:
+            category = 2
+        elif not is_usual_day and worked:
+            category = 3
+        else:
+            category = 4
+    else:  # actual_only — 과거 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만 봅니다.
+        # 일했으면 항상 1.5배+대체휴무(카테고리 1), 아니면 해당 없음(카테고리 4)으로 고정합니다.
+        count = None
+        is_usual_day = None
+        category = 1 if worked else 4
+    return category, count, is_usual_day
+
+
 def get_public_holiday_info(company_id, week_key):
     """이 주(week_key)에 Public Holiday가 포함되어 있으면, 이 회사가 설정한 정책
     (Settings > 공휴일 정책)에 따라 직원별 적용 항목(1.5배+Lieu / 평소급여만 / 1.5배만 /
@@ -2082,23 +2267,7 @@ def get_public_holiday_info(company_id, week_key):
         for e in state["employees"]:
             emp_id = e["id"]
             worked = (emp_id, day) in worked_today
-
-            if policy["method"] == "threshold":
-                count = _weekday_total_count(state, emp_id, day, week_key, window=policy["window_weeks"])
-                is_usual_day = count >= policy["min_weeks_worked"]
-                if is_usual_day and worked:
-                    category = 1
-                elif is_usual_day and not worked:
-                    category = 2
-                elif not is_usual_day and worked:
-                    category = 3
-                else:
-                    category = 4
-            else:  # actual_only — 과거 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만 봅니다.
-                # 일했으면 항상 1.5배+대체휴무(카테고리 1), 아니면 해당 없음(카테고리 4)으로 고정합니다.
-                count = None
-                is_usual_day = None
-                category = 1 if worked else 4
+            category, count, is_usual_day = _public_holiday_category(state, policy, emp_id, day, week_key, worked)
 
             rows.append({
                 "employee_id": emp_id, "employee_name": e["name"],
