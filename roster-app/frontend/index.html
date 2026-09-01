@@ -4639,8 +4639,15 @@ function isLeaveDay(emp, day) {
 
 const BREAK_HOURS = 1; // 근무 9시간이든 8시간이든, 실제 근무는 이 시간만큼 뺀 값으로 집계합니다.
 
+function getShiftTimeRange(shiftType) {
+  // 근무유형이 나중에 삭제/변경됐는데 예전 스케줄에 그 근무유형을 참조하는 배정이
+  // 남아있으면 SHIFT_TIME에 해당 항목이 없어서 undefined가 됩니다. 그대로 .split()을
+  // 호출하면 화면 전체 렌더링이 멈춰버리므로, 항상 안전한 기본값으로 대체합니다.
+  return SHIFT_TIME[shiftType] || "00:00-00:00";
+}
+
 function assignmentDurationHours(a) {
-  const [defStart, defEnd] = SHIFT_TIME[a.shift_type].split("-");
+  const [defStart, defEnd] = getShiftTimeRange(a.shift_type).split("-");
   const start = a.custom_start || defStart;
   const end = a.custom_end || defEnd;
   const [sh, sm] = start.split(":").map(Number);
@@ -4786,7 +4793,7 @@ function buildCalendarGrid() {
             block.style.borderLeftColor = c;
             block.style.color = c;
             block.draggable = !weekLocked;
-            const timeLabel = (a.custom_start && a.custom_end) ? `${a.custom_start}-${a.custom_end}` : SHIFT_TIME[a.shift_type];
+            const timeLabel = (a.custom_start && a.custom_end) ? `${a.custom_start}-${a.custom_end}` : getShiftTimeRange(a.shift_type);
             const sourceLabel = a.source === "manual" ? t("manual_placed") : t("auto_placed");
             const freqWindow = window._weekdayFrequencyWindow || 8;
             const freqCount = ((window._weekdayFrequency || {})[empId] || {})[day] || 0;
@@ -4924,7 +4931,7 @@ function openEditTimeModal(idx) {
   if (weekLocked) return;
   const a = currentAssignments[idx];
   if (!a) return;
-  const defaultRange = SHIFT_TIME[a.shift_type].split("-");
+  const defaultRange = getShiftTimeRange(a.shift_type).split("-");
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
