@@ -511,14 +511,7 @@
         <span id="auth-company-name"></span>
         <button class="btn-ghost btn-sm" id="admin-nav-btn" onclick="showAdminPage()" style="display:none;" data-i18n="admin_nav_btn">👑 Admin</button>
         <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
-        <div style="position:relative; display:inline-block;" id="manager-menu-wrap">
-          <button class="btn-ghost btn-sm" id="manager-menu-btn" onclick="toggleManagerMenu()" style="display:none;" data-i18n="manager_menu_btn">⚙️ 관리자 메뉴</button>
-          <div id="manager-menu-dropdown" style="display:none; position:absolute; top:100%; right:0; background:var(--bg-panel); border:1px solid var(--line-strong); border-radius:6px; padding:4px; z-index:50; min-width:170px; box-shadow:0 4px 12px rgba(0,0,0,0.35); transform:translateZ(0); -webkit-transform:translateZ(0); will-change:transform; backface-visibility:hidden;">
-            <button class="btn-ghost btn-sm" style="display:block; width:100%; text-align:left; white-space:nowrap; color:var(--text) !important; opacity:1 !important; visibility:visible !important;" onclick="closeManagerMenuAnd(showEmployeePinsPage)"><span data-i18n="pins_icon">🔑</span> <span data-i18n="pins_nav_btn_text">직원 PIN 조회</span></button>
-            <button class="btn-ghost btn-sm" id="manager-menu-managers-item" style="display:block; width:100%; text-align:left; white-space:nowrap;" onclick="closeManagerMenuAnd(showManagerPage)" data-i18n="manager_nav_btn">🧑‍💼 매니저 관리</button>
-            <button class="btn-ghost btn-sm" style="display:block; width:100%; text-align:left; white-space:nowrap;" onclick="closeManagerMenuAnd(showPayrollPage)" data-i18n="payroll_nav_btn">💰 급여</button>
-          </div>
-        </div>
+        <button class="btn-ghost btn-sm" id="manager-menu-btn" onclick="showAdminMenuModal()" style="display:none;" data-i18n="manager_menu_btn">⚙️ 관리자 메뉴</button>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
         <button class="btn-ghost btn-sm" id="delete-account-btn" onclick="startDeleteAccount()" style="color:#ef4444;" data-i18n="account_delete_btn">회원탈퇴</button>
       </div>
@@ -1323,7 +1316,6 @@ async function checkAuthAndInit() {
     document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (me.is_admin || me.role !== "owner") ? "none" : "inline-block";
     document.getElementById("manager-menu-btn").style.display = (me.role === "owner" || me.role === "manager") ? "inline-block" : "none";
-    document.getElementById("manager-menu-managers-item").style.display = me.role === "owner" ? "block" : "none";
     hideAuthScreen();
     await initAppData();
     return;
@@ -1420,7 +1412,6 @@ async function submitAuth() {
     document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (data.is_admin || data.role !== "owner") ? "none" : "inline-block";
     document.getElementById("manager-menu-btn").style.display = (data.role === "owner" || data.role === "manager") ? "inline-block" : "none";
-    document.getElementById("manager-menu-managers-item").style.display = data.role === "owner" ? "block" : "none";
     document.getElementById("auth-email").value = "";
     document.getElementById("auth-password").value = "";
     document.getElementById("auth-name").value = "";
@@ -1891,21 +1882,50 @@ async function showPendingSignupsPage() {
   document.body.appendChild(overlay);
 }
 
-function toggleManagerMenu() {
-  const dropdown = document.getElementById("manager-menu-dropdown");
-  dropdown.style.display = dropdown.style.display === "none" ? "block" : "none";
+function showAdminMenuModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "360px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("manager_menu_btn");
+  box.appendChild(title);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex; flex-direction:column; gap:8px; margin-top:14px;";
+
+  const items = [
+    {key: "manager_nav_btn", fn: showManagerPage, ownerOnly: true},
+    {key: "payroll_nav_btn", fn: showPayrollPage, ownerOnly: false},
+    {key: "pins_nav_btn", fn: showEmployeePinsPage, ownerOnly: false},
+  ];
+  items.forEach(item => {
+    if (item.ownerOnly && !(currentCompany && currentCompany.role === "owner")) return;
+    const btn = document.createElement("button");
+    btn.className = "btn-ghost";
+    btn.style.cssText = "width:100%; text-align:left; padding:10px 12px;";
+    btn.textContent = t(item.key);
+    btn.onclick = () => { overlay.remove(); item.fn(); };
+    list.appendChild(btn);
+  });
+  box.appendChild(list);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
-function closeManagerMenuAnd(fn) {
-  document.getElementById("manager-menu-dropdown").style.display = "none";
-  fn();
-}
-document.addEventListener("click", (ev) => {
-  const wrap = document.getElementById("manager-menu-wrap");
-  const dropdown = document.getElementById("manager-menu-dropdown");
-  if (wrap && dropdown && !wrap.contains(ev.target)) {
-    dropdown.style.display = "none";
-  }
-});
 
 async function showManagerPage() {
   let managers;
