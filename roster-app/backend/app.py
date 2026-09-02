@@ -478,6 +478,7 @@ def load_state(company_id):
             "employees": [], "weeks": {}, "public_holidays": [], "shift_time_overrides": {},
             "departments": _default_departments(), "shift_types": _default_shift_types(),
             "public_holiday_policy": _default_public_holiday_policy(),
+            "time_entries": [], "payroll_rounding_minutes": DEFAULT_PAYROLL_ROUNDING_MINUTES,
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -493,6 +494,10 @@ def load_state(company_id):
     # 모든 회사에 똑같이 적용되던 계산 기준(8주 중 5주 이상)을 그대로 자기 회사 설정값으로
     # 채워 넣어줍니다. 이후로는 이 회사가 Settings에서 자유롭게 바꿀 수 있는 자기 데이터입니다.
     state.setdefault("public_holiday_policy", _default_public_holiday_policy())
+    # 클락인/아웃 기록(time_entries)과 급여 반올림 단위 — 이 기능이 생기기 전 회사에는
+    # 빈 기록/기본 반올림 단위(15분)로 채워 넣습니다.
+    state.setdefault("time_entries", [])
+    state.setdefault("payroll_rounding_minutes", DEFAULT_PAYROLL_ROUNDING_MINUTES)
     return state
 
 
@@ -519,6 +524,39 @@ def _effective_shift_hours(state):
     return hours
 
 
+ALLOWED_ROUNDING_MINUTES = (1, 10, 15, 30)
+DEFAULT_PAYROLL_ROUNDING_MINUTES = 15
+
+
+def _round_to_nearest_minutes(dt, minutes):
+    """datetime을 가장 가까운 minutes 단위로 반올림합니다(예: 15분 단위면 9:08 → 9:15,
+    9:06 → 9:00)."""
+    if minutes <= 1:
+        return dt.replace(second=0, microsecond=0)
+    discard = timedelta(minutes=dt.minute % minutes, seconds=dt.second, microseconds=dt.microsecond)
+    rounded = dt - discard
+    if discard >= timedelta(minutes=minutes / 2):
+        rounded += timedelta(minutes=minutes)
+    return rounded
+
+
+def _actual_hours_for_entry(entry, rounding_minutes):
+    """이 클락인/아웃 기록의 실제 근무시간을, 회사가 설정한 반올림 단위로 각각
+    반올림한 뒤 계산합니다(스케줄 시간 계산과 동일하게 휴게시간 1시간을 뺍니다).
+    아직 클락아웃을 안 했으면(진행 중) None을 돌려줍니다."""
+    if not entry.get("clock_in") or not entry.get("clock_out"):
+        return None
+    try:
+        clock_in = datetime.fromisoformat(entry["clock_in"])
+        clock_out = datetime.fromisoformat(entry["clock_out"])
+    except (TypeError, ValueError):
+        return None
+    rounded_in = _round_to_nearest_minutes(clock_in, rounding_minutes)
+    rounded_out = _round_to_nearest_minutes(clock_out, rounding_minutes)
+    minutes = (rounded_out - rounded_in).total_seconds() / 60
+    return max(0.0, minutes / 60 - PAYROLL_BREAK_HOURS)
+
+
 PAYROLL_BREAK_HOURS = 1  # 프론트엔드 캘린더의 "요일별 총 근무시간" 표시와 반드시 같은 기준을
 # 써야 하므로(assignmentDurationHours()의 BREAK_HOURS와 동일한 값), 근무 9시간이든 8시간이든
 # 실제 유급 근무는 이 시간만큼 뺀 값으로 계산합니다.
@@ -540,25 +578,28 @@ def _assignment_duration_hours(a, shift_times):
 
 
 def _compute_week_payroll(state, week_key):
-    """이 주(week_key)의 예상 인건비(Labour Cost)를, 요일별/직원별로 계산합니다.
-    스케줄(로스터)에 배정된 시간 × 시급을 기본으로 하되:
-      - 공휴일이 낀 날은 _public_holiday_category()로 A/B/C/D를 판정해서 그에 맞는
-        배율을 적용합니다: A(1)/C(3)=1.5배, B(2)=하루치 평균급여, D(4)=0
+    """이 주(week_key)의 인건비(Labour Cost)를, 요일별/직원별로 계산합니다.
+    "스케줄 기준"(로스터에 배정된 시간)과 "실제 기준"(클락인/아웃 기록, 회사가 설정한
+    반올림 단위 적용) 둘 다 계산해서 같이 보여주고, 그 차액도 계산합니다.
+
+      - 공휴일이 낀 날은 _public_holiday_category()로 A/B/C/D를 판정해서(스케줄 기준으로
+        판정 — 공휴일 근무 의무는 "실제로 찍었는지"가 아니라 "로스터상 근무일이었는지"가
+        법적 기준이므로) 그에 맞는 배율을 스케줄/실제 시간 양쪽에 똑같이 적용합니다:
+        A(1)/C(3)=1.5배, B(2)=하루치 평균급여, D(4)=0
       - 공휴일이 아닌 날에 유급(paid) 또는 병가(sick) Leave Request가 있으면, 실제
-        배정된 시간이 없어도 하루치 평균급여를 지급합니다(회사가 이미 지급을 약속한
-        시간이므로). 무급(unpaid) Leave Request나 수동 Off는 원래대로 $0입니다.
+        배정/근무 시간이 없어도 하루치 평균급여를 지급합니다. 무급(unpaid) Leave
+        Request나 수동 Off는 원래대로 $0입니다.
 
     ⚠️ "하루치 평균급여"는 실제 과거 지급 내역(relevant daily pay)이 아니라, 이 직원의
     주당 최소시간(min_hours_per_week)을 목표 근무일수(target_days_per_week)로 나눈
     추정값입니다 — 정확한 금액은 회계/노무 담당자 확인을 권장합니다.
-
-    ⚠️ 지금은 "스케줄상 예정된" 비용만 계산합니다. 실제 클락인/아웃 데이터가 없어서
-    "실제 지급액"은 아직 계산할 수 없습니다.
     """
     shift_times = _effective_shift_times(state)
     y, m, d = map(int, week_key.split("-"))
     monday = date(y, m, d)
     week_dates = [monday + timedelta(days=i) for i in range(7)]
+    date_iso_by_day = {DAYS[i]: week_dates[i].isoformat() for i in range(7)}
+    rounding_minutes = state.get("payroll_rounding_minutes", DEFAULT_PAYROLL_ROUNDING_MINUTES)
 
     holiday_by_day = {}
     for h in state["public_holidays"]:
@@ -577,18 +618,30 @@ def _compute_week_payroll(state, week_key):
     for a in assignments:
         assignments_by_emp_day.setdefault((a["employee_id"], a["day"]), []).append(a)
 
+    entries_by_emp_date = {}
+    for te in state["time_entries"]:
+        entries_by_emp_date.setdefault((te["employee_id"], te.get("date")), []).append(te)
+
     day_totals = {
-        d: {"scheduled_hours": 0.0, "scheduled_cost": 0.0, "is_public_holiday": d in holiday_by_day}
+        d: {
+            "scheduled_hours": 0.0, "scheduled_cost": 0.0,
+            "actual_hours": 0.0, "actual_cost": 0.0,
+            "is_public_holiday": d in holiday_by_day,
+        }
         for d in DAYS
     }
     employee_rows = []
-    total_cost = 0.0
+    total_scheduled_cost = 0.0
+    total_actual_cost = 0.0
 
     for e in state["employees"]:
         wage = e.get("hourly_wage")
         emp_id = e["id"]
         weekly_hours = 0.0
         weekly_pay = 0.0
+        weekly_actual_hours = 0.0
+        weekly_actual_pay = 0.0
+        has_open_entry = False
         per_day = {}
         avg_day_hours = _average_day_hours(e)
         leave_info = _leave_info_by_day(e, week_key)
@@ -600,32 +653,52 @@ def _compute_week_payroll(state, week_key):
             category = None
             leave_type = leave_info.get(day)
 
+            day_entries = entries_by_emp_date.get((emp_id, date_iso_by_day[day]), [])
+            actual_hours = sum(
+                h for h in (_actual_hours_for_entry(te, rounding_minutes) for te in day_entries) if h is not None
+            )
+            day_has_open_entry = any(not te.get("clock_out") for te in day_entries)
+            has_open_entry = has_open_entry or day_has_open_entry
+
             if day in holiday_by_day:
                 category, _count, _is_usual = _public_holiday_category(state, policy, emp_id, day, week_key, worked)
                 if category in (1, 3):
                     pay = hours * wage * 1.5 if wage is not None else None
+                    actual_pay = actual_hours * wage * 1.5 if wage is not None else None
                 elif category == 2:
                     pay = avg_day_hours * wage if wage is not None else None
+                    actual_pay = pay
                 else:
                     pay = 0.0 if wage is not None else None
+                    actual_pay = 0.0 if wage is not None else None
             elif leave_type and _is_paid_leave(leave_type) and not worked:
-                # 유급/병가 리브 — 실제 배정된 시간이 없어도 하루치 평균급여를 지급합니다.
+                # 유급/병가 리브 — 실제 배정/근무 시간이 없어도 하루치 평균급여를 지급합니다.
                 pay = avg_day_hours * wage if wage is not None else None
+                actual_pay = pay
             else:
                 pay = hours * wage if wage is not None else None
+                actual_pay = actual_hours * wage if wage is not None else None
 
             per_day[day] = {
                 "hours": round(hours, 2),
                 "pay": round(pay, 2) if pay is not None else None,
+                "actual_hours": round(actual_hours, 2),
+                "actual_pay": round(actual_pay, 2) if actual_pay is not None else None,
+                "has_open_entry": day_has_open_entry,
                 "is_public_holiday": day in holiday_by_day,
                 "category": category,
                 "leave_type": leave_type,
             }
             weekly_hours += hours
+            weekly_actual_hours += actual_hours
             day_totals[day]["scheduled_hours"] += hours
+            day_totals[day]["actual_hours"] += actual_hours
             if pay is not None:
                 weekly_pay += pay
                 day_totals[day]["scheduled_cost"] += pay
+            if actual_pay is not None:
+                weekly_actual_pay += actual_pay
+                day_totals[day]["actual_cost"] += actual_pay
 
         has_wage = wage is not None
         employee_rows.append({
@@ -633,25 +706,34 @@ def _compute_week_payroll(state, week_key):
             "hourly_wage": wage, "has_wage_set": has_wage,
             "weekly_hours": round(weekly_hours, 2),
             "weekly_pay": round(weekly_pay, 2) if has_wage else None,
+            "weekly_actual_hours": round(weekly_actual_hours, 2),
+            "weekly_actual_pay": round(weekly_actual_pay, 2) if has_wage else None,
+            "pay_difference": round(weekly_actual_pay - weekly_pay, 2) if has_wage else None,
+            "has_open_entry": has_open_entry,
             "per_day": per_day,
         })
         if has_wage:
-            total_cost += weekly_pay
+            total_scheduled_cost += weekly_pay
+            total_actual_cost += weekly_actual_pay
 
     for day in DAYS:
         day_totals[day]["scheduled_hours"] = round(day_totals[day]["scheduled_hours"], 2)
         day_totals[day]["scheduled_cost"] = round(day_totals[day]["scheduled_cost"], 2)
+        day_totals[day]["actual_hours"] = round(day_totals[day]["actual_hours"], 2)
+        day_totals[day]["actual_cost"] = round(day_totals[day]["actual_cost"], 2)
 
     return {
         "week_key": week_key,
         "has_public_holiday": bool(holiday_by_day),
+        "rounding_minutes": rounding_minutes,
         "public_holidays": [
             {"date": h["date"], "name": h.get("name", ""), "day": day}
             for day, h in holiday_by_day.items()
         ],
         "days": day_totals,
         "employees": employee_rows,
-        "total_scheduled_cost": round(total_cost, 2),
+        "total_scheduled_cost": round(total_scheduled_cost, 2),
+        "total_actual_cost": round(total_actual_cost, 2),
     }
 
 
@@ -1813,33 +1895,42 @@ def employee_me():
 @require_employee_login
 def employee_view_week(company_id, employee, week_key):
     """직원 본인의 이번 주 로스터를 보여줍니다. 퍼블리시되지 않은 주는 아예 안
-    보여줍니다 — 관리자가 아직 작업 중인 초안을 직원이 미리 볼 이유가 없습니다."""
+    보여줍니다 — 관리자가 아직 작업 중인 초안을 직원이 미리 볼 이유가 없습니다.
+    본인 근무(shifts)뿐 아니라, 팀 전체가 이번 주에 언제 근무하는지(team_shifts)도
+    같이 보여줍니다 — "이번 주에 누구랑 같이 일하는지" 알 수 있게 하기 위함입니다."""
     state = load_state(company_id)
     week = state["weeks"].get(week_key)
     if not week or not week.get("published"):
-        return jsonify({"published": False, "shifts": [], "agreed": False, "agreed_at": None})
+        return jsonify({"published": False, "shifts": [], "team_shifts": [], "agreed": False, "agreed_at": None})
 
     schedule = week.get("schedule") or {}
     assignments = schedule.get("assignments") or []
     shift_times = _effective_shift_times(state)
     shift_names = {s["id"]: s["name"] for s in state["shift_types"]}
+    employee_names = {e["id"]: e["name"] for e in state["employees"]}
 
     my_shifts = []
+    team_shifts = []
     for a in assignments:
-        if a["employee_id"] != employee["id"]:
-            continue
         default_start, default_end = shift_times.get(a["shift_type"], ("", ""))
-        my_shifts.append({
+        row = {
             "day": a["day"], "shift_type": a["shift_type"],
             "shift_name": shift_names.get(a["shift_type"], a["shift_type"]),
             "start": a.get("custom_start") or default_start,
             "end": a.get("custom_end") or default_end,
-        })
+        }
+        if a["employee_id"] == employee["id"]:
+            my_shifts.append(row)
+        else:
+            team_row = dict(row)
+            team_row["employee_name"] = employee_names.get(a["employee_id"], "?")
+            team_shifts.append(team_row)
 
     agreement = (week.get("agreements") or {}).get(employee["id"], {})
     return jsonify({
         "published": True,
         "shifts": my_shifts,
+        "team_shifts": team_shifts,
         "agreed": bool(agreement.get("agreed")),
         "agreed_at": agreement.get("agreed_at"),
     })
@@ -1857,6 +1948,164 @@ def employee_agree_week(company_id, employee, week_key):
     }
     save_state(company_id, state)
     return jsonify({"agreed": True})
+
+
+# ---------------------------------------------------------------------------
+# 클락인/아웃 (직원용) — 로스터(계획)와는 별개로, 실제로 언제 일했는지를 기록합니다.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/employee-auth/clock-status", methods=["GET"])
+@require_employee_login
+def employee_clock_status(company_id, employee):
+    state = load_state(company_id)
+    open_entry = next(
+        (e for e in state["time_entries"] if e["employee_id"] == employee["id"] and not e.get("clock_out")),
+        None,
+    )
+    return jsonify({
+        "clocked_in": bool(open_entry),
+        "clock_in": open_entry["clock_in"] if open_entry else None,
+    })
+
+
+@app.route("/api/employee-auth/clock-in", methods=["POST"])
+@require_employee_login
+def employee_clock_in(company_id, employee):
+    state = load_state(company_id)
+    open_entry = next(
+        (e for e in state["time_entries"] if e["employee_id"] == employee["id"] and not e.get("clock_out")),
+        None,
+    )
+    if open_entry:
+        return jsonify({"error": "이미 클락인되어 있습니다. 먼저 클락아웃해주세요."}), 400
+    now = datetime.now(timezone.utc)
+    entry = {
+        "id": secrets.token_hex(8),
+        "employee_id": employee["id"],
+        "date": now.date().isoformat(),
+        "clock_in": now.isoformat(),
+        "clock_out": None,
+        "edited": False,
+        "edit_history": [],
+    }
+    state["time_entries"].append(entry)
+    save_state(company_id, state)
+    return jsonify(entry), 201
+
+
+@app.route("/api/employee-auth/clock-out", methods=["POST"])
+@require_employee_login
+def employee_clock_out(company_id, employee):
+    state = load_state(company_id)
+    open_entry = next(
+        (e for e in state["time_entries"] if e["employee_id"] == employee["id"] and not e.get("clock_out")),
+        None,
+    )
+    if not open_entry:
+        return jsonify({"error": "클락인 기록이 없습니다."}), 400
+    open_entry["clock_out"] = datetime.now(timezone.utc).isoformat()
+    save_state(company_id, state)
+    return jsonify(open_entry)
+
+
+# ---------------------------------------------------------------------------
+# 클락인/아웃 기록 관리 (사장/매니저 전용) — 조회, 수정(사유+수정자 이력 필수)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/time-entries", methods=["GET"])
+@require_login
+def list_time_entries(company_id):
+    """사장/매니저 전용: 특정 주(week_key 쿼리 파라미터)의 전 직원 클락인/아웃 기록을
+    보여줍니다. 반올림 적용 후 실제 근무시간도 같이 계산해서 내려줍니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    week_key = request.args.get("week_key")
+    state = load_state(company_id)
+    entries = state["time_entries"]
+    if week_key:
+        try:
+            week_dates = {d.isoformat() for d in _week_dates(week_key)}
+            entries = [e for e in entries if e.get("date") in week_dates]
+        except ValueError:
+            return jsonify({"error": "Invalid week_key."}), 400
+    employee_names = {e["id"]: e["name"] for e in state["employees"]}
+    rounding = state.get("payroll_rounding_minutes", DEFAULT_PAYROLL_ROUNDING_MINUTES)
+    out = []
+    for e in sorted(entries, key=lambda x: (x.get("date") or "", x.get("clock_in") or "")):
+        row = dict(e)
+        row["employee_name"] = employee_names.get(e["employee_id"], "?")
+        row["actual_hours"] = _actual_hours_for_entry(e, rounding)
+        out.append(row)
+    return jsonify(out)
+
+
+@app.route("/api/time-entries/<entry_id>", methods=["PUT"])
+@require_login
+def edit_time_entry(company_id, entry_id):
+    """사장/매니저 전용: 클락인/아웃 시간을 수정합니다(직원이 깜빡하고 안 찍었을 때
+    등). 사유(reason)는 필수이고, 누가·언제·왜 고쳤는지 edit_history에 남습니다 —
+    투명성을 위해 이 기록은 지워지지 않습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    reason = (payload.get("reason") or "").strip()
+    if not reason:
+        return jsonify({"error": "수정 사유를 입력해주세요."}), 400
+
+    state = load_state(company_id)
+    entry = next((e for e in state["time_entries"] if e["id"] == entry_id), None)
+    if not entry:
+        return jsonify({"error": "Time entry not found."}), 404
+
+    new_clock_in = payload.get("clock_in")
+    new_clock_out = payload.get("clock_out")
+    try:
+        if new_clock_in:
+            datetime.fromisoformat(new_clock_in)
+        if new_clock_out:
+            datetime.fromisoformat(new_clock_out)
+    except ValueError:
+        return jsonify({"error": "날짜/시간 형식이 올바르지 않습니다."}), 400
+
+    entry.setdefault("edit_history", []).append({
+        "edited_by": g.user_name, "edited_by_role": g.role,
+        "edited_at": datetime.now(timezone.utc).isoformat(), "reason": reason[:300],
+        "old_clock_in": entry.get("clock_in"), "old_clock_out": entry.get("clock_out"),
+    })
+    if new_clock_in:
+        entry["clock_in"] = new_clock_in
+    if new_clock_out is not None:
+        entry["clock_out"] = new_clock_out or None
+    entry["edited"] = True
+    save_state(company_id, state)
+    return jsonify(entry)
+
+
+# ---------------------------------------------------------------------------
+# 급여 반올림 정책 (사장 전용 — 조회/수정 둘 다)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/payroll-rounding", methods=["GET"])
+@require_owner
+def get_payroll_rounding(company_id):
+    state = load_state(company_id)
+    return jsonify({"rounding_minutes": state.get("payroll_rounding_minutes", DEFAULT_PAYROLL_ROUNDING_MINUTES)})
+
+
+@app.route("/api/payroll-rounding", methods=["POST"])
+@require_owner
+def set_payroll_rounding(company_id):
+    payload = request.get_json(silent=True) or {}
+    try:
+        minutes = int(payload.get("rounding_minutes"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "rounding_minutes must be a number."}), 400
+    if minutes not in ALLOWED_ROUNDING_MINUTES:
+        return jsonify({"error": f"rounding_minutes must be one of {ALLOWED_ROUNDING_MINUTES}."}), 400
+    state = load_state(company_id)
+    state["payroll_rounding_minutes"] = minutes
+    save_state(company_id, state)
+    return jsonify({"rounding_minutes": minutes})
 
 
 @app.route("/api/company/request-employee-limit-increase", methods=["POST"])
