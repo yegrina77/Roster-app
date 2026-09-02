@@ -649,6 +649,13 @@
     </div>
     <button class="btn-ghost btn-sm" onclick="logoutEmployeeUser()" data-i18n="auth_logout">로그아웃</button>
   </div>
+  <div id="emp-clock-box" style="background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:10px; padding:14px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+    <div>
+      <div style="font-size:13px; font-weight:600;" data-i18n="emp_clock_title">근무 시간 기록</div>
+      <div id="emp-clock-status" style="font-size:12px; color:var(--text-muted); margin-top:2px;"></div>
+    </div>
+    <button class="btn-primary" id="emp-clock-btn" style="padding:10px 18px;" onclick="toggleClock()"></button>
+  </div>
   <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
     <button class="btn-ghost btn-sm" onclick="navigateEmployeeWeek(-7)">◀</button>
     <div id="emp-view-week-label" style="font-weight:600; font-size:14px; flex:1; text-align:center;"></div>
@@ -810,6 +817,9 @@ const I18N = {
     emp_view_greeting: "{name}님, 안녕하세요", emp_view_not_published: "아직 게시된 스케줄이 없습니다.",
     emp_view_no_shifts: "이번 주는 배정된 근무가 없습니다.", emp_view_agree_btn: "확인했습니다",
     emp_view_agreed_at: "{date}에 확인함",
+    emp_view_team_title: "이번 주 팀 전체 스케줄", emp_view_me: "나",
+    emp_clock_title: "근무 시간 기록", emp_clock_not_in: "클락인 안 함",
+    emp_clock_since: "{time}부터 근무 중", emp_clock_in_btn: "클락인", emp_clock_out_btn: "클락아웃",
     auth_company_name: "회사(매장) 이름", auth_contact_name: "담당자 이름", auth_phone: "전화번호 (선택)",
     auth_employee_limit: "예상 직원 수",
     auth_email: "이메일", auth_password: "비밀번호",
@@ -869,6 +879,19 @@ const I18N = {
     payroll_col_day: "요일", payroll_col_hours: "시간", payroll_col_cost: "예상 인건비",
     payroll_col_employee: "직원", payroll_col_wage: "시급", payroll_col_scheduled_pay: "이번 주 예상 지급액",
     payroll_wage_not_set: "시급 미설정", payroll_total: "이번 주 총 예상 인건비: ${amount}",
+    payroll_rounding_btn: "⏱️ 반올림 설정", payroll_col_sched_hours: "스케줄 시간", payroll_col_sched_cost: "스케줄 인건비",
+    payroll_col_actual_hours: "실제 시간", payroll_col_actual_cost: "실제 인건비", payroll_col_actual_pay: "실제 지급액",
+    payroll_col_diff: "차액", payroll_open_entry_note: "클락아웃 안 함", time_entries_btn: "🕒 클락인/아웃 기록",
+    payroll_rounding_title: "급여 반올림 단위", payroll_rounding_sub: "실제 클락인/아웃 시간을 급여 계산 시 어느 단위로 반올림할지 정하세요.",
+    payroll_rounding_1min: "반올림 없음 (1분 단위)", payroll_rounding_nmin: "{n}분 단위",
+    payroll_rounding_note: "현재 반올림 단위: {n}분. 클락인/아웃 시각을 이 단위로 반올림해서 실제 지급액을 계산합니다.",
+    payroll_total_scheduled: "스케줄 기준 총액: ${amount}", payroll_total_actual: "실제 기준 총액: ${amount}",
+    time_entries_title: "클락인/아웃 기록", time_entries_sub: "{week} 주 — 직원별 실제 출퇴근 기록입니다.",
+    time_entries_empty: "이번 주 기록이 없습니다.", time_entries_in_progress: "진행 중",
+    time_entries_hours: "{h}시간", time_entries_edited_by: "{name}님이 {date}에 수정함 — 사유: {reason}",
+    time_entries_edit_title: "{name} 시간 수정", time_entries_clock_in_label: "클락인 시각",
+    time_entries_clock_out_label: "클락아웃 시각", time_entries_reason_label: "수정 사유 (필수)",
+    time_entries_reason_placeholder: "예: 직원이 클락인을 깜빡함", time_entries_reason_required: "수정 사유를 입력해주세요.",
     payroll_leave_included: "유급/병가 리브 {n}일 포함",
     payroll_ph_premium_included: "공휴일 1.5배 {n}일 포함", payroll_ph_avgpay_included: "공휴일 평균급여 {n}일 포함",
     admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
@@ -1045,6 +1068,9 @@ const I18N = {
     emp_view_greeting: "Hi, {name}", emp_view_not_published: "No published schedule yet.",
     emp_view_no_shifts: "No shifts assigned this week.", emp_view_agree_btn: "I've seen this",
     emp_view_agreed_at: "Agreed on {date}",
+    emp_view_team_title: "This Week's Team Schedule", emp_view_me: "Me",
+    emp_clock_title: "Time Clock", emp_clock_not_in: "Not clocked in",
+    emp_clock_since: "Clocked in since {time}", emp_clock_in_btn: "Clock In", emp_clock_out_btn: "Clock Out",
     auth_company_name: "Company (Store) Name", auth_contact_name: "Contact Name", auth_phone: "Phone Number (optional)",
     auth_employee_limit: "Expected Number of Employees",
     auth_email: "Email", auth_password: "Password",
@@ -1104,6 +1130,19 @@ const I18N = {
     payroll_col_day: "Day", payroll_col_hours: "Hours", payroll_col_cost: "Est. Cost",
     payroll_col_employee: "Employee", payroll_col_wage: "Wage", payroll_col_scheduled_pay: "Est. Pay This Week",
     payroll_wage_not_set: "Wage not set", payroll_total: "Total estimated labour cost this week: ${amount}",
+    payroll_rounding_btn: "⏱️ Rounding Settings", payroll_col_sched_hours: "Sched. Hours", payroll_col_sched_cost: "Sched. Cost",
+    payroll_col_actual_hours: "Actual Hours", payroll_col_actual_cost: "Actual Cost", payroll_col_actual_pay: "Actual Pay",
+    payroll_col_diff: "Difference", payroll_open_entry_note: "Not clocked out", time_entries_btn: "🕒 Time Entries",
+    payroll_rounding_title: "Payroll Rounding", payroll_rounding_sub: "Choose how actual clock-in/out times are rounded for payroll calculation.",
+    payroll_rounding_1min: "No rounding (1 min)", payroll_rounding_nmin: "{n}-minute increments",
+    payroll_rounding_note: "Current rounding: {n} min. Clock-in/out times are rounded to this increment when calculating actual pay.",
+    payroll_total_scheduled: "Total (scheduled): ${amount}", payroll_total_actual: "Total (actual): ${amount}",
+    time_entries_title: "Time Entries", time_entries_sub: "Week of {week} — actual clock-in/out records by employee.",
+    time_entries_empty: "No entries this week.", time_entries_in_progress: "In progress",
+    time_entries_hours: "{h}h", time_entries_edited_by: "Edited by {name} on {date} — reason: {reason}",
+    time_entries_edit_title: "Edit time for {name}", time_entries_clock_in_label: "Clock-in time",
+    time_entries_clock_out_label: "Clock-out time", time_entries_reason_label: "Reason for edit (required)",
+    time_entries_reason_placeholder: "e.g. Employee forgot to clock in", time_entries_reason_required: "Please enter a reason for this edit.",
     payroll_leave_included: "Includes {n} day(s) of paid/sick leave",
     payroll_ph_premium_included: "Includes {n} day(s) at 1.5x (public holiday)", payroll_ph_avgpay_included: "Includes {n} day(s) of average pay (public holiday)",
     admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
@@ -1473,7 +1512,45 @@ async function showEmployeeView(empMe) {
   document.getElementById("emp-view-company-name").textContent = empMe.company_name;
   document.getElementById("emp-view-name").textContent = tf("emp_view_greeting", {name: empMe.name});
   if (!empViewWeekKey) empViewWeekKey = mondayKeyFromDate(new Date());
+  await refreshClockStatus();
   await loadEmployeeWeek();
+}
+
+async function refreshClockStatus() {
+  const res = await fetch("/api/employee-auth/clock-status", {credentials: "same-origin"});
+  if (res.status === 401) { showAuthScreen(); switchAuthMode("employee"); return; }
+  const data = await res.json().catch(() => ({clocked_in: false}));
+  const statusLine = document.getElementById("emp-clock-status");
+  const btn = document.getElementById("emp-clock-btn");
+  if (data.clocked_in) {
+    const since = new Date(data.clock_in);
+    statusLine.textContent = tf("emp_clock_since", {time: since.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})});
+    btn.textContent = t("emp_clock_out_btn");
+    btn.dataset.state = "in";
+    btn.style.background = "var(--danger, #ef4444)";
+  } else {
+    statusLine.textContent = t("emp_clock_not_in");
+    btn.textContent = t("emp_clock_in_btn");
+    btn.dataset.state = "out";
+    btn.style.background = "";
+  }
+}
+
+async function toggleClock() {
+  const btn = document.getElementById("emp-clock-btn");
+  btn.disabled = true;
+  const isClockingOut = btn.dataset.state === "in";
+  const path = isClockingOut ? "/api/employee-auth/clock-out" : "/api/employee-auth/clock-in";
+  try {
+    const res = await fetch(path, {method: "POST", credentials: "same-origin"});
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showMessageModal(t("modal_request_failed"), data.error || t("modal_network_error"), true);
+    }
+  } finally {
+    btn.disabled = false;
+    await refreshClockStatus();
+  }
 }
 
 function navigateEmployeeWeek(deltaDays) {
@@ -1557,6 +1634,46 @@ async function loadEmployeeWeek() {
     agreeBox.appendChild(agreeBtn);
   }
   content.appendChild(agreeBox);
+
+  // 팀 전체 스케줄 — 본인 근무를 포함해서, 이번 주에 요일별로 누가 언제 근무하는지
+  // 다 같이 보여줍니다. "이번 주에 누구랑 같이 일하는지" 알 수 있게 하기 위함입니다.
+  const allShifts = [
+    ...data.shifts.map(s => ({...s, employee_name: t("emp_view_me"), isMe: true})),
+    ...data.team_shifts.map(s => ({...s, isMe: false})),
+  ];
+  if (allShifts.length) {
+    const teamTitle = document.createElement("div");
+    teamTitle.style.cssText = "font-weight:600; font-size:14px; margin:24px 0 10px; padding-top:16px; border-top:1px solid var(--line-strong);";
+    teamTitle.textContent = t("emp_view_team_title");
+    content.appendChild(teamTitle);
+
+    const teamList = document.createElement("div");
+    teamList.style.cssText = "display:flex; flex-direction:column; gap:12px;";
+    DAYS.forEach(day => {
+      const dayShifts = allShifts.filter(s => s.day === day);
+      if (!dayShifts.length) return;
+      const dayBlock = document.createElement("div");
+      const dayTitle = document.createElement("div");
+      dayTitle.style.cssText = "font-size:12px; color:var(--text-muted); margin-bottom:5px;";
+      dayTitle.textContent = DAY_LABEL[day];
+      dayBlock.appendChild(dayTitle);
+      dayShifts.forEach(s => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:7px 10px; background:var(--panel-solid); border-radius:6px; margin-bottom:4px; font-size:13px;";
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = s.employee_name;
+        if (s.isMe) nameSpan.style.cssText = "font-weight:700; color:var(--cyan, #4fd8e0);";
+        const timeSpan = document.createElement("span");
+        timeSpan.style.cssText = "font-family:monospace; color:var(--text-muted); font-size:12px;";
+        timeSpan.textContent = `${s.shift_name} ${s.start}-${s.end}`;
+        row.appendChild(nameSpan);
+        row.appendChild(timeSpan);
+        dayBlock.appendChild(row);
+      });
+      teamList.appendChild(dayBlock);
+    });
+    content.appendChild(teamList);
+  }
 }
 
 function startDeleteAccount() {
@@ -2158,11 +2275,21 @@ async function showPayrollPage() {
 
   const box = document.createElement("div");
   box.className = "modal-box";
-  box.style.maxWidth = "760px";
+  box.style.maxWidth = "900px";
 
+  const titleRow = document.createElement("div");
+  titleRow.style.cssText = "display:flex; justify-content:space-between; align-items:flex-start;";
   const title = document.createElement("h3");
   title.textContent = t("payroll_title");
-  box.appendChild(title);
+  titleRow.appendChild(title);
+  if (currentCompany && currentCompany.role === "owner") {
+    const roundingBtn = document.createElement("button");
+    roundingBtn.className = "btn-ghost btn-sm";
+    roundingBtn.textContent = t("payroll_rounding_btn");
+    roundingBtn.onclick = () => showPayrollRoundingModal();
+    titleRow.appendChild(roundingBtn);
+  }
+  box.appendChild(titleRow);
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
@@ -2180,7 +2307,7 @@ async function showPayrollPage() {
   const noteLine = document.createElement("div");
   noteLine.className = "modal-item-detail";
   noteLine.style.marginBottom = "10px";
-  noteLine.textContent = t("payroll_actual_note");
+  noteLine.textContent = tf("payroll_rounding_note", {n: data.rounding_minutes});
   box.appendChild(noteLine);
 
   // 요일별 표
@@ -2195,8 +2322,10 @@ async function showPayrollPage() {
   dayThead.innerHTML = `
     <tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
       <th style="padding:5px 6px;">${t("payroll_col_day")}</th>
-      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_hours")}</th>
-      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_cost")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_cost")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_cost")}</th>
       <th style="padding:5px 6px;"></th>
     </tr>
   `;
@@ -2211,6 +2340,8 @@ async function showPayrollPage() {
       <td style="padding:5px 6px;">${DAY_LABEL[day]}</td>
       <td style="padding:5px 6px; text-align:right;">${d.scheduled_hours.toFixed(1)}h</td>
       <td style="padding:5px 6px; text-align:right;">$${d.scheduled_cost.toFixed(2)}</td>
+      <td style="padding:5px 6px; text-align:right;">${d.actual_hours.toFixed(1)}h</td>
+      <td style="padding:5px 6px; text-align:right;">$${d.actual_cost.toFixed(2)}</td>
       <td style="padding:5px 6px;">${extraTag}</td>
     `;
     dayTbody.appendChild(tr);
@@ -2219,10 +2350,18 @@ async function showPayrollPage() {
   box.appendChild(dayTable);
 
   // 직원별 표
+  const empHeaderRow = document.createElement("div");
+  empHeaderRow.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;";
   const empTitle = document.createElement("div");
-  empTitle.style.cssText = "font-weight:600; font-size:13px; margin-bottom:6px;";
+  empTitle.style.cssText = "font-weight:600; font-size:13px;";
   empTitle.textContent = t("payroll_by_employee_title");
-  box.appendChild(empTitle);
+  empHeaderRow.appendChild(empTitle);
+  const timeEntriesBtn = document.createElement("button");
+  timeEntriesBtn.className = "btn-ghost btn-sm";
+  timeEntriesBtn.textContent = t("time_entries_btn");
+  timeEntriesBtn.onclick = () => showTimeEntriesPage();
+  empHeaderRow.appendChild(timeEntriesBtn);
+  box.appendChild(empHeaderRow);
 
   const empTable = document.createElement("table");
   empTable.style.cssText = "width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:12px;";
@@ -2231,8 +2370,11 @@ async function showPayrollPage() {
     <tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
       <th style="padding:5px 6px;">${t("payroll_col_employee")}</th>
       <th style="padding:5px 6px; text-align:right;">${t("payroll_col_wage")}</th>
-      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_hours")}</th>
       <th style="padding:5px 6px; text-align:right;">${t("payroll_col_scheduled_pay")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_pay")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_diff")}</th>
     </tr>
   `;
   empTable.appendChild(empThead);
@@ -2241,7 +2383,15 @@ async function showPayrollPage() {
     const tr = document.createElement("tr");
     tr.style.borderBottom = "1px solid var(--line);";
     const wageCell = row.has_wage_set ? `$${row.hourly_wage.toFixed(2)}` : `<span style="color:var(--text-muted);">${t("payroll_wage_not_set")}</span>`;
-    const payCell = row.has_wage_set ? `$${row.weekly_pay.toFixed(2)}` : "—";
+    const schedPayCell = row.has_wage_set ? `$${row.weekly_pay.toFixed(2)}` : "—";
+    const actualPayCell = row.has_wage_set ? `$${row.weekly_actual_pay.toFixed(2)}` : "—";
+    const diff = row.pay_difference;
+    let diffCell = "—";
+    if (row.has_wage_set && diff !== null) {
+      const color = diff > 0 ? "var(--danger, #ef4444)" : (diff < 0 ? "var(--opening, #22c55e)" : "var(--text-muted)");
+      const sign = diff > 0 ? "+" : "";
+      diffCell = `<span style="color:${color};">${sign}$${diff.toFixed(2)}</span>`;
+    }
     const paidLeaveDays = Object.values(row.per_day).filter(d => d.leave_type === "paid" || d.leave_type === "sick").length;
     const phPremiumDays = Object.values(row.per_day).filter(d => d.is_public_holiday && (d.category === 1 || d.category === 3)).length;
     const phAvgPayDays = Object.values(row.per_day).filter(d => d.is_public_holiday && d.category === 2).length;
@@ -2249,6 +2399,7 @@ async function showPayrollPage() {
     if (paidLeaveDays > 0) notes.push(tf("payroll_leave_included", {n: paidLeaveDays}));
     if (phPremiumDays > 0) notes.push(tf("payroll_ph_premium_included", {n: phPremiumDays}));
     if (phAvgPayDays > 0) notes.push(tf("payroll_ph_avgpay_included", {n: phAvgPayDays}));
+    if (row.has_open_entry) notes.push(t("payroll_open_entry_note"));
     const nameCell = notes.length > 0
       ? `${row.employee_name}<br><span style="font-size:10px; color:var(--text-muted);">${notes.join(" · ")}</span>`
       : row.employee_name;
@@ -2256,7 +2407,10 @@ async function showPayrollPage() {
       <td style="padding:5px 6px;">${nameCell}</td>
       <td style="padding:5px 6px; text-align:right;">${wageCell}</td>
       <td style="padding:5px 6px; text-align:right;">${row.weekly_hours.toFixed(1)}h</td>
-      <td style="padding:5px 6px; text-align:right; font-weight:600;">${payCell}</td>
+      <td style="padding:5px 6px; text-align:right; font-weight:600;">${schedPayCell}</td>
+      <td style="padding:5px 6px; text-align:right;">${row.weekly_actual_hours.toFixed(1)}h</td>
+      <td style="padding:5px 6px; text-align:right; font-weight:600;">${actualPayCell}</td>
+      <td style="padding:5px 6px; text-align:right;">${diffCell}</td>
     `;
     empTbody.appendChild(tr);
   });
@@ -2264,8 +2418,11 @@ async function showPayrollPage() {
   box.appendChild(empTable);
 
   const totalLine = document.createElement("div");
-  totalLine.style.cssText = "text-align:right; font-weight:700; font-size:14px; margin-bottom:10px;";
-  totalLine.textContent = tf("payroll_total", {amount: data.total_scheduled_cost.toFixed(2)});
+  totalLine.style.cssText = "text-align:right; font-size:13px; margin-bottom:10px; line-height:1.6;";
+  totalLine.innerHTML = `
+    ${tf("payroll_total_scheduled", {amount: data.total_scheduled_cost.toFixed(2)})}<br>
+    <strong style="font-size:14px;">${tf("payroll_total_actual", {amount: data.total_actual_cost.toFixed(2)})}</strong>
+  `;
   box.appendChild(totalLine);
 
   const closeRow = document.createElement("div");
@@ -2276,6 +2433,264 @@ async function showPayrollPage() {
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showPayrollRoundingModal() {
+  let data;
+  try {
+    data = await api("/api/payroll-rounding");
+  } catch (e) {
+    return;
+  }
+  if (!data) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "420px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("payroll_rounding_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("payroll_rounding_sub");
+  box.appendChild(sub);
+
+  const optionsWrap = document.createElement("div");
+  optionsWrap.style.cssText = "display:flex; flex-direction:column; gap:8px; margin:14px 0;";
+  [1, 10, 15, 30].forEach(minutes => {
+    const label = document.createElement("label");
+    label.style.cssText = "display:flex; align-items:center; gap:8px; cursor:pointer;";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "rounding-minutes";
+    radio.value = minutes;
+    radio.checked = data.rounding_minutes === minutes;
+    const span = document.createElement("span");
+    span.textContent = minutes === 1 ? t("payroll_rounding_1min") : tf("payroll_rounding_nmin", {n: minutes});
+    label.appendChild(radio);
+    label.appendChild(span);
+    optionsWrap.appendChild(label);
+  });
+  box.appendChild(optionsWrap);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    const selected = optionsWrap.querySelector('input[name="rounding-minutes"]:checked');
+    if (!selected) return;
+    saveBtn.disabled = true;
+    try {
+      await api("/api/payroll-rounding", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({rounding_minutes: Number(selected.value)}),
+      });
+      overlay.remove();
+      showPayrollPage();
+    } catch (e) {
+      saveBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showTimeEntriesPage() {
+  let entries;
+  try {
+    entries = await api(`/api/time-entries?week_key=${currentWeekKey}`);
+  } catch (e) {
+    return;
+  }
+  if (!entries) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "640px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("time_entries_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = tf("time_entries_sub", {week: currentWeekKey});
+  box.appendChild(sub);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex; flex-direction:column; gap:8px; margin-top:12px; max-height:420px; overflow-y:auto;";
+
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = t("time_entries_empty");
+    list.appendChild(empty);
+  }
+
+  const fmtTime = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleString([], {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"});
+  };
+
+  entries.forEach(entry => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+
+    const nameLine = document.createElement("div");
+    nameLine.className = "modal-item-title";
+    nameLine.textContent = `${entry.employee_name} — ${entry.date}`;
+    item.appendChild(nameLine);
+
+    const timeLine = document.createElement("div");
+    timeLine.className = "modal-item-detail";
+    const hoursLabel = entry.actual_hours != null ? tf("time_entries_hours", {h: entry.actual_hours.toFixed(2)}) : t("time_entries_in_progress");
+    timeLine.textContent = `${fmtTime(entry.clock_in)} → ${fmtTime(entry.clock_out)} (${hoursLabel})`;
+    item.appendChild(timeLine);
+
+    if (entry.edited && entry.edit_history && entry.edit_history.length) {
+      const last = entry.edit_history[entry.edit_history.length - 1];
+      const editLine = document.createElement("div");
+      editLine.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:2px;";
+      editLine.textContent = tf("time_entries_edited_by", {name: last.edited_by, date: fmtTime(last.edited_at), reason: last.reason});
+      item.appendChild(editLine);
+    }
+
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn-ghost btn-sm";
+    editBtn.textContent = t("btn_edit");
+    editBtn.style.marginTop = "6px";
+    editBtn.onclick = () => showEditTimeEntryModal(entry, () => { overlay.remove(); showTimeEntriesPage(); });
+    item.appendChild(editBtn);
+
+    list.appendChild(item);
+  });
+  box.appendChild(list);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showEditTimeEntryModal(entry, onSaved) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "420px";
+
+  const title = document.createElement("h3");
+  title.textContent = tf("time_entries_edit_title", {name: entry.employee_name});
+  box.appendChild(title);
+
+  const toLocalInput = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const inLabel = document.createElement("label");
+  inLabel.textContent = t("time_entries_clock_in_label");
+  inLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const inInput = document.createElement("input");
+  inInput.type = "datetime-local";
+  inInput.style.width = "100%";
+  inInput.value = toLocalInput(entry.clock_in);
+
+  const outLabel = document.createElement("label");
+  outLabel.textContent = t("time_entries_clock_out_label");
+  outLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const outInput = document.createElement("input");
+  outInput.type = "datetime-local";
+  outInput.style.width = "100%";
+  outInput.value = toLocalInput(entry.clock_out);
+
+  const reasonLabel = document.createElement("label");
+  reasonLabel.textContent = t("time_entries_reason_label");
+  reasonLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const reasonInput = document.createElement("textarea");
+  reasonInput.style.cssText = "width:100%; min-height:60px;";
+  reasonInput.maxLength = 300;
+  reasonInput.placeholder = t("time_entries_reason_placeholder");
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+
+  box.appendChild(inLabel);
+  box.appendChild(inInput);
+  box.appendChild(outLabel);
+  box.appendChild(outInput);
+  box.appendChild(reasonLabel);
+  box.appendChild(reasonInput);
+  box.appendChild(errLine);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    const reason = reasonInput.value.trim();
+    if (!reason) {
+      errLine.textContent = t("time_entries_reason_required");
+      errLine.style.display = "block";
+      return;
+    }
+    saveBtn.disabled = true;
+    const body = {reason};
+    if (inInput.value) body.clock_in = new Date(inInput.value).toISOString();
+    body.clock_out = outInput.value ? new Date(outInput.value).toISOString() : null;
+    try {
+      await api(`/api/time-entries/${entry.id}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      overlay.remove();
+      onSaved();
+    } catch (e) {
+      saveBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
