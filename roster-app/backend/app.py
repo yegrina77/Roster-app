@@ -780,12 +780,15 @@ def _compute_week_payroll(state, week_key):
 def get_week_payroll(company_id, week_key):
     """이 주의 예상 인건비(Labour Cost)를 요일별/직원별로 계산해서 보여줍니다.
     사장 또는 매니저만 볼 수 있습니다 — 급여 정보라 민감하기 때문에, 나중에 직원 본인
-    로그인이 생기더라도 이 페이지는 계속 사장/매니저 전용으로 남아야 합니다."""
+    로그인이 생기더라도 이 페이지는 계속 사장/매니저 전용으로 남아야 합니다.
+
+    아직 스케줄 자체가 없는 주(예: 급여창에서 다음 주로 이동했는데 그 주가 아직
+    생성 안 된 경우)도 에러 없이 "전부 0원"인 정상 응답으로 돌려줍니다 —
+    _compute_week_payroll이 이미 이런 상황을 안전하게 처리하도록 짜여 있어서,
+    여기서 굳이 404로 막을 이유가 없었습니다."""
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
     state = load_state(company_id)
-    if week_key not in state["weeks"]:
-        return jsonify({"error": "Week not found."}), 404
     return jsonify(_compute_week_payroll(state, week_key))
 
 
@@ -889,6 +892,13 @@ def _week_dates(week_key):
     y, m, d = map(int, week_key.split("-"))
     monday = date(y, m, d)
     return [monday + timedelta(days=i) for i in range(7)]
+
+
+def _week_key_for_date(d):
+    """이 날짜(date)가 속한 주의 월요일을 week_key(YYYY-MM-DD) 형태로 돌려줍니다.
+    클락인 시점에 "오늘이 속한 주"를 찾아서, 그 주 스케줄을 확인했는지 검사할 때 씁니다."""
+    monday = d - timedelta(days=d.weekday())
+    return monday.isoformat()
 
 
 def _leave_info_by_day(employee_dict, week_key):
@@ -2007,16 +2017,26 @@ def employee_clock_status(company_id, employee):
         if breaks and not breaks[-1].get("end"):
             on_break = True
             break_start = breaks[-1]["start"]
-    today_iso = datetime.now(timezone.utc).date().isoformat()
+    now = datetime.now(timezone.utc)
+    today_iso = now.date().isoformat()
     done_for_today = any(
         e["employee_id"] == employee["id"] and e.get("date") == today_iso and e.get("clock_out")
         for e in state["time_entries"]
     ) and not open_entry
+
+    # 이번 주 스케줄을 확인(Agree)했는지 — 클락인 가능 여부를 화면에 미리 보여주기 위함.
+    this_week_key = _week_key_for_date(now.date())
+    this_week = state["weeks"].get(this_week_key)
+    week_published = bool(this_week and this_week.get("published"))
+    week_agreed = bool(week_published and (this_week.get("agreements") or {}).get(employee["id"], {}).get("agreed"))
+
     return jsonify({
         "clocked_in": bool(open_entry),
         "clock_in": open_entry["clock_in"] if open_entry else None,
         "on_break": on_break,
         "break_start": break_start,
+        "week_published": week_published,
+        "week_agreed": week_agreed,
         "done_for_today": done_for_today,
     })
 
@@ -2034,6 +2054,18 @@ def employee_clock_in(company_id, employee):
 
     now = datetime.now(timezone.utc)
     today_iso = now.date().isoformat()
+
+    # 이번 주 스케줄을 "확인했습니다" 버튼으로 먼저 확인해야만 클락인할 수 있습니다 —
+    # 이렇게 해야 "이 직원이 스케줄을 언제/정말로 확인했는지"가 명확한 시각 기록으로
+    # 남아서, 나중에 "몰랐다"는 식의 분쟁을 막을 수 있습니다.
+    this_week_key = _week_key_for_date(now.date())
+    this_week = state["weeks"].get(this_week_key)
+    if not this_week or not this_week.get("published"):
+        return jsonify({"error": "이번 주 스케줄이 아직 게시(퍼블리시)되지 않았습니다. 관리자에게 문의해주세요."}), 400
+    agreement = (this_week.get("agreements") or {}).get(employee["id"], {})
+    if not agreement.get("agreed"):
+        return jsonify({"error": "클락인하기 전에, 먼저 이번 주 스케줄을 확인하고 '확인했습니다' 버튼을 눌러주세요."}), 400
+
     # 오늘 이미 클락아웃(퇴근 처리)한 기록이 있으면 다시 클락인할 수 없습니다 — 하루에
     # 여러 번 클락인/아웃 하는 건 "휴게" 버튼으로 처리해야 하고, 클락아웃은 그날의
     # 근무가 완전히 끝났다는 뜻이어야 관리자 입장에서도 헷갈리지 않습니다.
