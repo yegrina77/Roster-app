@@ -649,12 +649,17 @@
     </div>
     <button class="btn-ghost btn-sm" onclick="logoutEmployeeUser()" data-i18n="auth_logout">로그아웃</button>
   </div>
-  <div id="emp-clock-box" style="background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:10px; padding:14px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
-    <div>
-      <div style="font-size:13px; font-weight:600;" data-i18n="emp_clock_title">근무 시간 기록</div>
-      <div id="emp-clock-status" style="font-size:12px; color:var(--text-muted); margin-top:2px;"></div>
+  <div id="emp-clock-box" style="background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:10px; padding:14px; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div>
+        <div style="font-size:13px; font-weight:600;" data-i18n="emp_clock_title">근무 시간 기록</div>
+        <div id="emp-clock-status" style="font-size:12px; color:var(--text-muted); margin-top:2px;"></div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn-ghost" id="emp-break-btn" style="padding:10px 14px; display:none;" onclick="toggleBreak()"></button>
+        <button class="btn-primary" id="emp-clock-btn" style="padding:10px 18px;" onclick="toggleClock()"></button>
+      </div>
     </div>
-    <button class="btn-primary" id="emp-clock-btn" style="padding:10px 18px;" onclick="toggleClock()"></button>
   </div>
   <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
     <button class="btn-ghost btn-sm" onclick="navigateEmployeeWeek(-7)">◀</button>
@@ -820,6 +825,8 @@ const I18N = {
     emp_view_team_title: "이번 주 팀 전체 스케줄", emp_view_me: "나",
     emp_clock_title: "근무 시간 기록", emp_clock_not_in: "클락인 안 함",
     emp_clock_since: "{time}부터 근무 중", emp_clock_in_btn: "클락인", emp_clock_out_btn: "클락아웃",
+    emp_clock_done_today: "오늘 근무를 마쳤습니다. 내일 다시 클락인해주세요.",
+    emp_break_since: "{time}부터 휴게 중", emp_break_start_btn: "☕ 휴게 시작", emp_break_end_btn: "▶️ 휴게 종료",
     auth_company_name: "회사(매장) 이름", auth_contact_name: "담당자 이름", auth_phone: "전화번호 (선택)",
     auth_employee_limit: "예상 직원 수",
     auth_email: "이메일", auth_password: "비밀번호",
@@ -879,16 +886,17 @@ const I18N = {
     payroll_col_day: "요일", payroll_col_hours: "시간", payroll_col_cost: "예상 인건비",
     payroll_col_employee: "직원", payroll_col_wage: "시급", payroll_col_scheduled_pay: "이번 주 예상 지급액",
     payroll_wage_not_set: "시급 미설정", payroll_total: "이번 주 총 예상 인건비: ${amount}",
-    payroll_rounding_btn: "⏱️ 반올림 설정", payroll_col_sched_hours: "스케줄 시간", payroll_col_sched_cost: "스케줄 인건비",
+    payroll_rounding_btn: "⏱️ 시간 계산 단위 설정", payroll_col_sched_hours: "스케줄 시간", payroll_col_sched_cost: "스케줄 인건비",
     payroll_col_actual_hours: "실제 시간", payroll_col_actual_cost: "실제 인건비", payroll_col_actual_pay: "실제 지급액",
     payroll_col_diff: "차액", payroll_open_entry_note: "클락아웃 안 함", time_entries_btn: "🕒 클락인/아웃 기록",
-    payroll_rounding_title: "급여 반올림 단위", payroll_rounding_sub: "실제 클락인/아웃 시간을 급여 계산 시 어느 단위로 반올림할지 정하세요.",
-    payroll_rounding_1min: "반올림 없음 (1분 단위)", payroll_rounding_nmin: "{n}분 단위",
-    payroll_rounding_note: "현재 반올림 단위: {n}분. 클락인/아웃 시각을 이 단위로 반올림해서 실제 지급액을 계산합니다.",
+    payroll_rounding_title: "급여 계산 단위", payroll_rounding_sub: "클락인은 다음 단위로 올림, 클락아웃은 이전 단위로 버림 처리됩니다 — 일찍 오거나 늦게 나가도 그만큼 급여가 더 나가지 않도록 하는 방식입니다.",
+    payroll_rounding_1min: "버림 없음 (1분 단위)", payroll_rounding_nmin: "{n}분 단위",
+    payroll_rounding_note: "현재 계산 단위: {n}분 (클락인은 올림, 클락아웃은 버림 — 직원에게 유리한 쪽으로는 반올림되지 않습니다).",
     payroll_total_scheduled: "스케줄 기준 총액: ${amount}", payroll_total_actual: "실제 기준 총액: ${amount}",
     time_entries_title: "클락인/아웃 기록", time_entries_sub: "{week} 주 — 직원별 실제 출퇴근 기록입니다.",
     time_entries_empty: "이번 주 기록이 없습니다.", time_entries_in_progress: "진행 중",
     time_entries_hours: "{h}시간", time_entries_edited_by: "{name}님이 {date}에 수정함 — 사유: {reason}",
+    time_entries_break_line: "휴게 {h}시간 ({list})",
     time_entries_edit_title: "{name} 시간 수정", time_entries_clock_in_label: "클락인 시각",
     time_entries_clock_out_label: "클락아웃 시각", time_entries_reason_label: "수정 사유 (필수)",
     time_entries_reason_placeholder: "예: 직원이 클락인을 깜빡함", time_entries_reason_required: "수정 사유를 입력해주세요.",
@@ -1071,6 +1079,8 @@ const I18N = {
     emp_view_team_title: "This Week's Team Schedule", emp_view_me: "Me",
     emp_clock_title: "Time Clock", emp_clock_not_in: "Not clocked in",
     emp_clock_since: "Clocked in since {time}", emp_clock_in_btn: "Clock In", emp_clock_out_btn: "Clock Out",
+    emp_clock_done_today: "You've finished for today. Clock in again tomorrow.",
+    emp_break_since: "On break since {time}", emp_break_start_btn: "☕ Start Break", emp_break_end_btn: "▶️ End Break",
     auth_company_name: "Company (Store) Name", auth_contact_name: "Contact Name", auth_phone: "Phone Number (optional)",
     auth_employee_limit: "Expected Number of Employees",
     auth_email: "Email", auth_password: "Password",
@@ -1130,16 +1140,17 @@ const I18N = {
     payroll_col_day: "Day", payroll_col_hours: "Hours", payroll_col_cost: "Est. Cost",
     payroll_col_employee: "Employee", payroll_col_wage: "Wage", payroll_col_scheduled_pay: "Est. Pay This Week",
     payroll_wage_not_set: "Wage not set", payroll_total: "Total estimated labour cost this week: ${amount}",
-    payroll_rounding_btn: "⏱️ Rounding Settings", payroll_col_sched_hours: "Sched. Hours", payroll_col_sched_cost: "Sched. Cost",
+    payroll_rounding_btn: "⏱️ Time Calculation Settings", payroll_col_sched_hours: "Sched. Hours", payroll_col_sched_cost: "Sched. Cost",
     payroll_col_actual_hours: "Actual Hours", payroll_col_actual_cost: "Actual Cost", payroll_col_actual_pay: "Actual Pay",
     payroll_col_diff: "Difference", payroll_open_entry_note: "Not clocked out", time_entries_btn: "🕒 Time Entries",
-    payroll_rounding_title: "Payroll Rounding", payroll_rounding_sub: "Choose how actual clock-in/out times are rounded for payroll calculation.",
-    payroll_rounding_1min: "No rounding (1 min)", payroll_rounding_nmin: "{n}-minute increments",
-    payroll_rounding_note: "Current rounding: {n} min. Clock-in/out times are rounded to this increment when calculating actual pay.",
+    payroll_rounding_title: "Payroll Calculation Increment", payroll_rounding_sub: "Clock-in times are rounded up to the next increment; clock-out times are rounded down to the previous one — so arriving early or leaving late never adds paid time.",
+    payroll_rounding_1min: "No truncation (1 min)", payroll_rounding_nmin: "{n}-minute increments",
+    payroll_rounding_note: "Current increment: {n} min (clock-in rounds up, clock-out rounds down — never in the employee's favor).",
     payroll_total_scheduled: "Total (scheduled): ${amount}", payroll_total_actual: "Total (actual): ${amount}",
     time_entries_title: "Time Entries", time_entries_sub: "Week of {week} — actual clock-in/out records by employee.",
     time_entries_empty: "No entries this week.", time_entries_in_progress: "In progress",
     time_entries_hours: "{h}h", time_entries_edited_by: "Edited by {name} on {date} — reason: {reason}",
+    time_entries_break_line: "Break {h}h ({list})",
     time_entries_edit_title: "Edit time for {name}", time_entries_clock_in_label: "Clock-in time",
     time_entries_clock_out_label: "Clock-out time", time_entries_reason_label: "Reason for edit (required)",
     time_entries_reason_placeholder: "e.g. Employee forgot to clock in", time_entries_reason_required: "Please enter a reason for this edit.",
@@ -1521,18 +1532,43 @@ async function refreshClockStatus() {
   if (res.status === 401) { showAuthScreen(); switchAuthMode("employee"); return; }
   const data = await res.json().catch(() => ({clocked_in: false}));
   const statusLine = document.getElementById("emp-clock-status");
-  const btn = document.getElementById("emp-clock-btn");
+  const clockBtn = document.getElementById("emp-clock-btn");
+  const breakBtn = document.getElementById("emp-break-btn");
+
+  if (data.done_for_today) {
+    statusLine.textContent = t("emp_clock_done_today");
+    clockBtn.textContent = t("emp_clock_in_btn");
+    clockBtn.dataset.state = "done";
+    clockBtn.disabled = true;
+    clockBtn.style.background = "";
+    breakBtn.style.display = "none";
+    return;
+  }
+  clockBtn.disabled = false;
+
   if (data.clocked_in) {
-    const since = new Date(data.clock_in);
-    statusLine.textContent = tf("emp_clock_since", {time: since.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})});
-    btn.textContent = t("emp_clock_out_btn");
-    btn.dataset.state = "in";
-    btn.style.background = "var(--danger, #ef4444)";
+    breakBtn.style.display = "inline-block";
+    if (data.on_break) {
+      const since = new Date(data.break_start);
+      statusLine.textContent = tf("emp_break_since", {time: since.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})});
+      breakBtn.textContent = t("emp_break_end_btn");
+      breakBtn.dataset.state = "on";
+      clockBtn.disabled = true; // 휴게 중에는 먼저 휴게를 종료해야 클락아웃 가능
+    } else {
+      const since = new Date(data.clock_in);
+      statusLine.textContent = tf("emp_clock_since", {time: since.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})});
+      breakBtn.textContent = t("emp_break_start_btn");
+      breakBtn.dataset.state = "off";
+    }
+    clockBtn.textContent = t("emp_clock_out_btn");
+    clockBtn.dataset.state = "in";
+    clockBtn.style.background = "var(--danger, #ef4444)";
   } else {
     statusLine.textContent = t("emp_clock_not_in");
-    btn.textContent = t("emp_clock_in_btn");
-    btn.dataset.state = "out";
-    btn.style.background = "";
+    clockBtn.textContent = t("emp_clock_in_btn");
+    clockBtn.dataset.state = "out";
+    clockBtn.style.background = "";
+    breakBtn.style.display = "none";
   }
 }
 
@@ -1541,6 +1577,22 @@ async function toggleClock() {
   btn.disabled = true;
   const isClockingOut = btn.dataset.state === "in";
   const path = isClockingOut ? "/api/employee-auth/clock-out" : "/api/employee-auth/clock-in";
+  try {
+    const res = await fetch(path, {method: "POST", credentials: "same-origin"});
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showMessageModal(t("modal_request_failed"), data.error || t("modal_network_error"), true);
+    }
+  } finally {
+    await refreshClockStatus();
+  }
+}
+
+async function toggleBreak() {
+  const btn = document.getElementById("emp-break-btn");
+  btn.disabled = true;
+  const isEndingBreak = btn.dataset.state === "on";
+  const path = isEndingBreak ? "/api/employee-auth/break-end" : "/api/employee-auth/break-start";
   try {
     const res = await fetch(path, {method: "POST", credentials: "same-origin"});
     const data = await res.json().catch(() => ({}));
@@ -2260,10 +2312,11 @@ async function showEmployeePinsPage() {
   document.body.appendChild(overlay);
 }
 
-async function showPayrollPage() {
+async function showPayrollPage(weekKey) {
+  weekKey = weekKey || currentWeekKey;
   let data;
   try {
-    data = await api(`/api/weeks/${currentWeekKey}/payroll`);
+    data = await api(`/api/weeks/${weekKey}/payroll`);
   } catch (e) {
     return;
   }
@@ -2286,14 +2339,32 @@ async function showPayrollPage() {
     const roundingBtn = document.createElement("button");
     roundingBtn.className = "btn-ghost btn-sm";
     roundingBtn.textContent = t("payroll_rounding_btn");
-    roundingBtn.onclick = () => showPayrollRoundingModal();
+    roundingBtn.onclick = () => showPayrollRoundingModal(weekKey);
     titleRow.appendChild(roundingBtn);
   }
   box.appendChild(titleRow);
 
+  const weekNavRow = document.createElement("div");
+  weekNavRow.style.cssText = "display:flex; align-items:center; gap:10px; margin:8px 0 4px;";
+  const prevBtn = document.createElement("button");
+  prevBtn.className = "btn-ghost btn-sm";
+  prevBtn.textContent = "◀";
+  prevBtn.onclick = () => { overlay.remove(); showPayrollPage(addDaysToKey(weekKey, -7)); };
+  const weekLabel = document.createElement("div");
+  weekLabel.style.cssText = "font-weight:600; font-size:13px; flex:1; text-align:center;";
+  weekLabel.textContent = formatWeekLabel(weekKey);
+  const nextBtn = document.createElement("button");
+  nextBtn.className = "btn-ghost btn-sm";
+  nextBtn.textContent = "▶";
+  nextBtn.onclick = () => { overlay.remove(); showPayrollPage(addDaysToKey(weekKey, 7)); };
+  weekNavRow.appendChild(prevBtn);
+  weekNavRow.appendChild(weekLabel);
+  weekNavRow.appendChild(nextBtn);
+  box.appendChild(weekNavRow);
+
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = tf("payroll_sub", {week: currentWeekKey});
+  sub.textContent = tf("payroll_sub", {week: weekKey});
   box.appendChild(sub);
 
   if (data.has_public_holiday) {
@@ -2359,7 +2430,7 @@ async function showPayrollPage() {
   const timeEntriesBtn = document.createElement("button");
   timeEntriesBtn.className = "btn-ghost btn-sm";
   timeEntriesBtn.textContent = t("time_entries_btn");
-  timeEntriesBtn.onclick = () => showTimeEntriesPage();
+  timeEntriesBtn.onclick = () => showTimeEntriesPage(weekKey);
   empHeaderRow.appendChild(timeEntriesBtn);
   box.appendChild(empHeaderRow);
 
@@ -2438,7 +2509,7 @@ async function showPayrollPage() {
   document.body.appendChild(overlay);
 }
 
-async function showPayrollRoundingModal() {
+async function showPayrollRoundingModal(weekKey) {
   let data;
   try {
     data = await api("/api/payroll-rounding");
@@ -2501,7 +2572,7 @@ async function showPayrollRoundingModal() {
         body: JSON.stringify({rounding_minutes: Number(selected.value)}),
       });
       overlay.remove();
-      showPayrollPage();
+      showPayrollPage(weekKey);
     } catch (e) {
       saveBtn.disabled = false;
     }
@@ -2514,10 +2585,11 @@ async function showPayrollRoundingModal() {
   document.body.appendChild(overlay);
 }
 
-async function showTimeEntriesPage() {
+async function showTimeEntriesPage(weekKey) {
+  weekKey = weekKey || currentWeekKey;
   let entries;
   try {
-    entries = await api(`/api/time-entries?week_key=${currentWeekKey}`);
+    entries = await api(`/api/time-entries?week_key=${weekKey}`);
   } catch (e) {
     return;
   }
@@ -2536,7 +2608,7 @@ async function showTimeEntriesPage() {
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = tf("time_entries_sub", {week: currentWeekKey});
+  sub.textContent = tf("time_entries_sub", {week: weekKey});
   box.appendChild(sub);
 
   const list = document.createElement("div");
@@ -2570,6 +2642,17 @@ async function showTimeEntriesPage() {
     timeLine.textContent = `${fmtTime(entry.clock_in)} → ${fmtTime(entry.clock_out)} (${hoursLabel})`;
     item.appendChild(timeLine);
 
+    if (entry.break_hours > 0) {
+      const breakLine = document.createElement("div");
+      breakLine.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:2px;";
+      const breakList = (entry.breaks || [])
+        .filter(b => b.start && b.end)
+        .map(b => `${fmtTime(b.start)}~${fmtTime(b.end)}`)
+        .join(", ");
+      breakLine.textContent = tf("time_entries_break_line", {h: entry.break_hours.toFixed(2), list: breakList});
+      item.appendChild(breakLine);
+    }
+
     if (entry.edited && entry.edit_history && entry.edit_history.length) {
       const last = entry.edit_history[entry.edit_history.length - 1];
       const editLine = document.createElement("div");
@@ -2582,7 +2665,7 @@ async function showTimeEntriesPage() {
     editBtn.className = "btn-ghost btn-sm";
     editBtn.textContent = t("btn_edit");
     editBtn.style.marginTop = "6px";
-    editBtn.onclick = () => showEditTimeEntryModal(entry, () => { overlay.remove(); showTimeEntriesPage(); });
+    editBtn.onclick = () => showEditTimeEntryModal(entry, () => { overlay.remove(); showTimeEntriesPage(weekKey); });
     item.appendChild(editBtn);
 
     list.appendChild(item);
