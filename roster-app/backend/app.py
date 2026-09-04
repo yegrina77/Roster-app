@@ -528,21 +528,35 @@ ALLOWED_ROUNDING_MINUTES = (1, 10, 15, 30)
 DEFAULT_PAYROLL_ROUNDING_MINUTES = 15
 
 
-def _round_to_nearest_minutes(dt, minutes):
-    """datetime을 가장 가까운 minutes 단위로 반올림합니다(예: 15분 단위면 9:08 → 9:15,
-    9:06 → 9:00)."""
+def _round_up_minutes(dt, minutes):
+    """클락인 시각에 씁니다. 지정된 분 단위로 항상 올림합니다(예: 30분 단위면
+    9:16 → 9:30). 일찍 출근하거나 아주 살짝 늦게 출근해도 그만큼 급여가 더 나가지
+    않도록, 절대 직원에게 유리한 쪽으로 반올림하지 않습니다 — 언제나 다음 단위부터
+    급여가 계산되기 시작합니다."""
     if minutes <= 1:
         return dt.replace(second=0, microsecond=0)
-    discard = timedelta(minutes=dt.minute % minutes, seconds=dt.second, microseconds=dt.microsecond)
-    rounded = dt - discard
-    if discard >= timedelta(minutes=minutes / 2):
-        rounded += timedelta(minutes=minutes)
-    return rounded
+    dt = dt.replace(second=0, microsecond=0)
+    remainder = dt.minute % minutes
+    if remainder == 0:
+        return dt
+    return dt + timedelta(minutes=(minutes - remainder))
+
+
+def _round_down_minutes(dt, minutes):
+    """클락아웃 시각에 씁니다. 지정된 분 단위로 항상 내림(버림)합니다(예: 30분 단위면
+    9:46 → 9:30). 조금 늦게 클락아웃을 찍어도 그 여분의 시간만큼 급여가 더 나가지
+    않도록, 언제나 이전 단위까지만 급여로 인정합니다."""
+    if minutes <= 1:
+        return dt.replace(second=0, microsecond=0)
+    dt = dt.replace(second=0, microsecond=0)
+    remainder = dt.minute % minutes
+    return dt - timedelta(minutes=remainder)
 
 
 def _actual_hours_for_entry(entry, rounding_minutes):
-    """이 클락인/아웃 기록의 실제 근무시간을, 회사가 설정한 반올림 단위로 각각
-    반올림한 뒤 계산합니다(스케줄 시간 계산과 동일하게 휴게시간 1시간을 뺍니다).
+    """이 클락인/아웃 기록의 실제 근무시간을 계산합니다(스케줄 시간 계산과 동일하게
+    휴게시간 1시간을 뺍니다). 클락인은 올림(늦게 인정), 클락아웃은 내림(일찍 인정)해서
+    — 어느 쪽으로도 직원에게 유리하게 반올림되지 않는, 악용 방지용 "버림" 방식입니다.
     아직 클락아웃을 안 했으면(진행 중) None을 돌려줍니다."""
     if not entry.get("clock_in") or not entry.get("clock_out"):
         return None
@@ -551,8 +565,8 @@ def _actual_hours_for_entry(entry, rounding_minutes):
         clock_out = datetime.fromisoformat(entry["clock_out"])
     except (TypeError, ValueError):
         return None
-    rounded_in = _round_to_nearest_minutes(clock_in, rounding_minutes)
-    rounded_out = _round_to_nearest_minutes(clock_out, rounding_minutes)
+    rounded_in = _round_up_minutes(clock_in, rounding_minutes)
+    rounded_out = _round_down_minutes(clock_out, rounding_minutes)
     minutes = (rounded_out - rounded_in).total_seconds() / 60
     return max(0.0, minutes / 60 - PAYROLL_BREAK_HOURS)
 
@@ -2393,6 +2407,27 @@ def generate_week_schedule(company_id, week_key):
     pin_raw = payload.get("pin", [])
     pinned = [(a["employee_id"], a["day"], a["shift_type"]) for a in pin_raw]
     random_seed = random.randint(1, 10_000_000) if exclude_solutions else None
+
+    # ---- 근무 요건이 아예 없는 요일/근무유형에는 암묵적으로 "필요인원 0"을 채워 넣습니다 ----
+    # 지금까지는 요건 칸이 빈칸(=요건 없음)이면 그 요일/근무유형에 아예 상한이 없어서,
+    # 스케줄러가 다른 목적(예: 최소시간 채우기)을 위해 그 자리에 자유롭게 사람을 넣을 수
+    # 있었습니다. "요건을 안 넣었다"는 걸 "아무도 배치하면 안 된다"는 뜻으로 정확히
+    # 반영하기 위해, 요건이 없는 칸은 필요인원 0으로 하드 고정합니다 — 다만 그 칸에 수동
+    # 고정(pin) 배치가 있으면, 그 인원수만큼은 예외로 허용합니다(관리자가 일부러 넣은
+    # 자리는 존중해야 하므로).
+    existing_req_keys = {(r.day, r.shift_type) for r in requirements}
+    pin_count_by_day_shift = {}
+    for emp_id, day, shift in pinned:
+        pin_count_by_day_shift[(day, shift)] = pin_count_by_day_shift.get((day, shift), 0) + 1
+    for st in state["shift_types"]:
+        shift_id = st["id"]
+        for day in DAYS:
+            key = (day, shift_id)
+            if key not in existing_req_keys:
+                requirements.append(ShiftRequirement(
+                    day=day, shift_type=shift_id,
+                    required_count=pin_count_by_day_shift.get(key, 0),
+                ))
 
     # ---- pin(수동 사전 배치) 검증 ----
     # pin은 model.Add(x == 1)로 하드 고정되는데, 이게 다른 하드 규칙과 모순되면
