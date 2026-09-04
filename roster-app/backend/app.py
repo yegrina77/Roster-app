@@ -553,10 +553,31 @@ def _round_down_minutes(dt, minutes):
     return dt - timedelta(minutes=remainder)
 
 
+def _actual_break_hours(entry):
+    """이 클락인/아웃 기록에 실제로 기록된 휴게시간 합계(시간 단위)입니다. 아직 끝나지
+    않은(진행 중) 휴게는 계산에서 제외합니다(클락아웃 시점에 자동으로 닫히므로, 완료된
+    기록에는 보통 열린 휴게가 남아있지 않습니다)."""
+    total_minutes = 0.0
+    for br in (entry.get("breaks") or []):
+        if not br.get("start") or not br.get("end"):
+            continue
+        try:
+            start = datetime.fromisoformat(br["start"])
+            end = datetime.fromisoformat(br["end"])
+        except (TypeError, ValueError):
+            continue
+        total_minutes += max(0.0, (end - start).total_seconds() / 60)
+    return total_minutes / 60
+
+
 def _actual_hours_for_entry(entry, rounding_minutes):
-    """이 클락인/아웃 기록의 실제 근무시간을 계산합니다(스케줄 시간 계산과 동일하게
-    휴게시간 1시간을 뺍니다). 클락인은 올림(늦게 인정), 클락아웃은 내림(일찍 인정)해서
-    — 어느 쪽으로도 직원에게 유리하게 반올림되지 않는, 악용 방지용 "버림" 방식입니다.
+    """이 클락인/아웃 기록의 실제 근무시간을 계산합니다. 클락인은 올림(늦게 인정),
+    클락아웃은 내림(일찍 인정)해서 — 어느 쪽으로도 직원에게 유리하게 반올림되지 않는,
+    악용 방지용 "버림" 방식입니다. 그렇게 계산된 시간에서, 실제로 "휴게 시작/종료"
+    버튼으로 기록된 휴게시간(무급으로 취급)을 뺍니다 — 스케줄 단계의 고정 1시간
+    추정치와 달리, 실제 근무는 진짜 기록된 휴게시간만큼만 뺍니다. 휴게 기록이 아예
+    없으면(직원이 버튼을 안 눌렀다면) 아무것도 빼지 않습니다 — 없는 휴게를 추측해서
+    임의로 차감하지 않기 위함입니다.
     아직 클락아웃을 안 했으면(진행 중) None을 돌려줍니다."""
     if not entry.get("clock_in") or not entry.get("clock_out"):
         return None
@@ -568,12 +589,15 @@ def _actual_hours_for_entry(entry, rounding_minutes):
     rounded_in = _round_up_minutes(clock_in, rounding_minutes)
     rounded_out = _round_down_minutes(clock_out, rounding_minutes)
     minutes = (rounded_out - rounded_in).total_seconds() / 60
-    return max(0.0, minutes / 60 - PAYROLL_BREAK_HOURS)
+    hours = max(0.0, minutes / 60)
+    hours -= _actual_break_hours(entry)
+    return max(0.0, hours)
 
 
 PAYROLL_BREAK_HOURS = 1  # 프론트엔드 캘린더의 "요일별 총 근무시간" 표시와 반드시 같은 기준을
 # 써야 하므로(assignmentDurationHours()의 BREAK_HOURS와 동일한 값), 근무 9시간이든 8시간이든
-# 실제 유급 근무는 이 시간만큼 뺀 값으로 계산합니다.
+# 실제 유급 근무는 이 시간만큼 뺀 값으로 계산합니다. (스케줄 단계의 "예정" 시간에만 쓰이는
+# 추정치이고, 실제 클락인/아웃 기록에는 위 _actual_break_hours()의 진짜 기록을 씁니다.)
 
 
 def _assignment_duration_hours(a, shift_times):
@@ -1976,9 +2000,24 @@ def employee_clock_status(company_id, employee):
         (e for e in state["time_entries"] if e["employee_id"] == employee["id"] and not e.get("clock_out")),
         None,
     )
+    on_break = False
+    break_start = None
+    if open_entry:
+        breaks = open_entry.get("breaks") or []
+        if breaks and not breaks[-1].get("end"):
+            on_break = True
+            break_start = breaks[-1]["start"]
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    done_for_today = any(
+        e["employee_id"] == employee["id"] and e.get("date") == today_iso and e.get("clock_out")
+        for e in state["time_entries"]
+    ) and not open_entry
     return jsonify({
         "clocked_in": bool(open_entry),
         "clock_in": open_entry["clock_in"] if open_entry else None,
+        "on_break": on_break,
+        "break_start": break_start,
+        "done_for_today": done_for_today,
     })
 
 
@@ -1992,19 +2031,68 @@ def employee_clock_in(company_id, employee):
     )
     if open_entry:
         return jsonify({"error": "이미 클락인되어 있습니다. 먼저 클락아웃해주세요."}), 400
+
     now = datetime.now(timezone.utc)
+    today_iso = now.date().isoformat()
+    # 오늘 이미 클락아웃(퇴근 처리)한 기록이 있으면 다시 클락인할 수 없습니다 — 하루에
+    # 여러 번 클락인/아웃 하는 건 "휴게" 버튼으로 처리해야 하고, 클락아웃은 그날의
+    # 근무가 완전히 끝났다는 뜻이어야 관리자 입장에서도 헷갈리지 않습니다.
+    already_done_today = any(
+        e["employee_id"] == employee["id"] and e.get("date") == today_iso and e.get("clock_out")
+        for e in state["time_entries"]
+    )
+    if already_done_today:
+        return jsonify({"error": "오늘은 이미 퇴근(클락아웃) 처리되었습니다. 잠깐 쉬는 거라면 '휴게 시작' 버튼을 이용해주세요."}), 400
+
     entry = {
         "id": secrets.token_hex(8),
         "employee_id": employee["id"],
-        "date": now.date().isoformat(),
+        "date": today_iso,
         "clock_in": now.isoformat(),
         "clock_out": None,
+        "breaks": [],
         "edited": False,
         "edit_history": [],
     }
     state["time_entries"].append(entry)
     save_state(company_id, state)
     return jsonify(entry), 201
+
+
+@app.route("/api/employee-auth/break-start", methods=["POST"])
+@require_employee_login
+def employee_break_start(company_id, employee):
+    state = load_state(company_id)
+    open_entry = next(
+        (e for e in state["time_entries"] if e["employee_id"] == employee["id"] and not e.get("clock_out")),
+        None,
+    )
+    if not open_entry:
+        return jsonify({"error": "먼저 클락인해주세요."}), 400
+    breaks = open_entry.setdefault("breaks", [])
+    if breaks and not breaks[-1].get("end"):
+        return jsonify({"error": "이미 휴게 중입니다."}), 400
+    breaks.append({"id": secrets.token_hex(6), "start": datetime.now(timezone.utc).isoformat(), "end": None})
+    save_state(company_id, state)
+    return jsonify(open_entry)
+
+
+@app.route("/api/employee-auth/break-end", methods=["POST"])
+@require_employee_login
+def employee_break_end(company_id, employee):
+    state = load_state(company_id)
+    open_entry = next(
+        (e for e in state["time_entries"] if e["employee_id"] == employee["id"] and not e.get("clock_out")),
+        None,
+    )
+    if not open_entry:
+        return jsonify({"error": "먼저 클락인해주세요."}), 400
+    breaks = open_entry.get("breaks") or []
+    if not breaks or breaks[-1].get("end"):
+        return jsonify({"error": "진행 중인 휴게가 없습니다."}), 400
+    breaks[-1]["end"] = datetime.now(timezone.utc).isoformat()
+    save_state(company_id, state)
+    return jsonify(open_entry)
 
 
 @app.route("/api/employee-auth/clock-out", methods=["POST"])
@@ -2017,7 +2105,13 @@ def employee_clock_out(company_id, employee):
     )
     if not open_entry:
         return jsonify({"error": "클락인 기록이 없습니다."}), 400
-    open_entry["clock_out"] = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    # 휴게 중에 클락아웃을 누르면, 열려있던 휴게도 같이 닫아줍니다 — 휴게가 계속 "진행
+    # 중"인 채로 남아있는 이상한 상태를 방지하기 위함입니다.
+    breaks = open_entry.get("breaks") or []
+    if breaks and not breaks[-1].get("end"):
+        breaks[-1]["end"] = now_iso
+    open_entry["clock_out"] = now_iso
     save_state(company_id, state)
     return jsonify(open_entry)
 
@@ -2030,7 +2124,8 @@ def employee_clock_out(company_id, employee):
 @require_login
 def list_time_entries(company_id):
     """사장/매니저 전용: 특정 주(week_key 쿼리 파라미터)의 전 직원 클락인/아웃 기록을
-    보여줍니다. 반올림 적용 후 실제 근무시간도 같이 계산해서 내려줍니다."""
+    보여줍니다. 반올림(클락인 올림/클락아웃 버림) 적용 후 실제 근무시간, 그리고 실제
+    기록된 휴게시간 합계도 같이 계산해서 내려줍니다."""
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
     week_key = request.args.get("week_key")
@@ -2049,6 +2144,7 @@ def list_time_entries(company_id):
         row = dict(e)
         row["employee_name"] = employee_names.get(e["employee_id"], "?")
         row["actual_hours"] = _actual_hours_for_entry(e, rounding)
+        row["break_hours"] = round(_actual_break_hours(e), 2)
         out.append(row)
     return jsonify(out)
 
