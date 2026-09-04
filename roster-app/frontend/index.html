@@ -900,6 +900,8 @@ const I18N = {
     time_entries_edit_title: "{name} 시간 수정", time_entries_clock_in_label: "클락인 시각",
     time_entries_clock_out_label: "클락아웃 시각", time_entries_reason_label: "수정 사유 (필수)",
     time_entries_reason_placeholder: "예: 직원이 클락인을 깜빡함", time_entries_reason_required: "수정 사유를 입력해주세요.",
+    time_entries_delete_btn: "🗑️ 삭제", time_entries_delete_confirm_title: "클락인/아웃 기록 삭제",
+    time_entries_delete_confirm_msg: "{name}님의 {date} 근무 기록을 완전히 삭제합니다. 되돌릴 수 없습니다. 계속할까요?",
     payroll_leave_included: "유급/병가 리브 {n}일 포함",
     payroll_ph_premium_included: "공휴일 1.5배 {n}일 포함", payroll_ph_avgpay_included: "공휴일 평균급여 {n}일 포함",
     admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
@@ -1154,6 +1156,8 @@ const I18N = {
     time_entries_edit_title: "Edit time for {name}", time_entries_clock_in_label: "Clock-in time",
     time_entries_clock_out_label: "Clock-out time", time_entries_reason_label: "Reason for edit (required)",
     time_entries_reason_placeholder: "e.g. Employee forgot to clock in", time_entries_reason_required: "Please enter a reason for this edit.",
+    time_entries_delete_btn: "🗑️ Delete", time_entries_delete_confirm_title: "Delete Time Entry",
+    time_entries_delete_confirm_msg: "This will permanently delete {name}'s time entry for {date}. This cannot be undone. Continue?",
     payroll_leave_included: "Includes {n} day(s) of paid/sick leave",
     payroll_ph_premium_included: "Includes {n} day(s) at 1.5x (public holiday)", payroll_ph_avgpay_included: "Includes {n} day(s) of average pay (public holiday)",
     admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
@@ -2697,28 +2701,52 @@ function showEditTimeEntryModal(entry, onSaved) {
   title.textContent = tf("time_entries_edit_title", {name: entry.employee_name});
   box.appendChild(title);
 
-  const toLocalInput = (iso) => {
+  const toDatePart = (iso) => {
     if (!iso) return "";
     const d = new Date(iso);
     const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  const toTimePart = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   const inLabel = document.createElement("label");
   inLabel.textContent = t("time_entries_clock_in_label");
   inLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
-  const inInput = document.createElement("input");
-  inInput.type = "datetime-local";
-  inInput.style.width = "100%";
-  inInput.value = toLocalInput(entry.clock_in);
+  const inRow = document.createElement("div");
+  inRow.style.cssText = "display:flex; gap:8px;";
+  const inDateInput = document.createElement("input");
+  inDateInput.type = "date";
+  inDateInput.style.flex = "1";
+  inDateInput.value = toDatePart(entry.clock_in);
+  enableClickToOpenDatePicker(inDateInput);
+  const inTimeInput = document.createElement("input");
+  inTimeInput.type = "time";
+  inTimeInput.style.flex = "1";
+  inTimeInput.value = toTimePart(entry.clock_in);
+  inRow.appendChild(inDateInput);
+  inRow.appendChild(inTimeInput);
 
   const outLabel = document.createElement("label");
   outLabel.textContent = t("time_entries_clock_out_label");
   outLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
-  const outInput = document.createElement("input");
-  outInput.type = "datetime-local";
-  outInput.style.width = "100%";
-  outInput.value = toLocalInput(entry.clock_out);
+  const outRow = document.createElement("div");
+  outRow.style.cssText = "display:flex; gap:8px;";
+  const outDateInput = document.createElement("input");
+  outDateInput.type = "date";
+  outDateInput.style.flex = "1";
+  outDateInput.value = toDatePart(entry.clock_out);
+  enableClickToOpenDatePicker(outDateInput);
+  const outTimeInput = document.createElement("input");
+  outTimeInput.type = "time";
+  outTimeInput.style.flex = "1";
+  outTimeInput.value = toTimePart(entry.clock_out);
+  outRow.appendChild(outDateInput);
+  outRow.appendChild(outTimeInput);
 
   const reasonLabel = document.createElement("label");
   reasonLabel.textContent = t("time_entries_reason_label");
@@ -2732,15 +2760,38 @@ function showEditTimeEntryModal(entry, onSaved) {
   errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
 
   box.appendChild(inLabel);
-  box.appendChild(inInput);
+  box.appendChild(inRow);
   box.appendChild(outLabel);
-  box.appendChild(outInput);
+  box.appendChild(outRow);
   box.appendChild(reasonLabel);
   box.appendChild(reasonInput);
   box.appendChild(errLine);
 
   const btnRow = document.createElement("div");
-  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:space-between; align-items:center; margin-top:14px;";
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "btn-danger";
+  deleteBtn.textContent = t("time_entries_delete_btn");
+  deleteBtn.onclick = async () => {
+    const confirmed = await showConfirmModal(
+      t("time_entries_delete_confirm_title"),
+      tf("time_entries_delete_confirm_msg", {name: entry.employee_name, date: entry.date}),
+      t("time_entries_delete_btn"), t("btn_cancel"),
+    );
+    if (!confirmed) return;
+    deleteBtn.disabled = true;
+    try {
+      await api(`/api/time-entries/${entry.id}`, {method: "DELETE"});
+      overlay.remove();
+      onSaved();
+    } catch (e) {
+      deleteBtn.disabled = false;
+    }
+  };
+
+  const rightBtns = document.createElement("div");
+  rightBtns.style.cssText = "display:flex; gap:8px;";
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "btn-ghost";
   cancelBtn.textContent = t("btn_cancel");
@@ -2757,8 +2808,12 @@ function showEditTimeEntryModal(entry, onSaved) {
     }
     saveBtn.disabled = true;
     const body = {reason};
-    if (inInput.value) body.clock_in = new Date(inInput.value).toISOString();
-    body.clock_out = outInput.value ? new Date(outInput.value).toISOString() : null;
+    if (inDateInput.value && inTimeInput.value) {
+      body.clock_in = new Date(`${inDateInput.value}T${inTimeInput.value}`).toISOString();
+    }
+    body.clock_out = (outDateInput.value && outTimeInput.value)
+      ? new Date(`${outDateInput.value}T${outTimeInput.value}`).toISOString()
+      : null;
     try {
       await api(`/api/time-entries/${entry.id}`, {
         method: "PUT",
@@ -2771,8 +2826,10 @@ function showEditTimeEntryModal(entry, onSaved) {
       saveBtn.disabled = false;
     }
   };
-  btnRow.appendChild(cancelBtn);
-  btnRow.appendChild(saveBtn);
+  rightBtns.appendChild(cancelBtn);
+  rightBtns.appendChild(saveBtn);
+  btnRow.appendChild(deleteBtn);
+  btnRow.appendChild(rightBtns);
   box.appendChild(btnRow);
 
   overlay.appendChild(box);
