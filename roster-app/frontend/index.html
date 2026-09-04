@@ -826,6 +826,8 @@ const I18N = {
     emp_clock_title: "근무 시간 기록", emp_clock_not_in: "클락인 안 함",
     emp_clock_since: "{time}부터 근무 중", emp_clock_in_btn: "클락인", emp_clock_out_btn: "클락아웃",
     emp_clock_done_today: "오늘 근무를 마쳤습니다. 내일 다시 클락인해주세요.",
+    emp_clock_week_not_published: "이번 주 스케줄이 아직 게시되지 않았습니다.",
+    emp_clock_needs_agree: "먼저 이번 주 스케줄을 확인하고 '확인했습니다'를 눌러야 클락인할 수 있습니다.",
     emp_break_since: "{time}부터 휴게 중", emp_break_start_btn: "☕ 휴게 시작", emp_break_end_btn: "▶️ 휴게 종료",
     auth_company_name: "회사(매장) 이름", auth_contact_name: "담당자 이름", auth_phone: "전화번호 (선택)",
     auth_employee_limit: "예상 직원 수",
@@ -1082,6 +1084,8 @@ const I18N = {
     emp_clock_title: "Time Clock", emp_clock_not_in: "Not clocked in",
     emp_clock_since: "Clocked in since {time}", emp_clock_in_btn: "Clock In", emp_clock_out_btn: "Clock Out",
     emp_clock_done_today: "You've finished for today. Clock in again tomorrow.",
+    emp_clock_week_not_published: "This week's schedule hasn't been published yet.",
+    emp_clock_needs_agree: "Please review this week's schedule and tap 'I've seen this' before clocking in.",
     emp_break_since: "On break since {time}", emp_break_start_btn: "☕ Start Break", emp_break_end_btn: "▶️ End Break",
     auth_company_name: "Company (Store) Name", auth_contact_name: "Contact Name", auth_phone: "Phone Number (optional)",
     auth_employee_limit: "Expected Number of Employees",
@@ -1568,11 +1572,19 @@ async function refreshClockStatus() {
     clockBtn.dataset.state = "in";
     clockBtn.style.background = "var(--danger, #ef4444)";
   } else {
-    statusLine.textContent = t("emp_clock_not_in");
+    breakBtn.style.display = "none";
     clockBtn.textContent = t("emp_clock_in_btn");
     clockBtn.dataset.state = "out";
     clockBtn.style.background = "";
-    breakBtn.style.display = "none";
+    if (!data.week_published) {
+      statusLine.textContent = t("emp_clock_week_not_published");
+      clockBtn.disabled = true;
+    } else if (!data.week_agreed) {
+      statusLine.textContent = t("emp_clock_needs_agree");
+      clockBtn.disabled = true;
+    } else {
+      statusLine.textContent = t("emp_clock_not_in");
+    }
   }
 }
 
@@ -1683,6 +1695,7 @@ async function loadEmployeeWeek() {
       });
       if (res.ok) {
         loadEmployeeWeek();
+        refreshClockStatus();
       } else {
         agreeBtn.disabled = false;
       }
@@ -2322,9 +2335,9 @@ async function showPayrollPage(weekKey) {
   try {
     data = await api(`/api/weeks/${weekKey}/payroll`);
   } catch (e) {
-    return;
+    return false;
   }
-  if (!data) return;
+  if (!data) return false;
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -2353,14 +2366,20 @@ async function showPayrollPage(weekKey) {
   const prevBtn = document.createElement("button");
   prevBtn.className = "btn-ghost btn-sm";
   prevBtn.textContent = "◀";
-  prevBtn.onclick = () => { overlay.remove(); showPayrollPage(addDaysToKey(weekKey, -7)); };
+  prevBtn.onclick = async () => {
+    const opened = await showPayrollPage(addDaysToKey(weekKey, -7));
+    if (opened) overlay.remove();
+  };
   const weekLabel = document.createElement("div");
   weekLabel.style.cssText = "font-weight:600; font-size:13px; flex:1; text-align:center;";
   weekLabel.textContent = formatWeekLabel(weekKey);
   const nextBtn = document.createElement("button");
   nextBtn.className = "btn-ghost btn-sm";
   nextBtn.textContent = "▶";
-  nextBtn.onclick = () => { overlay.remove(); showPayrollPage(addDaysToKey(weekKey, 7)); };
+  nextBtn.onclick = async () => {
+    const opened = await showPayrollPage(addDaysToKey(weekKey, 7));
+    if (opened) overlay.remove();
+  };
   weekNavRow.appendChild(prevBtn);
   weekNavRow.appendChild(weekLabel);
   weekNavRow.appendChild(nextBtn);
@@ -2511,6 +2530,7 @@ async function showPayrollPage(weekKey) {
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+  return true;
 }
 
 async function showPayrollRoundingModal(weekKey) {
