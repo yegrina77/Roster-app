@@ -2191,6 +2191,22 @@ def edit_time_entry(company_id, entry_id):
     return jsonify(entry)
 
 
+@app.route("/api/time-entries/<entry_id>", methods=["DELETE"])
+@require_login
+def delete_time_entry(company_id, entry_id):
+    """사장/매니저 전용: 클락인/아웃 기록을 완전히 삭제합니다(예: 직원이 실수로
+    잘못 찍은 기록을 아예 없애고 싶을 때). 되돌릴 수 없는 작업입니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    state = load_state(company_id)
+    before_count = len(state["time_entries"])
+    state["time_entries"] = [e for e in state["time_entries"] if e["id"] != entry_id]
+    if len(state["time_entries"]) == before_count:
+        return jsonify({"error": "Time entry not found."}), 404
+    save_state(company_id, state)
+    return "", 204
+
+
 # ---------------------------------------------------------------------------
 # 급여 반올림 정책 (사장 전용 — 조회/수정 둘 다)
 # ---------------------------------------------------------------------------
