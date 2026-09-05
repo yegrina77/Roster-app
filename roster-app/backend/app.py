@@ -703,7 +703,17 @@ def _compute_week_payroll(state, week_key):
     total_actual_cost = 0.0
 
     for e in state["employees"]:
-        wage = e.get("hourly_wage")
+        is_salary = e.get("pay_type") == "salary"
+        if is_salary:
+            wage = None
+            salary_rate = _effective_hourly_rate_for_salary(e)  # 공휴일 추가수당 계산용 환산 시급
+            base_weekly = _weekly_salary(e)
+            has_wage = e.get("annual_salary") is not None
+        else:
+            wage = e.get("hourly_wage")
+            salary_rate = None
+            base_weekly = None
+            has_wage = wage is not None
         emp_id = e["id"]
         weekly_hours = 0.0
         weekly_pay = 0.0
@@ -731,21 +741,37 @@ def _compute_week_payroll(state, week_key):
             if day in holiday_by_day:
                 category, _count, _is_usual = _public_holiday_category(state, policy, emp_id, day, week_key, worked)
                 if category in (1, 3):
-                    pay = hours * wage * 1.5 if wage is not None else None
-                    actual_pay = actual_hours * wage * 1.5 if wage is not None else None
+                    if is_salary:
+                        # 연봉제는 기본급이 이미 고정 주급에 포함되어 있으므로, 공휴일에
+                        # 일한 시간만큼 "0.5배 추가수당"만 더 얹어줍니다(1.5배 전체가
+                        # 아니라 0.5배만 — 나머지 1배는 이미 주급에 포함되어 있으므로).
+                        pay = 0.5 * salary_rate * hours if salary_rate is not None else None
+                        actual_pay = 0.5 * salary_rate * actual_hours if salary_rate is not None else None
+                    else:
+                        pay = hours * wage * 1.5 if wage is not None else None
+                        actual_pay = actual_hours * wage * 1.5 if wage is not None else None
                 elif category == 2:
-                    pay = avg_day_hours * wage if wage is not None else None
+                    # 평소 근무일인데 안 일함 — 시급제는 하루치 평균급여를 별도 지급하지만,
+                    # 연봉제는 어차피 고정 주급에 이미 포함되어 있으므로 추가 지급이 없습니다.
+                    pay = (0.0 if has_wage else None) if is_salary else (avg_day_hours * wage if wage is not None else None)
                     actual_pay = pay
                 else:
-                    pay = 0.0 if wage is not None else None
-                    actual_pay = 0.0 if wage is not None else None
+                    pay = 0.0 if has_wage else None
+                    actual_pay = 0.0 if has_wage else None
             elif leave_type and _is_paid_leave(leave_type) and not worked:
-                # 유급/병가 리브 — 실제 배정/근무 시간이 없어도 하루치 평균급여를 지급합니다.
-                pay = avg_day_hours * wage if wage is not None else None
+                # 유급/병가 리브 — 시급제는 하루치 평균급여를 지급하지만, 연봉제는 이미
+                # 고정 주급에 포함되어 있으므로 추가 지급이 없습니다.
+                pay = (0.0 if has_wage else None) if is_salary else (avg_day_hours * wage if wage is not None else None)
                 actual_pay = pay
             else:
-                pay = hours * wage if wage is not None else None
-                actual_pay = actual_hours * wage if wage is not None else None
+                if is_salary:
+                    # 평범한 근무일 — 연봉제는 몇 시간을 일했든 요일별로 추가 지급이 없고
+                    # (기본급은 주급으로 한 번에 반영), 시급제만 시간×시급으로 계산합니다.
+                    pay = 0.0 if has_wage else None
+                    actual_pay = 0.0 if has_wage else None
+                else:
+                    pay = hours * wage if wage is not None else None
+                    actual_pay = actual_hours * wage if wage is not None else None
 
             per_day[day] = {
                 "hours": round(hours, 2),
@@ -768,10 +794,18 @@ def _compute_week_payroll(state, week_key):
                 weekly_actual_pay += actual_pay
                 day_totals[day]["actual_cost"] += actual_pay
 
-        has_wage = wage is not None
+        # 연봉제는 고정 주급을 요일 하나에 귀속시키지 않고, 주간 합계에만 한 번 더해줍니다
+        # (그래서 위 요일별 표(day_totals)에는 연봉제 직원의 기본급이 잡히지 않고, 공휴일
+        # 추가수당만 그날에 표시됩니다 — 기본급은 특정 요일에 "발생"하는 비용이 아니므로).
+        if is_salary and has_wage:
+            weekly_pay += base_weekly
+            weekly_actual_pay += base_weekly
+
         employee_rows.append({
             "employee_id": emp_id, "employee_name": e["name"],
-            "hourly_wage": wage, "has_wage_set": has_wage,
+            "pay_type": "salary" if is_salary else "hourly",
+            "hourly_wage": wage, "annual_salary": e.get("annual_salary"),
+            "has_wage_set": has_wage,
             "weekly_hours": round(weekly_hours, 2),
             "weekly_pay": round(weekly_pay, 2) if has_wage else None,
             "weekly_actual_hours": round(weekly_actual_hours, 2),
@@ -860,6 +894,38 @@ def _sanitize_wage(value):
     if wage <= 0 or wage > 1000:
         return None
     return round(wage, 2)
+
+
+def _sanitize_annual_salary(value):
+    """연봉 입력값을 검증합니다. 숫자가 아니거나 0 이하/비정상적으로 큰 값(연 $10,000,000
+    초과 — 오타 방지용 상한)이면 None(미설정)으로 취급합니다."""
+    try:
+        salary = float(value)
+    except (TypeError, ValueError):
+        return None
+    if salary <= 0 or salary > 10_000_000:
+        return None
+    return round(salary, 2)
+
+
+def _weekly_salary(employee_dict):
+    """연봉을 52주로 나눈 고정 주급입니다. 연봉제 직원의 스케줄/실제 근무시간과
+    무관하게 매주 동일하게 지급되는 기본급입니다."""
+    salary = employee_dict.get("annual_salary")
+    if salary is None:
+        return None
+    return round(salary / 52, 2)
+
+
+def _effective_hourly_rate_for_salary(employee_dict):
+    """연봉제 직원의 '환산 시급'입니다 — 공휴일 근무 시 추가수당(0.5배)을 계산하기
+    위한 용도로만 씁니다. 연봉 ÷ 52주 ÷ 주당 계약시간(min_hours_per_week)으로
+    계산합니다. 계약시간이 0이거나 없으면 계산할 수 없으므로 None을 돌려줍니다."""
+    weekly = _weekly_salary(employee_dict)
+    weekly_hours = employee_dict.get("min_hours_per_week") or 0
+    if weekly is None or weekly_hours <= 0:
+        return None
+    return weekly / weekly_hours
 
 
 DEFAULT_GEOFENCE_RADIUS_M = 100  # 디퓨티 등 실제 업체들이 "GPS 오차 감안 시 최소 권장값"으로
@@ -1854,8 +1920,14 @@ def add_employee(company_id):
         "leave_requests": _prune_expired_leave_requests(payload.get("leave_requests", [])),
         "recent_night_count": payload.get("recent_night_count", 0),
         "recent_weekend_count": payload.get("recent_weekend_count", 0),
+        # 급여 방식: "hourly"(시급제, 기본값) 또는 "salary"(연봉제). 연봉제면 hourly_wage
+        # 대신 annual_salary를 씁니다 — 둘 다 저장은 해두되, 급여 계산은 pay_type을
+        # 보고 어느 쪽을 쓸지 결정합니다.
+        "pay_type": payload.get("pay_type") if payload.get("pay_type") in ("hourly", "salary") else "hourly",
         # 시급. 급여/Labour Cost 계산에 쓰입니다 — 설정 안 하면 None(급여 계산에서 제외).
         "hourly_wage": _sanitize_wage(payload.get("hourly_wage")),
+        # 연봉(연봉제 직원용). 설정 안 하면 None.
+        "annual_salary": _sanitize_annual_salary(payload.get("annual_salary")),
         # 직원 로그인용 PIN — 등록 시 자동으로 무작위 생성됩니다. 관리자/매니저가
         # "직원 PIN 조회" 화면에서 확인하거나 재발급할 수 있습니다.
         "pin": _generate_pin(),
@@ -1880,12 +1952,17 @@ def update_employee(company_id, employee_id):
         "name", "department", "min_hours_per_week", "target_days_per_week",
         "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
         "leave_requests", "recent_night_count", "recent_weekend_count", "hourly_wage",
+        "pay_type", "annual_salary",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "leave_requests" in updates:
         updates["leave_requests"] = _prune_expired_leave_requests(updates["leave_requests"])
     if "hourly_wage" in updates:
         updates["hourly_wage"] = _sanitize_wage(updates["hourly_wage"])
+    if "annual_salary" in updates:
+        updates["annual_salary"] = _sanitize_annual_salary(updates["annual_salary"])
+    if "pay_type" in updates and updates["pay_type"] not in ("hourly", "salary"):
+        updates["pay_type"] = "hourly"
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             state["employees"][i].update(updates)
