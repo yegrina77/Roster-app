@@ -866,6 +866,17 @@ const I18N = {
     auth_pending_default_msg: "가입 요청이 접수되었습니다. 관리자 승인 후 이메일로 안내드립니다.",
     admin_pending_nav_btn: "📋 승인 대기", admin_pending_title: "가입 승인 대기 목록",
     manager_menu_btn: "⚙️ 관리자 메뉴", pins_nav_btn: "🔑 직원 PIN 조회",
+    geofence_nav_btn: "📍 매장 위치 설정",
+    geofence_title: "매장 위치 (지오펜싱)", geofence_sub: "직원이 매장 근처에서만 클락인할 수 있도록 제한합니다. 매장 안에서 이 화면을 열고 아래 버튼을 눌러주세요.",
+    geofence_not_set: "아직 매장 위치가 설정되지 않았습니다. 지오펜싱이 꺼진 상태로, 위치 제한 없이 클락인할 수 있습니다.",
+    geofence_current: "매장 위치: {lat}, {lng} · 허용 반경 {radius}m · {status}",
+    geofence_status_on: "✅ 켜짐", geofence_status_off: "⏸️ 꺼짐",
+    geofence_radius_label: "허용 반경 (m, 50~5000)",
+    geofence_save_here_btn: "📍 현재 위치를 매장 위치로 저장", geofence_locating: "위치 확인 중...",
+    geofence_enable_label: "지오펜싱 켜기 (매장 반경 밖에서는 클락인 차단)",
+    geofence_note: "클락인은 매장 반경을 벗어나면 차단됩니다. 클락아웃과 휴게 시작/종료는 막지 않지만, 위치는 그대로 기록되어 관리자가 나중에 확인할 수 있습니다.",
+    geofence_unsupported: "이 브라우저는 위치 정보를 지원하지 않습니다.",
+    geofence_permission_denied: "위치 정보 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.",
     pins_icon: "🔑", pins_nav_btn_text: "직원 PIN 조회",
     manager_nav_btn: "🧑‍💼 매니저 관리", manager_page_title: "매니저 계정 관리",
     manager_page_sub: "사장 본인의 비밀번호를 공유하지 않고도, 매니저마다 별도의 로그인 계정을 만들어줄 수 있습니다. 매니저는 급여 관련 페이지에 접근할 수 있습니다.",
@@ -899,6 +910,7 @@ const I18N = {
     time_entries_empty: "이번 주 기록이 없습니다.", time_entries_in_progress: "진행 중",
     time_entries_hours: "{h}시간", time_entries_edited_by: "{name}님이 {date}에 수정함 — 사유: {reason}",
     time_entries_break_line: "휴게 {h}시간 ({list})",
+    time_entries_distance_in: "클락인 매장서 {m}m", time_entries_distance_out: "클락아웃 매장서 {m}m",
     time_entries_edit_title: "{name} 시간 수정", time_entries_clock_in_label: "클락인 시각",
     time_entries_clock_out_label: "클락아웃 시각", time_entries_reason_label: "수정 사유 (필수)",
     time_entries_reason_placeholder: "예: 직원이 클락인을 깜빡함", time_entries_reason_required: "수정 사유를 입력해주세요.",
@@ -1124,6 +1136,17 @@ const I18N = {
     auth_pending_default_msg: "Your signup request has been submitted. You'll be notified by email once reviewed.",
     admin_pending_nav_btn: "📋 Pending Requests", admin_pending_title: "Pending Signup Requests",
     manager_menu_btn: "⚙️ Admin Menu", pins_nav_btn: "🔑 Employee PINs",
+    geofence_nav_btn: "📍 Store Location",
+    geofence_title: "Store Location (Geofencing)", geofence_sub: "Restrict clock-ins to near the store. Open this screen while standing at the store and tap the button below.",
+    geofence_not_set: "No store location set yet. Geofencing is off, so employees can clock in from anywhere.",
+    geofence_current: "Store location: {lat}, {lng} · Radius {radius}m · {status}",
+    geofence_status_on: "✅ On", geofence_status_off: "⏸️ Off",
+    geofence_radius_label: "Allowed radius (m, 50-5000)",
+    geofence_save_here_btn: "📍 Save current location as store", geofence_locating: "Getting location...",
+    geofence_enable_label: "Enable geofencing (block clock-in outside radius)",
+    geofence_note: "Clock-in is blocked outside the radius. Clock-out and breaks are never blocked, but their location is still recorded for managers to review.",
+    geofence_unsupported: "This browser doesn't support location services.",
+    geofence_permission_denied: "Location permission denied. Please allow it in your browser settings.",
     pins_icon: "🔑", pins_nav_btn_text: "Employee PINs",
     manager_nav_btn: "🧑‍💼 Managers", manager_page_title: "Manage Manager Accounts",
     manager_page_sub: "Create separate login accounts for managers without sharing your own password. Managers can access payroll-related pages.",
@@ -1157,6 +1180,7 @@ const I18N = {
     time_entries_empty: "No entries this week.", time_entries_in_progress: "In progress",
     time_entries_hours: "{h}h", time_entries_edited_by: "Edited by {name} on {date} — reason: {reason}",
     time_entries_break_line: "Break {h}h ({list})",
+    time_entries_distance_in: "Clock-in {m}m from store", time_entries_distance_out: "Clock-out {m}m from store",
     time_entries_edit_title: "Edit time for {name}", time_entries_clock_in_label: "Clock-in time",
     time_entries_clock_out_label: "Clock-out time", time_entries_reason_label: "Reason for edit (required)",
     time_entries_reason_placeholder: "e.g. Employee forgot to clock in", time_entries_reason_required: "Please enter a reason for this edit.",
@@ -1588,13 +1612,32 @@ async function refreshClockStatus() {
   }
 }
 
+function getCurrentLocation(timeoutMs) {
+  // 클락인/아웃, 휴게 시작/종료 시 위치를 같이 보내기 위한 헬퍼입니다. 위치 정보를
+  // 못 가져와도(권한 거부, 미지원 브라우저, 시간 초과) null을 돌려줄 뿐 에러로
+  // 처리하지 않습니다 — 지오펜싱을 안 쓰는 회사라면 위치가 없어도 아무 문제 없습니다.
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({lat: pos.coords.latitude, lng: pos.coords.longitude}),
+      () => resolve(null),
+      {timeout: timeoutMs || 8000, maximumAge: 30000}
+    );
+  });
+}
+
 async function toggleClock() {
   const btn = document.getElementById("emp-clock-btn");
   btn.disabled = true;
   const isClockingOut = btn.dataset.state === "in";
   const path = isClockingOut ? "/api/employee-auth/clock-out" : "/api/employee-auth/clock-in";
+  const loc = await getCurrentLocation();
   try {
-    const res = await fetch(path, {method: "POST", credentials: "same-origin"});
+    const res = await fetch(path, {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(loc || {}),
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       showMessageModal(t("modal_request_failed"), data.error || t("modal_network_error"), true);
@@ -1609,8 +1652,13 @@ async function toggleBreak() {
   btn.disabled = true;
   const isEndingBreak = btn.dataset.state === "on";
   const path = isEndingBreak ? "/api/employee-auth/break-end" : "/api/employee-auth/break-start";
+  const loc = await getCurrentLocation();
   try {
-    const res = await fetch(path, {method: "POST", credentials: "same-origin"});
+    const res = await fetch(path, {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(loc || {}),
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       showMessageModal(t("modal_request_failed"), data.error || t("modal_network_error"), true);
@@ -2088,6 +2136,7 @@ function showAdminMenuModal() {
     {key: "manager_nav_btn", fn: showManagerPage, ownerOnly: true},
     {key: "payroll_nav_btn", fn: showPayrollPage, ownerOnly: false},
     {key: "pins_nav_btn", fn: showEmployeePinsPage, ownerOnly: false},
+    {key: "geofence_nav_btn", fn: showGeofenceModal, ownerOnly: true},
   ];
   items.forEach(item => {
     if (item.ownerOnly && !(currentCompany && currentCompany.role === "owner")) return;
@@ -2099,6 +2148,149 @@ function showAdminMenuModal() {
     list.appendChild(btn);
   });
   box.appendChild(list);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showGeofenceModal() {
+  let data;
+  try {
+    data = await api("/api/geofence");
+  } catch (e) {
+    return;
+  }
+  if (!data) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "440px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("geofence_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("geofence_sub");
+  box.appendChild(sub);
+
+  const statusLine = document.createElement("div");
+  statusLine.style.cssText = "margin:12px 0; padding:10px; border-radius:8px; background:var(--panel-solid); font-size:12.5px;";
+  const renderStatus = (d) => {
+    if (d.lat == null) {
+      statusLine.textContent = t("geofence_not_set");
+    } else {
+      statusLine.textContent = tf("geofence_current", {
+        lat: d.lat.toFixed(5), lng: d.lng.toFixed(5), radius: d.radius_m,
+        status: d.enabled ? t("geofence_status_on") : t("geofence_status_off"),
+      });
+    }
+  };
+  renderStatus(data);
+  box.appendChild(statusLine);
+
+  const radiusLabel = document.createElement("label");
+  radiusLabel.textContent = t("geofence_radius_label");
+  radiusLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const radiusInput = document.createElement("input");
+  radiusInput.type = "number";
+  radiusInput.min = 50;
+  radiusInput.max = 5000;
+  radiusInput.step = 10;
+  radiusInput.value = data.radius_m || 100;
+  radiusInput.style.width = "100%";
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+
+  box.appendChild(radiusLabel);
+  box.appendChild(radiusInput);
+  box.appendChild(errLine);
+
+  const saveLocBtn = document.createElement("button");
+  saveLocBtn.className = "btn-primary";
+  saveLocBtn.style.cssText = "width:100%; padding:11px; margin-top:14px;";
+  saveLocBtn.textContent = t("geofence_save_here_btn");
+  saveLocBtn.onclick = () => {
+    if (!navigator.geolocation) {
+      errLine.textContent = t("geofence_unsupported");
+      errLine.style.display = "block";
+      return;
+    }
+    saveLocBtn.disabled = true;
+    saveLocBtn.textContent = t("geofence_locating");
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const result = await api("/api/geofence", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            lat: pos.coords.latitude, lng: pos.coords.longitude,
+            radius_m: Number(radiusInput.value) || 100, enabled: true,
+          }),
+        });
+        renderStatus(result);
+        toggleLabel.style.display = "flex";
+        toggleInput.checked = result.enabled;
+      } catch (e) {
+        // api()가 이미 에러 모달을 보여줍니다
+      } finally {
+        saveLocBtn.disabled = false;
+        saveLocBtn.textContent = t("geofence_save_here_btn");
+      }
+    }, () => {
+      errLine.textContent = t("geofence_permission_denied");
+      errLine.style.display = "block";
+      saveLocBtn.disabled = false;
+      saveLocBtn.textContent = t("geofence_save_here_btn");
+    });
+  };
+  box.appendChild(saveLocBtn);
+
+  const toggleLabel = document.createElement("label");
+  toggleLabel.style.cssText = `display:${data.lat != null ? "flex" : "none"}; align-items:center; gap:8px; margin-top:12px; font-size:13px; cursor:pointer;`;
+  const toggleInput = document.createElement("input");
+  toggleInput.type = "checkbox";
+  toggleInput.checked = !!data.enabled;
+  toggleInput.onchange = async () => {
+    toggleInput.disabled = true;
+    try {
+      const result = await api("/api/geofence/toggle", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({enabled: toggleInput.checked}),
+      });
+      renderStatus(result);
+    } catch (e) {
+      toggleInput.checked = !toggleInput.checked;
+    } finally {
+      toggleInput.disabled = false;
+    }
+  };
+  const toggleText = document.createElement("span");
+  toggleText.textContent = t("geofence_enable_label");
+  toggleLabel.appendChild(toggleInput);
+  toggleLabel.appendChild(toggleText);
+  box.appendChild(toggleLabel);
+
+  const noteLine = document.createElement("div");
+  noteLine.className = "modal-item-detail";
+  noteLine.style.marginTop = "10px";
+  noteLine.textContent = t("geofence_note");
+  box.appendChild(noteLine);
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
@@ -2675,6 +2867,18 @@ async function showTimeEntriesPage(weekKey) {
         .join(", ");
       breakLine.textContent = tf("time_entries_break_line", {h: entry.break_hours.toFixed(2), list: breakList});
       item.appendChild(breakLine);
+    }
+
+    if (entry.clock_in_distance_m != null || entry.clock_out_distance_m != null) {
+      const distLine = document.createElement("div");
+      const farThreshold = 150; // 지오펜싱 반경(기본 100m)보다 넉넉히 벗어난 경우만 강조 표시
+      const isFar = (entry.clock_in_distance_m || 0) > farThreshold || (entry.clock_out_distance_m || 0) > farThreshold;
+      distLine.style.cssText = `font-size:11px; margin-top:2px; color:${isFar ? "var(--danger, #ef4444)" : "var(--text-muted)"};`;
+      const parts = [];
+      if (entry.clock_in_distance_m != null) parts.push(tf("time_entries_distance_in", {m: entry.clock_in_distance_m.toFixed(0)}));
+      if (entry.clock_out_distance_m != null) parts.push(tf("time_entries_distance_out", {m: entry.clock_out_distance_m.toFixed(0)}));
+      distLine.textContent = (isFar ? "⚠️ " : "📍 ") + parts.join(" · ");
+      item.appendChild(distLine);
     }
 
     if (entry.edited && entry.edit_history && entry.edit_history.length) {
