@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import html
 import json
+import math
 import os
 import random
 import re
@@ -479,6 +480,7 @@ def load_state(company_id):
             "departments": _default_departments(), "shift_types": _default_shift_types(),
             "public_holiday_policy": _default_public_holiday_policy(),
             "time_entries": [], "payroll_rounding_minutes": DEFAULT_PAYROLL_ROUNDING_MINUTES,
+            "geofence": _default_geofence(),
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -498,6 +500,8 @@ def load_state(company_id):
     # 빈 기록/기본 반올림 단위(15분)로 채워 넣습니다.
     state.setdefault("time_entries", [])
     state.setdefault("payroll_rounding_minutes", DEFAULT_PAYROLL_ROUNDING_MINUTES)
+    # 지오펜싱(매장 위치 기반 클락인 검증) — 기본은 꺼진 상태이고, 사장이 설정해야 켜집니다.
+    state.setdefault("geofence", _default_geofence())
     return state
 
 
@@ -830,6 +834,38 @@ def _sanitize_wage(value):
     if wage <= 0 or wage > 1000:
         return None
     return round(wage, 2)
+
+
+DEFAULT_GEOFENCE_RADIUS_M = 100  # 디퓨티 등 실제 업체들이 "GPS 오차 감안 시 최소 권장값"으로
+# 쓰는 값과 동일합니다 — 너무 좁게 잡으면 매장 안에 있는 직원도 오차로 차단될 수 있습니다.
+
+
+def _default_geofence():
+    return {"enabled": False, "lat": None, "lng": None, "radius_m": DEFAULT_GEOFENCE_RADIUS_M}
+
+
+def _haversine_meters(lat1, lng1, lat2, lng2):
+    """두 GPS 좌표 사이의 실제 거리(미터)를 계산합니다(지구를 구로 근사)."""
+    r = 6371000  # 지구 반지름(미터)
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lng2 - lng1)
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _geofence_check(state, lat, lng):
+    """이 회사의 지오펜싱 설정 기준으로, 주어진 좌표가 허용 범위 안인지 확인합니다.
+    지오펜싱이 꺼져있거나 매장 위치가 아직 설정 안 됐으면 항상 통과시킵니다(기능을
+    켜지 않은 회사는 예전처럼 위치 체크 없이 그대로 씁니다).
+    돌려주는 값: (허용여부: bool, 거리(m): float|None)"""
+    geofence = state.get("geofence") or _default_geofence()
+    if not geofence.get("enabled") or geofence.get("lat") is None or geofence.get("lng") is None:
+        return True, None
+    if lat is None or lng is None:
+        return False, None
+    distance = _haversine_meters(geofence["lat"], geofence["lng"], lat, lng)
+    return distance <= geofence.get("radius_m", DEFAULT_GEOFENCE_RADIUS_M), round(distance, 1)
 
 
 PIN_LENGTH = 6
@@ -2076,6 +2112,23 @@ def employee_clock_in(company_id, employee):
     if already_done_today:
         return jsonify({"error": "오늘은 이미 퇴근(클락아웃) 처리되었습니다. 잠깐 쉬는 거라면 '휴게 시작' 버튼을 이용해주세요."}), 400
 
+    # 지오펜싱(매장 위치 기반 검증)이 켜져 있으면, 클락인은 하드 차단합니다 — "출근하는
+    # 길에 미리 클락인해서 시간을 버는" 걸 막기 위한 기능이라, 매장 반경 밖이면 아예
+    # 기록 자체를 만들지 않습니다.
+    payload = request.get_json(silent=True) or {}
+    lat, lng = payload.get("lat"), payload.get("lng")
+    geofence = state.get("geofence") or _default_geofence()
+    if geofence.get("enabled"):
+        if lat is None or lng is None:
+            return jsonify({"error": "위치 정보가 필요합니다. 브라우저의 위치 정보 권한을 허용해주세요."}), 400
+        ok, distance = _geofence_check(state, lat, lng)
+        if not ok:
+            return jsonify({
+                "error": f"매장에서 너무 멀리 떨어져 있어 클락인할 수 없습니다 (매장까지 약 {distance:.0f}m).",
+                "error_code": "geofence_out_of_range",
+                "distance_m": distance,
+            }), 400
+
     entry = {
         "id": secrets.token_hex(8),
         "employee_id": employee["id"],
@@ -2083,6 +2136,8 @@ def employee_clock_in(company_id, employee):
         "clock_in": now.isoformat(),
         "clock_out": None,
         "breaks": [],
+        "clock_in_location": {"lat": lat, "lng": lng} if lat is not None and lng is not None else None,
+        "clock_out_location": None,
         "edited": False,
         "edit_history": [],
     }
@@ -2104,7 +2159,15 @@ def employee_break_start(company_id, employee):
     breaks = open_entry.setdefault("breaks", [])
     if breaks and not breaks[-1].get("end"):
         return jsonify({"error": "이미 휴게 중입니다."}), 400
-    breaks.append({"id": secrets.token_hex(6), "start": datetime.now(timezone.utc).isoformat(), "end": None})
+    # 휴게 시작/종료는 위치를 이유로 막지 않습니다(정당하게 매장 밖에서 식사하는 경우도
+    # 많으므로) — 다만 위치는 그대로 기록해서, 관리자가 필요하면 나중에 확인할 수
+    # 있게 남겨둡니다.
+    payload = request.get_json(silent=True) or {}
+    lat, lng = payload.get("lat"), payload.get("lng")
+    breaks.append({
+        "id": secrets.token_hex(6), "start": datetime.now(timezone.utc).isoformat(), "end": None,
+        "start_location": {"lat": lat, "lng": lng} if lat is not None and lng is not None else None,
+    })
     save_state(company_id, state)
     return jsonify(open_entry)
 
@@ -2122,7 +2185,11 @@ def employee_break_end(company_id, employee):
     breaks = open_entry.get("breaks") or []
     if not breaks or breaks[-1].get("end"):
         return jsonify({"error": "진행 중인 휴게가 없습니다."}), 400
+    payload = request.get_json(silent=True) or {}
+    lat, lng = payload.get("lat"), payload.get("lng")
     breaks[-1]["end"] = datetime.now(timezone.utc).isoformat()
+    if lat is not None and lng is not None:
+        breaks[-1]["end_location"] = {"lat": lat, "lng": lng}
     save_state(company_id, state)
     return jsonify(open_entry)
 
@@ -2143,7 +2210,14 @@ def employee_clock_out(company_id, employee):
     breaks = open_entry.get("breaks") or []
     if breaks and not breaks[-1].get("end"):
         breaks[-1]["end"] = now_iso
+    # 클락아웃은 위치를 이유로 막지는 않습니다(퇴근길에 매장을 벗어난 뒤 찍는 경우가
+    # 흔하므로) — 다만 어디서 찍었는지는 그대로 기록해서, 관리자가 나중에 확인할 수
+    # 있게 남겨둡니다.
+    payload = request.get_json(silent=True) or {}
+    lat, lng = payload.get("lat"), payload.get("lng")
     open_entry["clock_out"] = now_iso
+    if lat is not None and lng is not None:
+        open_entry["clock_out_location"] = {"lat": lat, "lng": lng}
     save_state(company_id, state)
     return jsonify(open_entry)
 
@@ -2156,8 +2230,9 @@ def employee_clock_out(company_id, employee):
 @require_login
 def list_time_entries(company_id):
     """사장/매니저 전용: 특정 주(week_key 쿼리 파라미터)의 전 직원 클락인/아웃 기록을
-    보여줍니다. 반올림(클락인 올림/클락아웃 버림) 적용 후 실제 근무시간, 그리고 실제
-    기록된 휴게시간 합계도 같이 계산해서 내려줍니다."""
+    보여줍니다. 반올림(클락인 올림/클락아웃 버림) 적용 후 실제 근무시간, 실제 기록된
+    휴게시간 합계, 그리고 지오펜싱이 설정되어 있으면 매장으로부터의 거리도 같이
+    계산해서 내려줍니다(관리자가 "매장에서 너무 멀리서 찍었는지" 한눈에 볼 수 있도록)."""
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
     week_key = request.args.get("week_key")
@@ -2171,12 +2246,22 @@ def list_time_entries(company_id):
             return jsonify({"error": "Invalid week_key."}), 400
     employee_names = {e["id"]: e["name"] for e in state["employees"]}
     rounding = state.get("payroll_rounding_minutes", DEFAULT_PAYROLL_ROUNDING_MINUTES)
+    geofence = state.get("geofence") or _default_geofence()
+    has_geofence = geofence.get("lat") is not None
+
+    def _distance_for(loc):
+        if not has_geofence or not loc or loc.get("lat") is None or loc.get("lng") is None:
+            return None
+        return round(_haversine_meters(geofence["lat"], geofence["lng"], loc["lat"], loc["lng"]), 0)
+
     out = []
     for e in sorted(entries, key=lambda x: (x.get("date") or "", x.get("clock_in") or "")):
         row = dict(e)
         row["employee_name"] = employee_names.get(e["employee_id"], "?")
         row["actual_hours"] = _actual_hours_for_entry(e, rounding)
         row["break_hours"] = round(_actual_break_hours(e), 2)
+        row["clock_in_distance_m"] = _distance_for(e.get("clock_in_location"))
+        row["clock_out_distance_m"] = _distance_for(e.get("clock_out_location"))
         out.append(row)
     return jsonify(out)
 
@@ -2264,6 +2349,63 @@ def set_payroll_rounding(company_id):
     state["payroll_rounding_minutes"] = minutes
     save_state(company_id, state)
     return jsonify({"rounding_minutes": minutes})
+
+
+# ---------------------------------------------------------------------------
+# 지오펜싱 (매장 위치 기반 클락인 검증) — 사장 전용, 조회/수정 둘 다
+# ---------------------------------------------------------------------------
+
+@app.route("/api/geofence", methods=["GET"])
+@require_owner
+def get_geofence(company_id):
+    state = load_state(company_id)
+    return jsonify(state.get("geofence") or _default_geofence())
+
+
+@app.route("/api/geofence", methods=["POST"])
+@require_owner
+def set_geofence(company_id):
+    """사장 전용: 매장 위치(위도/경도)와 허용 반경, 켜짐/꺼짐 여부를 저장합니다.
+    "현재 위치를 매장 위치로 저장" 버튼을 누르면, 그 순간 사장의 브라우저가 잡은
+    GPS 좌표가 그대로 lat/lng로 들어옵니다."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        lat = float(payload.get("lat"))
+        lng = float(payload.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "위치 좌표가 올바르지 않습니다."}), 400
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify({"error": "위치 좌표 범위가 올바르지 않습니다."}), 400
+    try:
+        radius_m = int(payload.get("radius_m", DEFAULT_GEOFENCE_RADIUS_M))
+    except (TypeError, ValueError):
+        return jsonify({"error": "radius_m must be a number."}), 400
+    if radius_m < 50 or radius_m > 5000:
+        return jsonify({"error": "반경은 50m~5000m 사이여야 합니다."}), 400
+
+    state = load_state(company_id)
+    state["geofence"] = {
+        "enabled": bool(payload.get("enabled", True)),
+        "lat": lat, "lng": lng, "radius_m": radius_m,
+    }
+    save_state(company_id, state)
+    return jsonify(state["geofence"])
+
+
+@app.route("/api/geofence/toggle", methods=["POST"])
+@require_owner
+def toggle_geofence(company_id):
+    """사장 전용: 매장 위치는 그대로 두고 켜짐/꺼짐만 바꿉니다(위치를 다시 등록할
+    필요 없이 잠깐 꺼두고 싶을 때 씁니다)."""
+    payload = request.get_json(silent=True) or {}
+    state = load_state(company_id)
+    geofence = state.get("geofence") or _default_geofence()
+    if geofence.get("lat") is None:
+        return jsonify({"error": "먼저 매장 위치를 등록해주세요."}), 400
+    geofence["enabled"] = bool(payload.get("enabled"))
+    state["geofence"] = geofence
+    save_state(company_id, state)
+    return jsonify(geofence)
 
 
 @app.route("/api/company/request-employee-limit-increase", methods=["POST"])
