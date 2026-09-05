@@ -877,6 +877,10 @@ const I18N = {
     geofence_note: "클락인은 매장 반경을 벗어나면 차단됩니다. 클락아웃과 휴게 시작/종료는 막지 않지만, 위치는 그대로 기록되어 관리자가 나중에 확인할 수 있습니다.",
     geofence_unsupported: "이 브라우저는 위치 정보를 지원하지 않습니다.",
     geofence_permission_denied: "위치 정보 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.",
+    audit_log_nav_btn: "📜 감사 기록", audit_log_title: "관리 활동 감사 기록",
+    audit_log_sub: "직원·스케줄·근무요건·설정 변경 등 관리 작업 이력을 최신순으로 보여줍니다.",
+    audit_log_empty: "아직 기록이 없습니다.",
+    audit_log_role_owner: "사장", audit_log_role_manager: "매니저",
     pins_icon: "🔑", pins_nav_btn_text: "직원 PIN 조회",
     manager_nav_btn: "🧑‍💼 매니저 관리", manager_page_title: "매니저 계정 관리",
     manager_page_sub: "사장 본인의 비밀번호를 공유하지 않고도, 매니저마다 별도의 로그인 계정을 만들어줄 수 있습니다. 매니저는 급여 관련 페이지에 접근할 수 있습니다.",
@@ -1147,6 +1151,10 @@ const I18N = {
     geofence_note: "Clock-in is blocked outside the radius. Clock-out and breaks are never blocked, but their location is still recorded for managers to review.",
     geofence_unsupported: "This browser doesn't support location services.",
     geofence_permission_denied: "Location permission denied. Please allow it in your browser settings.",
+    audit_log_nav_btn: "📜 Audit Log", audit_log_title: "Management Activity Log",
+    audit_log_sub: "Recent changes to employees, schedules, requirements, and settings, newest first.",
+    audit_log_empty: "No activity yet.",
+    audit_log_role_owner: "Owner", audit_log_role_manager: "Manager",
     pins_icon: "🔑", pins_nav_btn_text: "Employee PINs",
     manager_nav_btn: "🧑‍💼 Managers", manager_page_title: "Manage Manager Accounts",
     manager_page_sub: "Create separate login accounts for managers without sharing your own password. Managers can access payroll-related pages.",
@@ -2137,6 +2145,7 @@ function showAdminMenuModal() {
     {key: "payroll_nav_btn", fn: showPayrollPage, ownerOnly: false},
     {key: "pins_nav_btn", fn: showEmployeePinsPage, ownerOnly: false},
     {key: "geofence_nav_btn", fn: showGeofenceModal, ownerOnly: true},
+    {key: "audit_log_nav_btn", fn: showAuditLogPage, ownerOnly: false},
   ];
   items.forEach(item => {
     if (item.ownerOnly && !(currentCompany && currentCompany.role === "owner")) return;
@@ -2291,6 +2300,82 @@ async function showGeofenceModal() {
   noteLine.style.marginTop = "10px";
   noteLine.textContent = t("geofence_note");
   box.appendChild(noteLine);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showAuditLogPage() {
+  let entries;
+  try {
+    entries = await api("/api/audit-log");
+  } catch (e) {
+    return;
+  }
+  if (!entries) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "620px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("audit_log_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("audit_log_sub");
+  box.appendChild(sub);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex; flex-direction:column; gap:8px; margin-top:12px; max-height:480px; overflow-y:auto;";
+
+  if (!entries.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = t("audit_log_empty");
+    list.appendChild(empty);
+  }
+
+  const roleLabel = (role) => role === "owner" ? t("audit_log_role_owner") : (role === "manager" ? t("audit_log_role_manager") : role);
+
+  entries.forEach(entry => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    const topLine = document.createElement("div");
+    topLine.style.cssText = "display:flex; justify-content:space-between; align-items:baseline; gap:8px;";
+    const desc = document.createElement("div");
+    desc.className = "modal-item-title";
+    desc.style.fontSize = "13px";
+    desc.textContent = entry.description;
+    const when = document.createElement("div");
+    when.style.cssText = "font-size:11px; color:var(--text-muted); white-space:nowrap;";
+    const d = new Date(entry.at);
+    when.textContent = d.toLocaleString([], {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"});
+    topLine.appendChild(desc);
+    topLine.appendChild(when);
+    item.appendChild(topLine);
+
+    const byLine = document.createElement("div");
+    byLine.className = "modal-item-detail";
+    byLine.textContent = `${entry.actor_name || "?"} (${roleLabel(entry.actor_role)})`;
+    item.appendChild(byLine);
+
+    list.appendChild(item);
+  });
+  box.appendChild(list);
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
