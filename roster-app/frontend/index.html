@@ -535,7 +535,14 @@
       <div class="field"><label data-i18n="label_department">부서</label>
         <select id="emp-department"></select>
       </div>
-      <div class="field"><label data-i18n="label_hourly_wage">시급</label><input id="emp-wage" type="number" min="0" step="0.5" placeholder="25.00" style="width:80px;"></div>
+      <div class="field"><label data-i18n="label_pay_type">급여 방식</label>
+        <select id="emp-pay-type" onchange="updatePayTypeFields()">
+          <option value="hourly" data-i18n="opt_pay_hourly">시급제</option>
+          <option value="salary" data-i18n="opt_pay_salary">연봉제</option>
+        </select>
+      </div>
+      <div class="field" id="emp-wage-field"><label data-i18n="label_hourly_wage">시급</label><input id="emp-wage" type="number" min="0" step="0.5" placeholder="25.00" style="width:80px;"></div>
+      <div class="field" id="emp-salary-field" style="display:none;"><label data-i18n="label_annual_salary">연봉</label><input id="emp-salary" type="number" min="0" step="500" placeholder="52000" style="width:100px;"></div>
       <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
         <select id="emp-min-hours">
           <option value="0" data-i18n="opt_0h">0시간</option>
@@ -708,6 +715,8 @@ const I18N = {
     label_id: "ID", label_name: "이름", label_department: "부서",
     label_min_hours: "주당 최소시간", label_target_days: "주간 근무일수 (권장)", label_any: "상관없음",
     label_hourly_wage: "시급",
+    label_pay_type: "급여 방식", opt_pay_hourly: "시급제", opt_pay_salary: "연봉제",
+    label_annual_salary: "연봉", label_min_hours_salary: "주당 계약시간",
     opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
     modal_training_added_title: "Training 인원이 등록되었습니다",
     modal_employee_added_title: "등록 완료", modal_employee_added_msg: "직원이 추가되었습니다.",
@@ -903,6 +912,8 @@ const I18N = {
     payroll_col_day: "요일", payroll_col_hours: "시간", payroll_col_cost: "예상 인건비",
     payroll_col_employee: "직원", payroll_col_wage: "시급", payroll_col_scheduled_pay: "이번 주 예상 지급액",
     payroll_wage_not_set: "시급 미설정", payroll_total: "이번 주 총 예상 인건비: ${amount}",
+    payroll_salary_not_set: "연봉 미설정", payroll_salary_display: "연봉 ${amount}",
+    payroll_salary_note: "연봉제(고정 주급)", payroll_ph_premium_salary_included: "공휴일 추가수당(0.5배) {n}일 포함",
     payroll_rounding_btn: "⏱️ 시간 계산 단위 설정", payroll_col_sched_hours: "스케줄 시간", payroll_col_sched_cost: "스케줄 인건비",
     payroll_col_actual_hours: "실제 시간", payroll_col_actual_cost: "실제 인건비", payroll_col_actual_pay: "실제 지급액",
     payroll_col_diff: "차액", payroll_open_entry_note: "클락아웃 안 함", time_entries_btn: "🕒 클락인/아웃 기록",
@@ -982,6 +993,8 @@ const I18N = {
     label_id: "ID", label_name: "Name", label_department: "Department",
     label_min_hours: "Min hours/week", label_target_days: "Target days/week (preferred)", label_any: "No preference",
     label_hourly_wage: "Hourly Wage",
+    label_pay_type: "Pay Type", opt_pay_hourly: "Hourly", opt_pay_salary: "Salary",
+    label_annual_salary: "Annual Salary", label_min_hours_salary: "Contracted Hours/Week",
     opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
     modal_training_added_title: "Training employee registered",
     modal_employee_added_title: "Added", modal_employee_added_msg: "Employee has been added.",
@@ -1177,6 +1190,8 @@ const I18N = {
     payroll_col_day: "Day", payroll_col_hours: "Hours", payroll_col_cost: "Est. Cost",
     payroll_col_employee: "Employee", payroll_col_wage: "Wage", payroll_col_scheduled_pay: "Est. Pay This Week",
     payroll_wage_not_set: "Wage not set", payroll_total: "Total estimated labour cost this week: ${amount}",
+    payroll_salary_not_set: "Salary not set", payroll_salary_display: "\${amount}/yr",
+    payroll_salary_note: "Salaried (fixed weekly)", payroll_ph_premium_salary_included: "Includes {n} day(s) of holiday premium (0.5x)",
     payroll_rounding_btn: "⏱️ Time Calculation Settings", payroll_col_sched_hours: "Sched. Hours", payroll_col_sched_cost: "Sched. Cost",
     payroll_col_actual_hours: "Actual Hours", payroll_col_actual_cost: "Actual Cost", payroll_col_actual_pay: "Actual Pay",
     payroll_col_diff: "Difference", payroll_open_entry_note: "Not clocked out", time_entries_btn: "🕒 Time Entries",
@@ -1253,6 +1268,17 @@ let currentLang = localStorage.getItem("roster_lang") || "en";
 // 예전에 일본어(ja)를 쓰던 브라우저가 남아있을 수 있어서, 더 이상 지원하지 않는 언어가
 // 저장되어 있으면 영어로 안전하게 대체합니다.
 if (currentLang !== "ko" && currentLang !== "en") currentLang = "en";
+
+function updatePayTypeFields() {
+  const payType = document.getElementById("emp-pay-type").value;
+  const isSalary = payType === "salary";
+  document.getElementById("emp-wage-field").style.display = isSalary ? "none" : "block";
+  document.getElementById("emp-salary-field").style.display = isSalary ? "block" : "none";
+  // 연봉제일 때는 "주당 최소시간"이 스케줄용 최소시간이자, 공휴일 추가수당 계산의
+  // 기준이 되는 "주당 계약시간"으로도 같이 쓰인다는 걸 알려주기 위해 라벨을 바꿔줍니다.
+  const minHoursLabel = document.querySelector('label[data-i18n="label_min_hours"]');
+  if (minHoursLabel) minHoursLabel.textContent = isSalary ? t("label_min_hours_salary") : t("label_min_hours");
+}
 
 function enableClickToOpenDatePicker(input) {
   input.addEventListener("click", () => {
@@ -2753,7 +2779,10 @@ async function showPayrollPage(weekKey) {
   data.employees.forEach(row => {
     const tr = document.createElement("tr");
     tr.style.borderBottom = "1px solid var(--line);";
-    const wageCell = row.has_wage_set ? `$${row.hourly_wage.toFixed(2)}` : `<span style="color:var(--text-muted);">${t("payroll_wage_not_set")}</span>`;
+    const isSalary = row.pay_type === "salary";
+    const wageCell = !row.has_wage_set
+      ? `<span style="color:var(--text-muted);">${t(isSalary ? "payroll_salary_not_set" : "payroll_wage_not_set")}</span>`
+      : (isSalary ? tf("payroll_salary_display", {amount: row.annual_salary.toLocaleString()}) : `$${row.hourly_wage.toFixed(2)}`);
     const schedPayCell = row.has_wage_set ? `$${row.weekly_pay.toFixed(2)}` : "—";
     const actualPayCell = row.has_wage_set ? `$${row.weekly_actual_pay.toFixed(2)}` : "—";
     const diff = row.pay_difference;
@@ -2767,9 +2796,10 @@ async function showPayrollPage(weekKey) {
     const phPremiumDays = Object.values(row.per_day).filter(d => d.is_public_holiday && (d.category === 1 || d.category === 3)).length;
     const phAvgPayDays = Object.values(row.per_day).filter(d => d.is_public_holiday && d.category === 2).length;
     const notes = [];
-    if (paidLeaveDays > 0) notes.push(tf("payroll_leave_included", {n: paidLeaveDays}));
-    if (phPremiumDays > 0) notes.push(tf("payroll_ph_premium_included", {n: phPremiumDays}));
-    if (phAvgPayDays > 0) notes.push(tf("payroll_ph_avgpay_included", {n: phAvgPayDays}));
+    if (isSalary) notes.push(t("payroll_salary_note"));
+    if (paidLeaveDays > 0 && !isSalary) notes.push(tf("payroll_leave_included", {n: paidLeaveDays}));
+    if (phPremiumDays > 0) notes.push(tf(isSalary ? "payroll_ph_premium_salary_included" : "payroll_ph_premium_included", {n: phPremiumDays}));
+    if (phAvgPayDays > 0 && !isSalary) notes.push(tf("payroll_ph_avgpay_included", {n: phAvgPayDays}));
     if (row.has_open_entry) notes.push(t("payroll_open_entry_note"));
     const nameCell = notes.length > 0
       ? `${row.employee_name}<br><span style="font-size:10px; color:var(--text-muted);">${notes.join(" · ")}</span>`
@@ -3752,7 +3782,10 @@ function startEditEmployee(e) {
   document.getElementById("emp-name").value = e.name;
   ensureDepartmentSelectOptions();
   document.getElementById("emp-department").value = e.department || "kitchen";
+  document.getElementById("emp-pay-type").value = e.pay_type === "salary" ? "salary" : "hourly";
   document.getElementById("emp-wage").value = e.hourly_wage != null ? e.hourly_wage : "";
+  document.getElementById("emp-salary").value = e.annual_salary != null ? e.annual_salary : "";
+  updatePayTypeFields();
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
   const isAny = e.target_days_per_week == null;
   document.getElementById("emp-target-days-any").checked = isAny;
@@ -3769,7 +3802,10 @@ function cancelEditEmployee() {
   document.getElementById("emp-id").value = "";
   document.getElementById("emp-name").value = "";
   document.getElementById("emp-department").value = "kitchen";
+  document.getElementById("emp-pay-type").value = "hourly";
   document.getElementById("emp-wage").value = "";
+  document.getElementById("emp-salary").value = "";
+  updatePayTypeFields();
   document.getElementById("emp-min-hours").value = "30";
   document.getElementById("emp-target-days").value = "";
   document.getElementById("emp-target-days").disabled = false;
@@ -3782,8 +3818,11 @@ async function submitEmployee() {
   const id = document.getElementById("emp-id").value.trim();
   const name = document.getElementById("emp-name").value.trim();
   const department = document.getElementById("emp-department").value || "kitchen";
+  const pay_type = document.getElementById("emp-pay-type").value === "salary" ? "salary" : "hourly";
   const wageRaw = document.getElementById("emp-wage").value.trim();
   const hourly_wage = wageRaw === "" ? null : Number(wageRaw);
+  const salaryRaw = document.getElementById("emp-salary").value.trim();
+  const annual_salary = salaryRaw === "" ? null : Number(salaryRaw);
   const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
   const isAny = document.getElementById("emp-target-days-any").checked;
   const targetDaysRaw = document.getElementById("emp-target-days").value;
@@ -3796,7 +3835,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, hourly_wage, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -3805,7 +3844,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, hourly_wage, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
