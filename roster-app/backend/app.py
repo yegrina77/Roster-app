@@ -480,7 +480,7 @@ def load_state(company_id):
             "departments": _default_departments(), "shift_types": _default_shift_types(),
             "public_holiday_policy": _default_public_holiday_policy(),
             "time_entries": [], "payroll_rounding_minutes": DEFAULT_PAYROLL_ROUNDING_MINUTES,
-            "geofence": _default_geofence(),
+            "geofence": _default_geofence(), "audit_log": [],
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -502,11 +502,37 @@ def load_state(company_id):
     state.setdefault("payroll_rounding_minutes", DEFAULT_PAYROLL_ROUNDING_MINUTES)
     # 지오펜싱(매장 위치 기반 클락인 검증) — 기본은 꺼진 상태이고, 사장이 설정해야 켜집니다.
     state.setdefault("geofence", _default_geofence())
+    # 매니저/사장 활동 감사기록 — 이 기능이 생기기 전 회사는 빈 기록으로 시작합니다.
+    state.setdefault("audit_log", [])
     return state
 
 
 def save_state(company_id, state):
     _raw_set(f"roster_state:{company_id}", json.dumps(state, ensure_ascii=False))
+
+
+AUDIT_LOG_MAX_ENTRIES = 2000  # 너무 오래 쌓이지 않도록 상한을 두고, 오래된 것부터 잘라냅니다.
+
+
+def _log_audit(state, action, description, details=None):
+    """매니저/사장이 관리 작업을 할 때마다 "누가·언제·무엇을·왜"를 기록합니다.
+    require_login이 채워둔 g.user_name/g.role을 그대로 씁니다 — 이 함수를 호출하는
+    시점엔 항상 로그인된 사장/매니저 컨텍스트 안에 있어야 합니다. state를 메모리상
+    에서만 수정하므로, 호출한 쪽에서 반드시 save_state()를 이어서 호출해야 실제로
+    저장됩니다(이미 다른 이유로 save_state를 호출할 예정이라면 그걸로 충분합니다)."""
+    entry = {
+        "id": secrets.token_hex(8),
+        "at": datetime.now(timezone.utc).isoformat(),
+        "actor_name": getattr(g, "user_name", "") or "",
+        "actor_role": getattr(g, "role", "") or "",
+        "action": action,
+        "description": description,
+        "details": details or {},
+    }
+    log = state.setdefault("audit_log", [])
+    log.append(entry)
+    if len(log) > AUDIT_LOG_MAX_ENTRIES:
+        del log[: len(log) - AUDIT_LOG_MAX_ENTRIES]
 
 
 def _effective_shift_times(state):
@@ -1214,6 +1240,7 @@ def add_department(company_id):
         return jsonify({"error": "A department with this name already exists."}), 400
     dept = {"id": _slugify_id(name, existing_ids), "name": name}
     state["departments"].append(dept)
+    _log_audit(state, "department_added", f"부서 추가: {name}", {"department_id": dept["id"]})
     save_state(company_id, state)
     return jsonify(dept), 201
 
@@ -1228,7 +1255,9 @@ def rename_department(company_id, dept_id):
         return jsonify({"error": "Department name is required."}), 400
     for d in state["departments"]:
         if d["id"] == dept_id:
+            old_name = d["name"]
             d["name"] = name
+            _log_audit(state, "department_renamed", f"부서 이름 변경: {old_name} → {name}", {"department_id": dept_id})
             save_state(company_id, state)
             return jsonify(d)
     return jsonify({"error": "Department not found."}), 404
@@ -1254,6 +1283,7 @@ def delete_department(company_id, dept_id):
     for e in state["employees"]:
         e["blocked_shift_types"] = [s for s in e.get("blocked_shift_types", []) if s not in removed_shift_ids]
         e["preferred"] = [p for p in e.get("preferred", []) if p[1] not in removed_shift_ids]
+    _log_audit(state, "department_deleted", f"부서 삭제: {dept_id}", {"department_id": dept_id})
     save_state(company_id, state)
     return "", 204
 
@@ -1294,6 +1324,7 @@ def add_shift_type(company_id):
         "start": start, "end": end, "is_closing": is_closing, "blocked_after_closing": blocked_after_closing,
     }
     state["shift_types"].append(shift)
+    _log_audit(state, "shift_type_added", f"근무유형 추가: {name}", {"shift_type_id": shift["id"]})
     save_state(company_id, state)
     return jsonify(shift), 201
 
@@ -1315,6 +1346,7 @@ def update_shift_type(company_id, shift_id):
                 s["is_closing"] = bool(payload["is_closing"])
             if "blocked_after_closing" in payload:
                 s["blocked_after_closing"] = bool(payload["blocked_after_closing"])
+            _log_audit(state, "shift_type_updated", f"근무유형 수정: {s['name']}", {"shift_type_id": shift_id})
             save_state(company_id, state)
             return jsonify(s)
     return jsonify({"error": "Shift type not found."}), 404
@@ -1329,6 +1361,7 @@ def delete_shift_type(company_id, shift_id):
     for e in state["employees"]:
         e["blocked_shift_types"] = [s for s in e.get("blocked_shift_types", []) if s != shift_id]
         e["preferred"] = [p for p in e.get("preferred", []) if p[1] != shift_id]
+    _log_audit(state, "shift_type_deleted", f"근무유형 삭제: {shift_id}", {"shift_type_id": shift_id})
     save_state(company_id, state)
     return "", 204
 
@@ -1625,6 +1658,9 @@ def create_manager(company_id):
         "created_at": date.today().isoformat(),
     }
     save_auth(auth)
+    state = load_state(company_id)
+    _log_audit(state, "manager_created", f"매니저 계정 생성: {name} ({email})", {"manager_user_id": user_id})
+    save_state(company_id, state)
     _send_manager_created_email(email, name, company["name"])
     return jsonify({"id": user_id, "email": email, "name": name}), 201
 
@@ -1642,8 +1678,12 @@ def delete_manager(company_id, user_id):
     users = company.get("users") or {}
     if user_id not in users:
         return jsonify({"error": "Manager not found."}), 404
+    removed_name = users[user_id].get("name", "")
     del users[user_id]
     save_auth(auth)
+    state = load_state(company_id)
+    _log_audit(state, "manager_deleted", f"매니저 계정 삭제: {removed_name}", {"manager_user_id": user_id})
+    save_state(company_id, state)
     return "", 204
 
 
@@ -1823,6 +1863,7 @@ def add_employee(company_id):
         "pin_locked_until": None,
     }
     state["employees"].append(employee)
+    _log_audit(state, "employee_added", f"직원 추가: {employee['name']} ({employee['id']})", {"employee_id": employee["id"]})
     save_state(company_id, state)
     return jsonify(employee), 201
 
@@ -1848,6 +1889,8 @@ def update_employee(company_id, employee_id):
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             state["employees"][i].update(updates)
+            _log_audit(state, "employee_updated", f"직원 정보 수정: {state['employees'][i]['name']} ({employee_id})",
+                       {"employee_id": employee_id, "fields": list(updates.keys())})
             save_state(company_id, state)
             return jsonify(state["employees"][i])
     return jsonify({"error": "Employee not found."}), 404
@@ -1857,7 +1900,10 @@ def update_employee(company_id, employee_id):
 @require_login
 def delete_employee(company_id, employee_id):
     state = load_state(company_id)
+    removed = next((e for e in state["employees"] if e["id"] == employee_id), None)
     state["employees"] = [e for e in state["employees"] if e["id"] != employee_id]
+    if removed:
+        _log_audit(state, "employee_deleted", f"직원 삭제: {removed['name']} ({employee_id})", {"employee_id": employee_id})
     save_state(company_id, state)
     return "", 204
 
@@ -2347,6 +2393,7 @@ def set_payroll_rounding(company_id):
         return jsonify({"error": f"rounding_minutes must be one of {ALLOWED_ROUNDING_MINUTES}."}), 400
     state = load_state(company_id)
     state["payroll_rounding_minutes"] = minutes
+    _log_audit(state, "payroll_rounding_changed", f"급여 계산 단위를 {minutes}분으로 변경", {"rounding_minutes": minutes})
     save_state(company_id, state)
     return jsonify({"rounding_minutes": minutes})
 
@@ -2388,6 +2435,7 @@ def set_geofence(company_id):
         "enabled": bool(payload.get("enabled", True)),
         "lat": lat, "lng": lng, "radius_m": radius_m,
     }
+    _log_audit(state, "geofence_updated", f"매장 위치 등록/수정 (반경 {radius_m}m)", {"radius_m": radius_m})
     save_state(company_id, state)
     return jsonify(state["geofence"])
 
@@ -2404,6 +2452,7 @@ def toggle_geofence(company_id):
         return jsonify({"error": "먼저 매장 위치를 등록해주세요."}), 400
     geofence["enabled"] = bool(payload.get("enabled"))
     state["geofence"] = geofence
+    _log_audit(state, "geofence_toggled", f"지오펜싱 {'켜짐' if geofence['enabled'] else '꺼짐'}", {"enabled": geofence["enabled"]})
     save_state(company_id, state)
     return jsonify(geofence)
 
@@ -2537,6 +2586,8 @@ def set_week_lock(company_id, week_key):
         week["published"] = False
         week["agreements"] = {}
         republish_reset = True
+    _log_audit(state, "week_lock_changed", f"{week_key} 주 {'잠금' if new_locked else '잠금 해제'}",
+               {"week_key": week_key, "locked": new_locked, "republish_reset": republish_reset})
     save_state(company_id, state)
     return jsonify({"locked": week["locked"], "published": week.get("published", False), "republish_reset": republish_reset})
 
@@ -2561,6 +2612,7 @@ def publish_week(company_id, week_key):
     # 새로 퍼블리시하면 모든 직원의 확인(Agree) 상태를 초기화합니다 — 이전에 확인했던
     # 기록이 있어도, 이번에 게시되는 내용은 "아직 확인 전"부터 다시 시작해야 합니다.
     week["agreements"] = {}
+    _log_audit(state, "week_published", f"{week_key} 주 스케줄 퍼블리시", {"week_key": week_key})
     save_state(company_id, state)
     return jsonify({"published": True, "locked": True})
 
@@ -2586,6 +2638,25 @@ def get_week_agreements(company_id, week_key):
     return jsonify({"published": bool(week.get("published")), "agreements": rows})
 
 
+@app.route("/api/audit-log", methods=["GET"])
+@require_login
+def get_audit_log(company_id):
+    """사장/매니저 전용: 관리 작업 감사기록을 최신순으로 보여줍니다 — 누가, 언제,
+    무엇을 했는지. 직원 추가/수정/삭제, 스케줄 생성/수동조정/초기화, 근무요건 변경,
+    부서/근무유형 변경, 공휴일 정책 변경, 매니저 계정 생성/삭제, 주 잠금/퍼블리시,
+    급여 계산 단위, 지오펜싱 설정 변경을 다룹니다. limit(기본 200)으로 최근 몇 건을
+    가져올지 조절할 수 있습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    try:
+        limit = min(int(request.args.get("limit", 200)), 1000)
+    except (TypeError, ValueError):
+        limit = 200
+    state = load_state(company_id)
+    log = state.get("audit_log") or []
+    return jsonify(list(reversed(log))[:limit])
+
+
 def _week_locked(state, week_key):
     week = state["weeks"].get(week_key)
     return bool(week and week.get("locked"))
@@ -2607,6 +2678,7 @@ def set_week_requirements(company_id, week_key):
     if not isinstance(payload, list):
         return jsonify({"error": "Requirements list must be an array."}), 400
     state["weeks"][week_key]["requirements"] = payload
+    _log_audit(state, "requirements_changed", f"{week_key} 주 근무 요건 수정", {"week_key": week_key, "count": len(payload)})
     save_state(company_id, state)
     return jsonify(state["weeks"][week_key]["requirements"])
 
@@ -2929,6 +3001,8 @@ def generate_week_schedule(company_id, week_key):
     # auto_assignments는 "자동 생성 직후"의 원본 스냅샷입니다. 이후 수동 조정(manual-adjust)이
     # 있어도 이 값은 덮어쓰지 않아서, 나중에 "사람이 뭘 얼마나 고쳤는지" 비교할 수 있습니다.
     state["weeks"][week_key]["auto_assignments"] = result.assignments
+    _log_audit(state, "schedule_generated", f"{week_key} 주 스케줄 자동 생성 ({result.status})",
+               {"week_key": week_key, "status": result.status, "assignment_count": len(result.assignments)})
     save_state(company_id, state)
 
     return jsonify(result_dict)
@@ -2951,6 +3025,8 @@ def manual_adjust_week(company_id, week_key):
     schedule["status"] = "MANUAL"
     schedule["diagnostics"] = ["This schedule was manually rearranged."]
     state["weeks"][week_key]["schedule"] = schedule
+    _log_audit(state, "schedule_manual_adjust", f"{week_key} 주 스케줄 수동 조정",
+               {"week_key": week_key, "assignment_count": len(schedule["assignments"])})
     save_state(company_id, state)
     return jsonify(schedule)
 
@@ -2970,6 +3046,7 @@ def reset_week_schedule(company_id, week_key):
     else:
         state["weeks"][week_key]["schedule"] = None
         state["weeks"][week_key]["auto_assignments"] = []
+    _log_audit(state, "schedule_reset", f"{week_key} 주 스케줄 초기화", {"week_key": week_key})
     save_state(company_id, state)
     return jsonify({"status": "reset"})
 
@@ -3237,6 +3314,7 @@ def set_public_holiday_policy(company_id):
         return jsonify({"error": error}), 400
     state = load_state(company_id)
     state["public_holiday_policy"] = policy
+    _log_audit(state, "public_holiday_policy_changed", "공휴일 판정 정책 변경", {"policy": policy})
     save_state(company_id, state)
     return jsonify(policy)
 
