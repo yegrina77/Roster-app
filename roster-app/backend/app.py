@@ -480,7 +480,7 @@ def load_state(company_id):
             "departments": _default_departments(), "shift_types": _default_shift_types(),
             "public_holiday_policy": _default_public_holiday_policy(),
             "time_entries": [], "payroll_rounding_minutes": DEFAULT_PAYROLL_ROUNDING_MINUTES,
-            "geofence": _default_geofence(), "audit_log": [],
+            "geofence": _default_geofence(), "audit_log": [], "lieu_day_credits": [],
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -504,6 +504,8 @@ def load_state(company_id):
     state.setdefault("geofence", _default_geofence())
     # 매니저/사장 활동 감사기록 — 이 기능이 생기기 전 회사는 빈 기록으로 시작합니다.
     state.setdefault("audit_log", [])
+    # 이미 크레딧된 (직원,공휴일날짜) Lieu Day 기록 — 중복 크레딧 방지용.
+    state.setdefault("lieu_day_credits", [])
     return state
 
 
@@ -986,13 +988,84 @@ def _employee_id_in_use_globally(auth, employee_id, exclude_company_id=None):
     return False
 
 
-LEAVE_TYPES = ("paid", "unpaid", "sick")  # sick도 유급으로 취급합니다 (아래 _is_paid_leave 참고)
+LEAVE_TYPES = ("paid", "unpaid", "sick", "lieu_day", "annual_leave")  # sick/lieu_day/annual_leave도
+# 유급으로 취급합니다 (아래 _is_paid_leave 참고). lieu_day/annual_leave는 추가로 잔액을 차감합니다.
 
 
 def _is_paid_leave(leave_type):
-    """유급(paid) 또는 병가(sick)면 True — 급여 계산과 스케줄러의 최소시간 크레딧에서
-    "이미 지급이 약속된 시간"으로 취급합니다. 무급(unpaid)이거나 값이 없으면 False."""
-    return leave_type in ("paid", "sick")
+    """유급(paid), 병가(sick), Lieu Day, 애뉴얼 리브면 True — 급여 계산과 스케줄러의
+    최소시간 크레딧에서 "이미 지급이 약속된 시간"으로 취급합니다. 무급(unpaid)이거나
+    값이 없으면 False."""
+    return leave_type in ("paid", "sick", "lieu_day", "annual_leave")
+
+
+def _leave_request_day_span(lr):
+    """이 Leave Request가 며칠짜리인지(시작일~종료일 포함) 계산합니다. 날짜 형식이
+    잘못됐으면 0을 돌려줍니다."""
+    try:
+        start = date.fromisoformat(lr["start_date"])
+        end = date.fromisoformat(lr["end_date"])
+    except (KeyError, ValueError, TypeError):
+        return 0
+    return max(0, (end - start).days + 1)
+
+
+def _apply_leave_balance_diff(employee, new_requests):
+    """리브 신청 목록이 통째로 교체될 때(update_employee가 항상 이런 식으로 동작하므로),
+    Lieu Day/애뉴얼 리브 잔액을 정확히 반영합니다. id가 있는 신청만 비교 대상으로
+    삼습니다(id 없는 옛날 데이터는 잔액 계산에서 건너뜁니다 — 이 기능 이전에 만들어진
+    신청까지 소급 적용하면 예상치 못하게 잔액이 깎일 수 있으므로).
+
+    새로 추가되거나 종류가 바뀐 Lieu Day/애뉴얼 리브 신청은 잔액에서 차감하고, 삭제되거나
+    종류가 바뀐 신청은 그만큼 잔액을 되돌립니다. 잔액이 모자라면 (None, 에러메시지)를
+    돌려주고, 성공하면 (갱신된 잔액 dict, None)을 돌려줍니다 — 호출한 쪽에서 이 결과를
+    보고 전체 수정을 거부하거나 반영해야 합니다."""
+    old_requests = employee.get("leave_requests") or []
+    old_by_id = {r.get("id"): r for r in old_requests if r.get("id")}
+    new_by_id = {r.get("id"): r for r in (new_requests or []) if r.get("id")}
+
+    lieu_delta_days = 0.0
+    annual_delta_days = 0.0
+    today = date.today()
+    for rid in set(old_by_id) | set(new_by_id):
+        old_r, new_r = old_by_id.get(rid), new_by_id.get(rid)
+        old_type = old_r.get("leave_type") if old_r else None
+        new_type = new_r.get("leave_type") if new_r else None
+        old_span = _leave_request_day_span(old_r) if old_r else 0
+        new_span = _leave_request_day_span(new_r) if new_r else 0
+        changed = (old_type, old_span) != (new_type, new_span)
+        if old_r and (not new_r or changed):
+            # 이미 기간이 지나서 자연스럽게 화면에서 사라진 신청(만료)은 "취소"가
+            # 아니라 "이미 다 쓴 것"이므로, 잔액을 되돌리지 않습니다. 사용자가 실제로
+            # 삭제 버튼을 눌러서 없앤, 아직 기간이 지나지 않은 신청만 환불합니다.
+            try:
+                old_end = date.fromisoformat(old_r.get("end_date", ""))
+            except (ValueError, TypeError):
+                old_end = None
+            still_active = old_end is None or old_end >= today
+            if still_active:
+                if old_type == "lieu_day":
+                    lieu_delta_days += old_span
+                elif old_type == "annual_leave":
+                    annual_delta_days += old_span
+        if new_r and (not old_r or changed):
+            if new_type == "lieu_day":
+                lieu_delta_days -= new_span
+            elif new_type == "annual_leave":
+                annual_delta_days -= new_span
+
+    avg_hours = _average_day_hours(employee)
+    new_lieu_balance = employee.get("lieu_day_balance", 0.0) + lieu_delta_days
+    new_annual_balance = employee.get("annual_leave_balance_hours", 0.0) + annual_delta_days * avg_hours
+
+    if new_lieu_balance < -0.01:
+        return None, f"Lieu Day 잔액이 부족합니다 (보유: {employee.get('lieu_day_balance', 0):.1f}일)."
+    if new_annual_balance < -0.01:
+        return None, f"애뉴얼 리브 잔액이 부족합니다 (보유: {employee.get('annual_leave_balance_hours', 0):.1f}시간)."
+    return {
+        "lieu_day_balance": round(new_lieu_balance, 2),
+        "annual_leave_balance_hours": round(new_annual_balance, 2),
+    }, None
 
 
 def _prune_expired_leave_requests(leave_requests):
@@ -1933,6 +2006,11 @@ def add_employee(company_id):
         "pin": _generate_pin(),
         "pin_failed_attempts": 0,
         "pin_locked_until": None,
+        # Lieu Day 잔액(일 단위)과 애뉴얼 리브 잔액(시간 단위) — 둘 다 0에서 시작합니다.
+        # Lieu Day는 공휴일 근무(카테고리 A) 시 자동으로 쌓이고, 애뉴얼 리브는 사장이
+        # 직접 조정합니다(정확한 법정 적립 계산 대신, 참고용 추정치로 관리합니다).
+        "lieu_day_balance": 0.0,
+        "annual_leave_balance_hours": 0.0,
     }
     state["employees"].append(employee)
     _log_audit(state, "employee_added", f"직원 추가: {employee['name']} ({employee['id']})", {"employee_id": employee["id"]})
@@ -1965,6 +2043,11 @@ def update_employee(company_id, employee_id):
         updates["pay_type"] = "hourly"
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
+            if "leave_requests" in updates:
+                new_balances, balance_error = _apply_leave_balance_diff(e, updates["leave_requests"])
+                if balance_error:
+                    return jsonify({"error": balance_error}), 400
+                updates.update(new_balances)
             state["employees"][i].update(updates)
             _log_audit(state, "employee_updated", f"직원 정보 수정: {state['employees'][i]['name']} ({employee_id})",
                        {"employee_id": employee_id, "fields": list(updates.keys())})
@@ -1983,6 +2066,85 @@ def delete_employee(company_id, employee_id):
         _log_audit(state, "employee_deleted", f"직원 삭제: {removed['name']} ({employee_id})", {"employee_id": employee_id})
     save_state(company_id, state)
     return "", 204
+
+
+@app.route("/api/employees/<employee_id>/adjust-annual-leave", methods=["POST"])
+@require_login
+def adjust_annual_leave(company_id, employee_id):
+    """사장/매니저 전용: 애뉴얼 리브 잔액(시간)을 직접 조정합니다. 뉴질랜드 Holidays Act의
+    정확한 법정 적립 계산(OWP/AWE 비교 등)은 과거 소득 이력 전체가 필요해서 여기서는
+    하지 않고, 사장이 직접 관리하는 참고용 추정치로 취급합니다. body에 delta_hours(더하거나
+    뺄 시간, 음수 가능)를 주거나, set_hours(절대값으로 바로 설정)를 줄 수 있습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    state = load_state(company_id)
+    employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not employee:
+        return jsonify({"error": "Employee not found."}), 404
+
+    if "set_hours" in payload:
+        try:
+            new_balance = float(payload["set_hours"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "set_hours must be a number."}), 400
+    else:
+        try:
+            delta = float(payload.get("delta_hours", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "delta_hours must be a number."}), 400
+        new_balance = employee.get("annual_leave_balance_hours", 0.0) + delta
+
+    if new_balance < 0:
+        return jsonify({"error": "애뉴얼 리브 잔액은 0보다 작을 수 없습니다."}), 400
+
+    employee["annual_leave_balance_hours"] = round(new_balance, 2)
+    _log_audit(state, "annual_leave_adjusted",
+               f"{employee['name']}의 애뉴얼 리브 잔액을 {employee['annual_leave_balance_hours']}시간으로 조정",
+               {"employee_id": employee_id, "new_balance": employee["annual_leave_balance_hours"]})
+    save_state(company_id, state)
+    return jsonify({"annual_leave_balance_hours": employee["annual_leave_balance_hours"]})
+
+
+@app.route("/api/employees/<employee_id>/final-payment-estimate", methods=["GET"])
+@require_login
+def final_payment_estimate(company_id, employee_id):
+    """사장/매니저 전용: 퇴사 시 지급해야 할 것으로 추정되는 금액을 계산합니다.
+
+    ⚠️ 이건 참고용 추정치입니다. 실제 뉴질랜드 Holidays Act상 최종 정산은 "평소 주급
+    (OWP)"과 "최근 52주 평균 소득(AWE)" 중 더 높은 쪽으로 애뉴얼 리브를 지급해야 하는
+    등 훨씬 복잡한 계산이 필요하고, 여기서는 그 과거 소득 이력 전체를 갖고 있지 않아
+    정확히 재현할 수 없습니다. 실제 지급 전 반드시 회계사/노무사 확인을 받으세요."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not employee:
+        return jsonify({"error": "Employee not found."}), 404
+
+    is_salary = employee.get("pay_type") == "salary"
+    hourly_rate = _effective_hourly_rate_for_salary(employee) if is_salary else employee.get("hourly_wage")
+
+    annual_leave_hours = employee.get("annual_leave_balance_hours", 0.0)
+    lieu_days = employee.get("lieu_day_balance", 0.0)
+    avg_day_hours = _average_day_hours(employee)
+
+    annual_leave_payout = annual_leave_hours * hourly_rate if hourly_rate is not None else None
+    lieu_day_payout = (lieu_days * avg_day_hours * hourly_rate) if hourly_rate is not None else None
+    total = None
+    if annual_leave_payout is not None and lieu_day_payout is not None:
+        total = round(annual_leave_payout + lieu_day_payout, 2)
+
+    return jsonify({
+        "employee_id": employee_id, "employee_name": employee["name"],
+        "pay_type": employee.get("pay_type", "hourly"),
+        "hourly_rate_used": round(hourly_rate, 2) if hourly_rate is not None else None,
+        "annual_leave_balance_hours": round(annual_leave_hours, 2),
+        "annual_leave_payout_estimate": round(annual_leave_payout, 2) if annual_leave_payout is not None else None,
+        "lieu_day_balance": round(lieu_days, 2),
+        "lieu_day_payout_estimate": round(lieu_day_payout, 2) if lieu_day_payout is not None else None,
+        "total_estimate": total,
+    })
 
 
 @app.route("/api/employees/pins", methods=["GET"])
@@ -2669,13 +2831,54 @@ def set_week_lock(company_id, week_key):
     return jsonify({"locked": week["locked"], "published": week.get("published", False), "republish_reset": republish_reset})
 
 
+def _credit_lieu_days_for_week(state, week_key):
+    """이 주에 공휴일이 있고, 어떤 직원이 카테고리 A(평소 근무일+일함 → 1.5배+Lieu Day)에
+    해당하면 그 직원의 Lieu Day 잔액에 +1을 크레딧합니다. 같은 공휴일에 대해 중복으로
+    크레딧되지 않도록, 이미 크레딧한 (직원, 날짜) 조합을 state["lieu_day_credits"]에
+    기록해둡니다 — 이 주를 여러 번 퍼블리시해도 같은 공휴일로 두 번 크레딧되지 않습니다."""
+    week = state["weeks"].get(week_key)
+    if not week:
+        return
+    y, m, d = map(int, week_key.split("-"))
+    monday = date(y, m, d)
+    week_dates = [monday + timedelta(days=i) for i in range(7)]
+
+    holiday_by_day = {}
+    for h in state["public_holidays"]:
+        try:
+            hd = date.fromisoformat(h["date"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if hd in week_dates:
+            holiday_by_day[DAYS[week_dates.index(hd)]] = h["date"]
+    if not holiday_by_day:
+        return
+
+    assignments = (week.get("schedule") or {}).get("assignments") or []
+    worked_by_emp_day = {(a["employee_id"], a["day"]) for a in assignments}
+
+    policy = state["public_holiday_policy"]
+    credited = set(state.setdefault("lieu_day_credits", []))
+    for e in state["employees"]:
+        for day, holiday_date in holiday_by_day.items():
+            worked = (e["id"], day) in worked_by_emp_day
+            category, _count, _is_usual = _public_holiday_category(state, policy, e["id"], day, week_key, worked)
+            if category == 1:
+                credit_key = f"{e['id']}|{holiday_date}"
+                if credit_key not in credited:
+                    e["lieu_day_balance"] = round(e.get("lieu_day_balance", 0.0) + 1, 2)
+                    credited.add(credit_key)
+    state["lieu_day_credits"] = list(credited)
+
+
 @app.route("/api/weeks/<week_key>/publish", methods=["POST"])
 @require_login
 def publish_week(company_id, week_key):
     """사장/매니저 전용: 이 주의 스케줄을 직원들에게 공개합니다. 공개와 동시에 이 주를
     자동으로 잠급니다(locked=True) — 직원이 이미 확인(Agree)한 스케줄을 몰래 바꾸는
     상황을 막기 위해서입니다. 수정이 필요하면 먼저 잠금을 풀어야 하고, 그 순간
-    퍼블리시도 함께 취소되어 직원들의 확인 기록이 초기화됩니다(set_week_lock 참고)."""
+    퍼블리시도 함께 취소되어 직원들의 확인 기록이 초기화됩니다(set_week_lock 참고).
+    이때 이 주에 공휴일 근무(카테고리 A)가 있으면 Lieu Day도 같이 크레딧됩니다."""
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
     state = load_state(company_id)
@@ -2689,6 +2892,7 @@ def publish_week(company_id, week_key):
     # 새로 퍼블리시하면 모든 직원의 확인(Agree) 상태를 초기화합니다 — 이전에 확인했던
     # 기록이 있어도, 이번에 게시되는 내용은 "아직 확인 전"부터 다시 시작해야 합니다.
     week["agreements"] = {}
+    _credit_lieu_days_for_week(state, week_key)
     _log_audit(state, "week_published", f"{week_key} 주 스케줄 퍼블리시", {"week_key": week_key})
     save_state(company_id, state)
     return jsonify({"published": True, "locked": True})
