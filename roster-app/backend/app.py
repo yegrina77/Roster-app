@@ -481,6 +481,7 @@ def load_state(company_id):
             "public_holiday_policy": _default_public_holiday_policy(),
             "time_entries": [], "payroll_rounding_minutes": DEFAULT_PAYROLL_ROUNDING_MINUTES,
             "geofence": _default_geofence(), "audit_log": [], "lieu_day_credits": [],
+            "annual_leave_auto_accrual_enabled": False, "annual_leave_accrual_credits": [],
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -506,6 +507,10 @@ def load_state(company_id):
     state.setdefault("audit_log", [])
     # 이미 크레딧된 (직원,공휴일날짜) Lieu Day 기록 — 중복 크레딧 방지용.
     state.setdefault("lieu_day_credits", [])
+    # 애뉴얼 리브 자동 적립(매주 급여의 8%) — 기본은 꺼짐. 사장이 명시적으로 켜야
+    # 적용됩니다(잔액에 영향을 주는 자동화라, 조용히 켜져있지 않도록).
+    state.setdefault("annual_leave_auto_accrual_enabled", False)
+    state.setdefault("annual_leave_accrual_credits", [])
     return state
 
 
@@ -2637,6 +2642,28 @@ def set_payroll_rounding(company_id):
     return jsonify({"rounding_minutes": minutes})
 
 
+@app.route("/api/annual-leave-accrual-settings", methods=["GET"])
+@require_owner
+def get_annual_leave_accrual_settings(company_id):
+    state = load_state(company_id)
+    return jsonify({"enabled": bool(state.get("annual_leave_auto_accrual_enabled"))})
+
+
+@app.route("/api/annual-leave-accrual-settings", methods=["POST"])
+@require_owner
+def set_annual_leave_accrual_settings(company_id):
+    """사장 전용: 매주 스케줄 퍼블리시 시 시급제 직원의 애뉴얼 리브 잔액에 그 주
+    급여의 8%를 자동으로 적립할지 여부를 켜고 끕니다. 연봉제 직원은 이 자동 적립
+    대상이 아닙니다(보통 연봉에 이미 포함된 구조이므로)."""
+    payload = request.get_json(silent=True) or {}
+    state = load_state(company_id)
+    enabled = bool(payload.get("enabled"))
+    state["annual_leave_auto_accrual_enabled"] = enabled
+    _log_audit(state, "annual_leave_accrual_toggled", f"애뉴얼 리브 자동 적립(8%) {'켜짐' if enabled else '꺼짐'}", {"enabled": enabled})
+    save_state(company_id, state)
+    return jsonify({"enabled": enabled})
+
+
 # ---------------------------------------------------------------------------
 # 지오펜싱 (매장 위치 기반 클락인 검증) — 사장 전용, 조회/수정 둘 다
 # ---------------------------------------------------------------------------
@@ -2831,6 +2858,36 @@ def set_week_lock(company_id, week_key):
     return jsonify({"locked": week["locked"], "published": week.get("published", False), "republish_reset": republish_reset})
 
 
+def _accrue_annual_leave_for_week(state, week_key):
+    """이번 주 스케줄을 퍼블리시할 때, (자동 적립이 켜져 있으면) 시급제 직원들에게
+    그 주 예상(스케줄 기준) 급여의 8%만큼을 애뉴얼 리브 잔액(시간)으로 자동 적립합니다.
+    연봉제는 보통 애뉴얼 리브가 이미 연봉에 포함된 구조라 이 자동 적립 대상에서
+    제외합니다. 같은 주에 대해 같은 직원이 중복 적립되지 않도록
+    state["annual_leave_accrual_credits"]에 기록해둡니다."""
+    if not state.get("annual_leave_auto_accrual_enabled"):
+        return
+    payroll = _compute_week_payroll(state, week_key)
+    credited = set(state.setdefault("annual_leave_accrual_credits", []))
+    employees_by_id = {e["id"]: e for e in state["employees"]}
+
+    for row in payroll["employees"]:
+        emp_id = row["employee_id"]
+        employee = employees_by_id.get(emp_id)
+        if not employee or employee.get("pay_type") == "salary":
+            continue
+        credit_key = f"{emp_id}|{week_key}"
+        if credit_key in credited:
+            continue
+        wage = employee.get("hourly_wage")
+        weekly_pay = row.get("weekly_pay")
+        if not wage or not weekly_pay or wage <= 0:
+            continue
+        accrued_hours = (weekly_pay * 0.08) / wage
+        employee["annual_leave_balance_hours"] = round(employee.get("annual_leave_balance_hours", 0.0) + accrued_hours, 2)
+        credited.add(credit_key)
+    state["annual_leave_accrual_credits"] = list(credited)
+
+
 def _credit_lieu_days_for_week(state, week_key):
     """이 주에 공휴일이 있고, 어떤 직원이 카테고리 A(평소 근무일+일함 → 1.5배+Lieu Day)에
     해당하면 그 직원의 Lieu Day 잔액에 +1을 크레딧합니다. 같은 공휴일에 대해 중복으로
@@ -2893,6 +2950,7 @@ def publish_week(company_id, week_key):
     # 기록이 있어도, 이번에 게시되는 내용은 "아직 확인 전"부터 다시 시작해야 합니다.
     week["agreements"] = {}
     _credit_lieu_days_for_week(state, week_key)
+    _accrue_annual_leave_for_week(state, week_key)
     _log_audit(state, "week_published", f"{week_key} 주 스케줄 퍼블리시", {"week_key": week_key})
     save_state(company_id, state)
     return jsonify({"published": True, "locked": True})
