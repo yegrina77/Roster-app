@@ -800,6 +800,18 @@ const I18N = {
     rules_leave_desc: "날짜 구간을 등록하면, 그 기간이 포함된 어느 주든 자동으로 휴무 처리됩니다. 등록한 마지막 날짜가 지나면 이 목록에서 자동으로 사라집니다.",
     leave_reason_placeholder: "사유 (선택, 최대 200자)",
     leave_type_paid: "유급", leave_type_unpaid: "무급", leave_type_sick: "병가(유급)",
+    leave_type_annual_leave: "애뉴얼 리브", leave_type_lieu_day: "Lieu Day",
+    balance_lieu_day: "Lieu Day 잔액: {n}일", balance_annual_leave: "애뉴얼 리브 잔액: {h}시간",
+    balance_adjust_btn: "조정", balance_adjust_title: "{name}의 애뉴얼 리브 잔액 조정",
+    balance_adjust_sub: "정확한 법정 적립 계산 대신, 참고용으로 직접 관리하는 잔액입니다.",
+    balance_adjust_input_label: "새 잔액 (시간)", balance_adjust_invalid: "0 이상의 숫자를 입력해주세요.",
+    final_payment_nav_btn: "🧾 퇴사 정산 추정",
+    final_payment_picker_title: "퇴사 정산 추정", final_payment_picker_sub: "정산을 계산할 직원을 선택하세요.",
+    final_payment_title: "{name} 퇴사 정산 추정",
+    final_payment_warning: "⚠️ 이건 참고용 추정치입니다. 실제 뉴질랜드 Holidays Act 최종 정산은 평소 주급(OWP)과 최근 52주 평균소득(AWE) 비교 등 더 복잡한 계산이 필요합니다. 실제 지급 전 반드시 회계사·노무사 확인을 받으세요.",
+    final_payment_annual_balance: "애뉴얼 리브 잔액", final_payment_annual_payout: "애뉴얼 리브 정산 추정액",
+    final_payment_lieu_balance: "Lieu Day 잔액", final_payment_lieu_payout: "Lieu Day 정산 추정액",
+    final_payment_total: "총 추정액: ${amount}", final_payment_no_wage: "시급/연봉이 설정되지 않아 계산할 수 없습니다.",
     btn_leave_add: "추가", modal_leave_range_invalid: "종료일은 시작일보다 빠를 수 없습니다.",
     modal_leave_end_in_past: "종료일이 이미 지난 날짜입니다. 이미 끝난 휴가는 자동으로 목록에서 사라지니, 오늘 이후 날짜로 입력해주세요.",
     leave_label: "LEAVE",
@@ -1078,6 +1090,18 @@ const I18N = {
     rules_leave_desc: "Register a date range and it will automatically be treated as a day off in any week that overlaps it. It disappears from this list automatically once the last day has passed.",
     leave_reason_placeholder: "Reason (optional, max 200 chars)",
     leave_type_paid: "Paid", leave_type_unpaid: "Unpaid", leave_type_sick: "Sick (Paid)",
+    leave_type_annual_leave: "Annual Leave", leave_type_lieu_day: "Lieu Day",
+    balance_lieu_day: "Lieu Day balance: {n}", balance_annual_leave: "Annual Leave balance: {h}h",
+    balance_adjust_btn: "Adjust", balance_adjust_title: "Adjust {name}'s Annual Leave Balance",
+    balance_adjust_sub: "A reference balance you manage directly, not a certified legal accrual calculation.",
+    balance_adjust_input_label: "New balance (hours)", balance_adjust_invalid: "Please enter a number 0 or greater.",
+    final_payment_nav_btn: "🧾 Final Payment Estimate",
+    final_payment_picker_title: "Final Payment Estimate", final_payment_picker_sub: "Select an employee to estimate their final payment.",
+    final_payment_title: "Final Payment Estimate — {name}",
+    final_payment_warning: "⚠️ This is a reference estimate only. Actual final pay under the NZ Holidays Act requires comparing Ordinary Weekly Pay (OWP) and Average Weekly Earnings (AWE) over the last 52 weeks, among other factors. Always confirm with an accountant or payroll professional before paying out.",
+    final_payment_annual_balance: "Annual Leave Balance", final_payment_annual_payout: "Annual Leave Payout Estimate",
+    final_payment_lieu_balance: "Lieu Day Balance", final_payment_lieu_payout: "Lieu Day Payout Estimate",
+    final_payment_total: "Total estimate: ${amount}", final_payment_no_wage: "Cannot calculate — no wage/salary set.",
     btn_leave_add: "Add", modal_leave_range_invalid: "The end date cannot be before the start date.",
     modal_leave_end_in_past: "The end date is already in the past. Finished leave requests are automatically removed from the list, so please pick a date today or later.",
     leave_label: "LEAVE",
@@ -2172,6 +2196,7 @@ function showAdminMenuModal() {
     {key: "pins_nav_btn", fn: showEmployeePinsPage, ownerOnly: false},
     {key: "geofence_nav_btn", fn: showGeofenceModal, ownerOnly: true},
     {key: "audit_log_nav_btn", fn: showAuditLogPage, ownerOnly: false},
+    {key: "final_payment_nav_btn", fn: showFinalPaymentPicker, ownerOnly: false},
   ];
   items.forEach(item => {
     if (item.ownerOnly && !(currentCompany && currentCompany.role === "owner")) return;
@@ -2402,6 +2427,108 @@ async function showAuditLogPage() {
     list.appendChild(item);
   });
   box.appendChild(list);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showFinalPaymentPicker() {
+  const employees = window._employees || [];
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "380px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("final_payment_picker_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("final_payment_picker_sub");
+  box.appendChild(sub);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:12px; max-height:360px; overflow-y:auto;";
+  employees.forEach(emp => {
+    const btn = document.createElement("button");
+    btn.className = "btn-ghost";
+    btn.style.cssText = "width:100%; text-align:left; padding:9px 12px;";
+    btn.textContent = `${emp.name} (${emp.id})`;
+    btn.onclick = () => { overlay.remove(); showFinalPaymentEstimate(emp.id); };
+    list.appendChild(btn);
+  });
+  box.appendChild(list);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showFinalPaymentEstimate(employeeId) {
+  let data;
+  try {
+    data = await api(`/api/employees/${employeeId}/final-payment-estimate`);
+  } catch (e) {
+    return;
+  }
+  if (!data) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "440px";
+
+  const title = document.createElement("h3");
+  title.textContent = tf("final_payment_title", {name: data.employee_name});
+  box.appendChild(title);
+
+  const warnBox = document.createElement("div");
+  warnBox.style.cssText = "background:rgba(239,68,68,0.1); border:1px solid var(--danger, #ef4444); border-radius:8px; padding:10px 12px; margin:12px 0; font-size:12px; color:var(--danger, #ef4444);";
+  warnBox.textContent = t("final_payment_warning");
+  box.appendChild(warnBox);
+
+  const rows = [
+    [t("final_payment_annual_balance"), `${data.annual_leave_balance_hours.toFixed(1)}h`],
+    [t("final_payment_annual_payout"), data.annual_leave_payout_estimate != null ? `$${data.annual_leave_payout_estimate.toFixed(2)}` : "—"],
+    [t("final_payment_lieu_balance"), `${data.lieu_day_balance.toFixed(1)}${t("day_suffix")}`],
+    [t("final_payment_lieu_payout"), data.lieu_day_payout_estimate != null ? `$${data.lieu_day_payout_estimate.toFixed(2)}` : "—"],
+  ];
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%; border-collapse:collapse; font-size:13px;";
+  rows.forEach(([label, value]) => {
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid var(--line);";
+    tr.innerHTML = `<td style="padding:7px 4px; color:var(--text-muted);">${label}</td><td style="padding:7px 4px; text-align:right; font-weight:600;">${value}</td>`;
+    table.appendChild(tr);
+  });
+  box.appendChild(table);
+
+  const totalLine = document.createElement("div");
+  totalLine.style.cssText = "text-align:right; font-weight:700; font-size:15px; margin-top:12px;";
+  totalLine.textContent = data.total_estimate != null ? tf("final_payment_total", {amount: data.total_estimate.toFixed(2)}) : t("final_payment_no_wage");
+  box.appendChild(totalLine);
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
@@ -3567,6 +3694,76 @@ function toggleRulesPanel(id) {
   loadEmployees();
 }
 
+function showAdjustAnnualLeaveModal(employee) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "380px";
+
+  const title = document.createElement("h3");
+  title.textContent = tf("balance_adjust_title", {name: employee.name});
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("balance_adjust_sub");
+  box.appendChild(sub);
+
+  const label = document.createElement("label");
+  label.textContent = t("balance_adjust_input_label");
+  label.style.cssText = "display:block; font-size:12px; margin-top:12px; margin-bottom:4px;";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = "0.5";
+  input.style.width = "100%";
+  input.value = employee.annual_leave_balance_hours || 0;
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+
+  box.appendChild(label);
+  box.appendChild(input);
+  box.appendChild(errLine);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    const val = Number(input.value);
+    if (isNaN(val) || val < 0) {
+      errLine.textContent = t("balance_adjust_invalid");
+      errLine.style.display = "block";
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      await api(`/api/employees/${employee.id}/adjust-annual-leave`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({set_hours: val}),
+      });
+      overlay.remove();
+      loadEmployees();
+    } catch (e) {
+      saveBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
 function buildRulesPanel(e) {
   const wrap = document.createElement("div");
   wrap.className = "rules-panel";
@@ -3574,6 +3771,20 @@ function buildRulesPanel(e) {
   const leaveBlock = document.createElement("div");
   leaveBlock.className = "rules-block";
   leaveBlock.innerHTML = `<h4>${t("rules_leave_title")}</h4><div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">${t("rules_leave_desc")}</div>`;
+  const balanceRow = document.createElement("div");
+  balanceRow.style.cssText = "display:flex; align-items:center; gap:14px; margin-bottom:10px; font-size:12px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+  const lieuSpan = document.createElement("span");
+  lieuSpan.textContent = tf("balance_lieu_day", {n: (e.lieu_day_balance || 0).toFixed(1)});
+  const annualSpan = document.createElement("span");
+  annualSpan.textContent = tf("balance_annual_leave", {h: (e.annual_leave_balance_hours || 0).toFixed(1)});
+  const adjustBtn = document.createElement("button");
+  adjustBtn.className = "btn-ghost btn-sm";
+  adjustBtn.textContent = t("balance_adjust_btn");
+  adjustBtn.onclick = () => showAdjustAnnualLeaveModal(e);
+  balanceRow.appendChild(lieuSpan);
+  balanceRow.appendChild(annualSpan);
+  balanceRow.appendChild(adjustBtn);
+  leaveBlock.appendChild(balanceRow);
   const leaveList = document.createElement("div");
   rulesDraft.leave_requests.forEach((lr, idx) => {
     const row = document.createElement("div");
@@ -3609,7 +3820,8 @@ function buildRulesPanel(e) {
   enableClickToOpenDatePicker(endInput);
   const typeSelect = document.createElement("select");
   typeSelect.style.cssText = "min-width:90px;";
-  [["paid", "leave_type_paid"], ["unpaid", "leave_type_unpaid"], ["sick", "leave_type_sick"]].forEach(([value, key]) => {
+  [["paid", "leave_type_paid"], ["unpaid", "leave_type_unpaid"], ["sick", "leave_type_sick"],
+   ["annual_leave", "leave_type_annual_leave"], ["lieu_day", "leave_type_lieu_day"]].forEach(([value, key]) => {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = t(key);
@@ -3638,6 +3850,7 @@ function buildRulesPanel(e) {
       return;
     }
     rulesDraft.leave_requests.push({
+      id: "lr_" + Math.random().toString(36).slice(2, 10),
       start_date: startInput.value, end_date: endInput.value,
       leave_type: typeSelect.value, reason: reasonInput.value.trim().slice(0, 200),
     });
