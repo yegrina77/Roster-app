@@ -128,6 +128,7 @@ def load_auth():
     data.setdefault("companies", {})
     data.setdefault("reset_tokens", {})
     data.setdefault("pending_signups", {})
+    data.setdefault("support_requests", {})
 
     # 관리자 기능이 생기기 전에 이미 가입된 계정들은 is_admin 표시가 없을 수 있습니다.
     # 그런 경우, 가장 먼저 가입한(created_at이 가장 이른) 계정을 자동으로 관리자로 지정합니다.
@@ -286,6 +287,22 @@ def _send_signup_rejected_email(to_email):
         to_email,
         "Your signup request was not approved",
         "<p>Unfortunately, your signup request was not approved. If you believe this is a mistake, please contact the administrator directly.</p>",
+    )
+
+
+def _send_support_request_email(admin_email, company_name, sender_name, sender_role, message):
+    # message는 사용자가 자유롭게 입력하는 값이라, 이메일 본문에 넣기 전에 반드시
+    # HTML 이스케이프를 거쳐서 이메일 클라이언트에서 깨지거나 악용되지 않도록 합니다.
+    return _send_email(
+        admin_email,
+        f"Support Request: {company_name}",
+        (
+            f"<p><b>{html.escape(company_name)}</b>의 {html.escape(sender_name)}"
+            f"({'사장' if sender_role == 'owner' else '매니저'})님이 지원 요청을 보냈습니다:</p>"
+            f"<p style='white-space:pre-wrap; border-left:3px solid #ccc; padding-left:10px;'>"
+            f"{html.escape(message)}</p>"
+            f"<p>관리자 패널에서 전체 요청 목록을 확인할 수 있습니다.</p>"
+        ),
     )
 
 
@@ -1283,6 +1300,68 @@ def set_company_features(company_id):
     company["enabled_features"] = current
     save_auth(auth)
     return jsonify({"company_id": company_id, "enabled_features": current})
+
+
+@app.route("/api/support-request", methods=["POST"])
+@require_login
+def submit_support_request(company_id):
+    """사장/매니저 전용: 개발자(시스템 관리자)에게 버그 제보·지원 요청을 보냅니다.
+    작성한 내용이 관리자 패널의 "지원 요청" 목록에 쌓이고, 동시에 관리자에게
+    이메일로도 알림이 갑니다."""
+    payload = request.get_json(silent=True) or {}
+    message = (payload.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "내용을 입력해주세요."}), 400
+    message = message[:2000]
+
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+
+    request_id = secrets.token_hex(8)
+    entry = {
+        "id": request_id,
+        "company_id": company_id,
+        "company_name": company["name"],
+        "sender_name": g.user_name, "sender_role": g.role, "sender_email": g.user_email,
+        "message": message,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "open",
+    }
+    auth.setdefault("support_requests", {})[request_id] = entry
+    save_auth(auth)
+
+    admin_emails = [c["email"] for c in auth["companies"].values() if c.get("is_admin")]
+    for admin_email in admin_emails:
+        _send_support_request_email(admin_email, company["name"], g.user_name, g.role, message)
+
+    return jsonify({"id": request_id}), 201
+
+
+@app.route("/api/admin/support-requests", methods=["GET"])
+@require_admin
+def list_support_requests():
+    """관리자(개발자) 전용: 모든 회사로부터 온 지원 요청을 최신순으로 보여줍니다."""
+    auth = load_auth()
+    requests_list = list(auth.get("support_requests", {}).values())
+    requests_list.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return jsonify(requests_list)
+
+
+@app.route("/api/admin/support-requests/<request_id>/resolve", methods=["POST"])
+@require_admin
+def resolve_support_request(request_id):
+    """관리자(개발자) 전용: 지원 요청을 "처리 완료"로 표시합니다(삭제하지 않고, 목록에서
+    구분만 해둡니다 — 나중에 어떤 문의들이 있었는지 계속 참고할 수 있도록)."""
+    auth = load_auth()
+    req = auth.get("support_requests", {}).get(request_id)
+    if not req:
+        return jsonify({"error": "Request not found."}), 404
+    payload = request.get_json(silent=True) or {}
+    req["status"] = "resolved" if payload.get("resolved", True) else "open"
+    save_auth(auth)
+    return jsonify(req)
 
 
 @app.route("/api/admin/pending-signups", methods=["GET"])
