@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — RosterFlow</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #12181f; --text: #e7ecf3; --text-muted: #94b2d6;
+    --line: rgba(148,178,214,0.18); --cyan: #4fd8e0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0; padding: 40px 20px 80px;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 32px 36px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .updated { color: var(--text-muted); font-size: 13px; font-style: italic; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  h2 { font-size: 16px; color: var(--cyan); margin: 26px 0 8px; }
+  p { font-size: 14px; margin: 0 0 10px; }
+  ul { margin: 6px 0 10px; padding-left: 22px; }
+  li { font-size: 14px; margin-bottom: 6px; }
+  .label { font-weight: 600; }
+  a { color: var(--cyan); }
+  .back { display: inline-block; margin-bottom: 20px; font-size: 13px; color: var(--text-muted); text-decoration: none; }
+  .back:hover { color: var(--cyan); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/">&larr; Back to RosterFlow</a>
+    <h1>RosterFlow — Developer Data Access &amp; Privacy Policy</h1>
+    <div class="updated">Last updated: September 2026</div>
+
+    <h2>1. Purpose</h2>
+    <p>This policy explains how the developer of RosterFlow ("the Developer") accesses data belonging to the businesses ("Companies") that use this software, and the commitments the Developer makes regarding the privacy of Company and employee data.</p>
+
+    <h2>2. Roles</h2>
+    <p>Each Company using RosterFlow is the owner and controller of its own operational data — its employee records, wages, schedules, and time records. The Developer's role is limited to building, hosting, and maintaining the software ("data processor"), not to using, analyzing, or sharing Company data for any other purpose.</p>
+
+    <h2>3. What data exists in the system</h2>
+    <ul>
+      <li>Account information — company name, contact details, login credentials</li>
+      <li>Employee records — names, roles, wage or salary information, contact details</li>
+      <li>Schedules and shift assignments</li>
+      <li>Time and attendance records, including GPS location captured at clock-in/out where geofencing is enabled</li>
+      <li>Leave requests, leave balances, and payroll estimates</li>
+    </ul>
+
+    <h2>4. Developer access principles</h2>
+    <p><span class="label">Always accessible, for the purpose of operating the service:</span></p>
+    <ul>
+      <li>Company account metadata — business name, contact details, signup date, and feature/subscription settings</li>
+      <li>Aggregate counts (e.g. number of registered employees) needed to enforce plan limits</li>
+    </ul>
+    <p><span class="label">Not accessed as part of routine operation:</span></p>
+    <ul>
+      <li>Individual employee names, wages, salaries, schedules, GPS location history, login PINs, and payroll figures. These are treated as confidential to each Company and are not reviewed, exported, or referenced by the Developer out of curiosity or for any purpose unrelated to fixing a reported issue.</li>
+    </ul>
+    <p><span class="label">Accessed only when necessary, and only for that purpose:</span></p>
+    <ul>
+      <li>When a Company submits a support request or bug report, the Developer may access the specific data required to investigate and resolve it, and nothing beyond that.</li>
+    </ul>
+
+    <h2>5. Especially sensitive data</h2>
+    <p>GPS/location data (from geofenced clock-ins) and wage/salary data are treated with the highest level of care. They are never reviewed outside of an active, Company-initiated support request, and are never used to compare or discuss one Company's data in the context of another.</p>
+
+    <h2>6. Support requests</h2>
+    <p>Companies can submit a support request directly within RosterFlow (Admin Menu &rarr; Contact Support). This is the intended channel for the Developer to access Company-specific data when troubleshooting — rather than the Developer accessing data unprompted. Requests are retained to track resolution history.</p>
+
+    <h2>7. Data storage &amp; retention</h2>
+    <p>Data is stored using third-party infrastructure providers (currently Render and Upstash) under their standard security practices. A Company may delete its account and all associated data at any time using the in-app account deletion feature; this action is irreversible.</p>
+
+    <h2>8. Changes to this policy</h2>
+    <p>This policy may be updated as RosterFlow's features change. Material changes will be reflected in the "Last updated" date above.</p>
+
+    <h2>9. Contact</h2>
+    <p>For questions about this policy or to raise a privacy concern, contact the Developer at: <a href="mailto:REPLACE_WITH_YOUR_EMAIL">REPLACE_WITH_YOUR_EMAIL</a></p>
+  </div>
+</body>
+</html>

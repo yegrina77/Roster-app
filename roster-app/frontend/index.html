@@ -470,6 +470,9 @@
     <div id="auth-forgot-link-row" style="margin-top:14px; text-align:center;">
       <a href="#" onclick="showForgotPasswordForm(); return false;" style="color:var(--text-muted); font-size:12px; text-decoration:underline;" data-i18n="auth_forgot_link">비밀번호를 잊으셨나요?</a>
     </div>
+    <div style="margin-top:10px; text-align:center;">
+      <a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--text-muted); font-size:11px; text-decoration:underline;" data-i18n="auth_privacy_link">개인정보처리방침</a>
+    </div>
   </div>
 
   <div id="auth-forgot-box" style="display:none; max-width:400px; width:100%; background:var(--panel-solid); border:1px solid var(--line-strong); border-radius:14px; padding:32px 30px; box-shadow:var(--shadow-md);">
@@ -751,7 +754,7 @@ const I18N = {
     rules_pattern: "휴무 패턴 (권장사항 - 최대한 지키려 하되 필요시 조정될 수 있음)",
     pattern_none: "지정 안 함", pattern_consecutive: "연속 휴무 (Consecutive)", pattern_split: "분산 휴무 (Split)",
     hard_off_note: "이 휴무 요청을 반드시 지키기 (필수)",
-    btn_close: "닫기", btn_confirm: "확인",
+    btn_close: "닫기", btn_confirm: "확인", btn_back: "← 뒤로",
     modal_input_check_title: "입력값을 확인해주세요", modal_id_name_required: "ID와 이름은 필수입니다.",
     modal_request_failed: "요청을 처리하지 못했습니다",
     modal_save_done: "저장 완료", modal_save_msg: "이번 주 근무 요건이 저장되었습니다.",
@@ -970,6 +973,7 @@ const I18N = {
     shift_is_closing: "마감 근무", shift_blocked_after_closing: "마감 다음날 배정 금지",
     modal_network_error: "네트워크 연결을 확인하고 다시 시도해주세요.",
     auth_forgot_link: "비밀번호를 잊으셨나요?",
+    auth_privacy_link: "개인정보처리방침",
     auth_forgot_title: "비밀번호 재설정",
     auth_forgot_intro: "가입하신 이메일을 입력하시면, 재설정 링크를 보내드립니다.",
     auth_forgot_submit: "재설정 링크 받기",
@@ -1052,7 +1056,7 @@ const I18N = {
     rules_pattern: "Day-off pattern (preferred — followed as closely as possible, may be adjusted if needed)",
     pattern_none: "Not set", pattern_consecutive: "Consecutive", pattern_split: "Split",
     hard_off_note: "Always honor this day-off request (mandatory)",
-    btn_close: "Close", btn_confirm: "OK",
+    btn_close: "Close", btn_confirm: "OK", btn_back: "← Back",
     modal_input_check_title: "Please check your input", modal_id_name_required: "ID and name are required.",
     modal_request_failed: "The request could not be processed",
     modal_save_done: "Saved", modal_save_msg: "This week's shift requirements have been saved.",
@@ -1271,6 +1275,7 @@ const I18N = {
     shift_is_closing: "Closing shift", shift_blocked_after_closing: "Blocked the day after a closing shift",
     modal_network_error: "Please check your network connection and try again.",
     auth_forgot_link: "Forgot your password?",
+    auth_privacy_link: "Privacy Policy",
     auth_forgot_title: "Reset Password",
     auth_forgot_intro: "Enter your registered email and we'll send you a reset link.",
     auth_forgot_submit: "Send Reset Link",
@@ -2655,10 +2660,16 @@ async function showFinalPaymentEstimate(employeeId) {
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
+  closeRow.style.cssText = "display:flex; justify-content:space-between; margin-top:14px;";
+  const backBtn = document.createElement("button");
+  backBtn.className = "btn-ghost";
+  backBtn.textContent = t("btn_back");
+  backBtn.onclick = () => { overlay.remove(); showFinalPaymentPicker(); };
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn-ghost";
   closeBtn.textContent = t("btn_close");
   closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(backBtn);
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
 
