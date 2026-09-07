@@ -529,6 +529,8 @@
 
 <main id="main-app" style="display:none;">
 
+  <div id="alerts-banner" style="display:none; cursor:pointer; background:rgba(239,68,68,0.12); border:1px solid var(--danger, #ef4444); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:13px; color:var(--danger, #ef4444);" onclick="showAlertsModal()"></div>
+
   <section>
     <h2 data-i18n="emp_title">직원</h2>
     <p class="desc" data-i18n="emp_desc">이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.</p>
@@ -1008,6 +1010,13 @@ const I18N = {
     pattern_title_pref: "— {day}요일 {shift}에 자주 수동 배치됨",
     pattern_detail_pref: "자동 생성엔 없었는데, 최근 {n}주 동안 직접 이 자리에 넣으셨습니다. \"선호 근무\"에 추가할까요?",
     day_suffix: "일", summary_pref_off: "선호오프 {n}일", summary_pattern_consecutive: "연속휴무선호", summary_pattern_split: "분산휴무선호",
+    docs_title: "비자·자격증 만료 관리", docs_desc: "만료일이 있는 문서(비자, 푸드핸들러 자격증 등)를 등록하면, 만료 임박 시 관리자 화면에 알림이 뜹니다.",
+    docs_expired_tag: "⛔ 만료됨", docs_label_placeholder: "메모 (예: AEWV)", btn_docs_add: "추가",
+    doc_type_work_visa: "취업비자", doc_type_student_visa: "학생비자", doc_type_working_holiday_visa: "워킹홀리데이비자",
+    doc_type_resident_visa: "영주권", doc_type_food_handler_cert: "푸드핸들러 자격증", doc_type_first_aid_cert: "응급처치 자격증", doc_type_other: "기타",
+    alerts_banner: "⚠️ 확인이 필요한 알림 {n}건이 있습니다", alerts_modal_title: "알림",
+    alerts_noshow_title: "🔴 노쇼/클락인 누락", alerts_noshow_detail: "{shift} ({time} 시작) — {minutes}분 경과",
+    alerts_docs_title: "🟡 만료 임박 비자·자격증", alerts_docs_days_left: "{n}일 남음",
     summary_blocked: "금지유형 {list}", summary_pref_count: "선호 {n}건",
     reason_off: "휴무 지정", reason_blocked_type: "근무유형 전체 금지", reason_other_dept: "다른 부서 소속", reason_person: "명",
     week_range_join: "~",
@@ -1310,6 +1319,13 @@ const I18N = {
     pattern_title_pref: "— often manually placed on {day} {shift}",
     pattern_detail_pref: "Auto-generation never placed this, but you've manually added it here for {n} weeks. Add to \"preferred shifts\"?",
     day_suffix: " days", summary_pref_off: "{n} preferred days off", summary_pattern_consecutive: "Prefers consecutive off", summary_pattern_split: "Prefers split off",
+    docs_title: "Visa & Certificate Expiry", docs_desc: "Track documents with expiry dates (visas, food handler certificates, etc.) — you'll get an alert when one is approaching expiry.",
+    docs_expired_tag: "⛔ Expired", docs_label_placeholder: "Note (e.g. AEWV)", btn_docs_add: "Add",
+    doc_type_work_visa: "Work Visa", doc_type_student_visa: "Student Visa", doc_type_working_holiday_visa: "Working Holiday Visa",
+    doc_type_resident_visa: "Resident Visa", doc_type_food_handler_cert: "Food Handler Certificate", doc_type_first_aid_cert: "First Aid Certificate", doc_type_other: "Other",
+    alerts_banner: "⚠️ {n} alert(s) need your attention", alerts_modal_title: "Alerts",
+    alerts_noshow_title: "🔴 No-show / Missed Clock-in", alerts_noshow_detail: "{shift} (started {time}) — {minutes} min ago",
+    alerts_docs_title: "🟡 Expiring Visas & Certificates", alerts_docs_days_left: "{n} day(s) left",
     summary_blocked: "Blocked: {list}", summary_pref_count: "{n} preferences",
     reason_off: "day off", reason_blocked_type: "blocked shift type", reason_other_dept: "different department", reason_person: "",
     week_range_join: "–",
@@ -3931,6 +3947,7 @@ function toggleRulesPanel(id) {
       preferred_off_days: [...(e.preferred_off_days || [])],
       blocked_shift_types: [...(e.blocked_shift_types || [])],
       leave_requests: (e.leave_requests || []).map(lr => ({...lr})),
+      documents: (e.documents || []).map(d => ({...d})),
     };
   }
   loadEmployees();
@@ -4108,6 +4125,74 @@ function buildRulesPanel(e) {
   if (isFeatureEnabled("leave_request")) {
     wrap.appendChild(leaveBlock);
   }
+
+  const docsBlock = document.createElement("div");
+  docsBlock.className = "rules-block";
+  docsBlock.innerHTML = `<h4>${t("docs_title")}</h4><div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">${t("docs_desc")}</div>`;
+  const docsList = document.createElement("div");
+  const todayStr = new Date().toISOString().slice(0, 10);
+  rulesDraft.documents.forEach((doc, idx) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12px;";
+    const isExpired = doc.expiry_date < todayStr;
+    const daysLeft = Math.ceil((new Date(doc.expiry_date) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
+    const isSoon = !isExpired && daysLeft <= 30;
+    const label = document.createElement("span");
+    label.style.cssText = isExpired ? "color:var(--danger, #ef4444); font-weight:600;" : (isSoon ? "color:#f59e0b; font-weight:600;" : "");
+    const typeLabel = t(`doc_type_${doc.doc_type || "other"}`);
+    const labelText = doc.label ? ` (${doc.label})` : "";
+    const tag = isExpired ? ` ${t("docs_expired_tag")}` : (isSoon ? ` (${daysLeft}${t("day_suffix")})` : "");
+    label.textContent = `${typeLabel}${labelText} — ${doc.expiry_date}${tag}`;
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn-danger btn-sm";
+    removeBtn.textContent = t("btn_delete");
+    removeBtn.onclick = () => {
+      rulesDraft.documents.splice(idx, 1);
+      loadEmployees();
+    };
+    row.appendChild(label);
+    row.appendChild(removeBtn);
+    docsList.appendChild(row);
+  });
+  docsBlock.appendChild(docsList);
+
+  const docsAddRow = document.createElement("div");
+  docsAddRow.style.cssText = "display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;";
+  const docTypeSelect = document.createElement("select");
+  docTypeSelect.style.cssText = "min-width:130px;";
+  ["work_visa", "student_visa", "working_holiday_visa", "resident_visa", "food_handler_cert", "first_aid_cert", "other"].forEach(dt => {
+    const opt = document.createElement("option");
+    opt.value = dt;
+    opt.textContent = t(`doc_type_${dt}`);
+    docTypeSelect.appendChild(opt);
+  });
+  const docLabelInput = document.createElement("input");
+  docLabelInput.type = "text";
+  docLabelInput.maxLength = 100;
+  docLabelInput.placeholder = t("docs_label_placeholder");
+  docLabelInput.style.cssText = "flex:1; min-width:120px;";
+  const docExpiryInput = document.createElement("input");
+  docExpiryInput.type = "date";
+  enableClickToOpenDatePicker(docExpiryInput);
+  const addDocBtn = document.createElement("button");
+  addDocBtn.className = "btn-ghost btn-sm";
+  addDocBtn.textContent = t("btn_docs_add");
+  addDocBtn.onclick = () => {
+    if (!docExpiryInput.value) return;
+    rulesDraft.documents.push({
+      id: "doc_" + Math.random().toString(36).slice(2, 10),
+      doc_type: docTypeSelect.value,
+      label: docLabelInput.value.trim().slice(0, 100),
+      expiry_date: docExpiryInput.value,
+    });
+    loadEmployees();
+  };
+  docsAddRow.appendChild(docTypeSelect);
+  docsAddRow.appendChild(docLabelInput);
+  docsAddRow.appendChild(docExpiryInput);
+  docsAddRow.appendChild(addDocBtn);
+  docsBlock.appendChild(docsAddRow);
+  wrap.appendChild(docsBlock);
 
   const prefOffBlock = document.createElement("div");
   prefOffBlock.className = "rules-block";
@@ -6458,6 +6543,85 @@ async function initAppData() {
   await loadEmployees();
   if (isFeatureEnabled("public_holiday")) await loadPublicHolidays();
   await loadWeek();
+  checkAlerts();
+}
+
+let latestAlerts = {noShows: [], expiringDocs: []};
+
+async function checkAlerts() {
+  const banner = document.getElementById("alerts-banner");
+  if (!currentCompany || (currentCompany.role !== "owner" && currentCompany.role !== "manager")) {
+    banner.style.display = "none";
+    return;
+  }
+  try {
+    const [noShows, expiringDocs] = await Promise.all([
+      fetch("/api/no-show-alerts", {credentials: "same-origin"}).then(r => r.ok ? r.json() : []),
+      fetch("/api/expiring-documents?days=30", {credentials: "same-origin"}).then(r => r.ok ? r.json() : []),
+    ]);
+    latestAlerts = {noShows, expiringDocs};
+    const total = noShows.length + expiringDocs.length;
+    if (total > 0) {
+      banner.textContent = "⚠️ " + tf("alerts_banner", {n: total});
+      banner.style.display = "block";
+    } else {
+      banner.style.display = "none";
+    }
+  } catch (e) {
+    banner.style.display = "none";
+  }
+}
+
+function showAlertsModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "480px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("alerts_modal_title");
+  box.appendChild(title);
+
+  if (latestAlerts.noShows.length) {
+    const secTitle = document.createElement("div");
+    secTitle.style.cssText = "font-weight:600; font-size:13px; margin-top:14px; margin-bottom:6px; color:var(--danger, #ef4444);";
+    secTitle.textContent = t("alerts_noshow_title");
+    box.appendChild(secTitle);
+    latestAlerts.noShows.forEach(ns => {
+      const row = document.createElement("div");
+      row.className = "modal-item";
+      row.innerHTML = `<div class="modal-item-title">${ns.employee_name}</div><div class="modal-item-detail">${tf("alerts_noshow_detail", {shift: ns.shift_name, time: ns.scheduled_start, minutes: ns.minutes_late})}</div>`;
+      box.appendChild(row);
+    });
+  }
+
+  if (latestAlerts.expiringDocs.length) {
+    const secTitle = document.createElement("div");
+    secTitle.style.cssText = "font-weight:600; font-size:13px; margin-top:14px; margin-bottom:6px; color:#f59e0b;";
+    secTitle.textContent = t("alerts_docs_title");
+    box.appendChild(secTitle);
+    latestAlerts.expiringDocs.forEach(doc => {
+      const row = document.createElement("div");
+      row.className = "modal-item";
+      const statusText = doc.expired ? t("docs_expired_tag") : tf("alerts_docs_days_left", {n: doc.days_remaining});
+      row.innerHTML = `<div class="modal-item-title">${doc.employee_name} — ${t(`doc_type_${doc.doc_type}`)}${doc.label ? ` (${doc.label})` : ""}</div><div class="modal-item-detail">${doc.expiry_date} · ${statusText}</div>`;
+      box.appendChild(row);
+    });
+  }
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
 
 (async () => {
