@@ -974,6 +974,7 @@ const I18N = {
     confirm_delete_shift_msg: "\"{name}\" 근무유형이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
     shift_is_closing: "마감 근무", shift_blocked_after_closing: "마감 다음날 배정 금지",
     modal_network_error: "네트워크 연결을 확인하고 다시 시도해주세요.",
+    modal_unknown_error: "서버 오류가 발생했습니다 (상태 코드: {status}). 잠시 후 다시 시도해주시고, 계속되면 지원 요청을 보내주세요.",
     auth_forgot_link: "비밀번호를 잊으셨나요?",
     auth_privacy_link: "개인정보처리방침",
     auth_forgot_title: "비밀번호 재설정",
@@ -1283,6 +1284,7 @@ const I18N = {
     confirm_delete_shift_msg: "\"{name}\" will be deleted. This cannot be undone.",
     shift_is_closing: "Closing shift", shift_blocked_after_closing: "Blocked the day after a closing shift",
     modal_network_error: "Please check your network connection and try again.",
+    modal_unknown_error: "A server error occurred (status: {status}). Please try again, and contact support if this continues.",
     auth_forgot_link: "Forgot your password?",
     auth_privacy_link: "Privacy Policy",
     auth_forgot_title: "Reset Password",
@@ -3732,9 +3734,14 @@ async function api(path, opts) {
     throw new Error("Login required.");
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({error: res.statusText}));
-    showMessageModal(t("modal_request_failed"), err.error || res.statusText, true);
-    throw new Error(err.error);
+    const err = await res.json().catch(() => ({}));
+    // res.statusText는 HTTP/2 응답에서 빈 문자열로 오는 경우가 흔해서(Render 등 대부분의
+    // 호스팅이 HTTP/2를 씁니다), 그것만 믿고 fallback하면 메시지가 완전히 빈 채로 뜰 수
+    // 있습니다. 그래서 마지막 안전장치로 상태 코드를 명시한 문구를 넣어, 절대 빈 채로
+    // 뜨지 않게 합니다 — 최소한 "무엇이 잘못됐는지" 단서(상태 코드)라도 보이도록.
+    const message = err.error || res.statusText || tf("modal_unknown_error", {status: res.status});
+    showMessageModal(t("modal_request_failed"), message, true);
+    throw new Error(err.error || message);
   }
   return res.status === 204 ? null : res.json();
 }
@@ -5905,7 +5912,7 @@ function translateReason(rawKey) {
 
 function _resultHasAnyIssue(result) {
   return !!(
-    (result.status === "INFEASIBLE") ||
+    (result.status === "INFEASIBLE" || result.status === "TIMEOUT") ||
     (result.unmet_requirements && result.unmet_requirements.length) ||
     (result.day_count_issues && result.day_count_issues.length) ||
     (result.preferred_off_issues && result.preferred_off_issues.length) ||
@@ -6045,7 +6052,7 @@ function renderSchedule(result) {
 
   if (result.status !== "EMPTY") {
     const banner = document.createElement("div");
-    const hasUnmet = result.status === "INFEASIBLE" || (result.unmet_requirements && result.unmet_requirements.length);
+    const hasUnmet = result.status === "INFEASIBLE" || result.status === "TIMEOUT" || (result.unmet_requirements && result.unmet_requirements.length);
     if (hasUnmet) {
       banner.className = "status-banner status-warn";
       banner.textContent = t("banner_unmet");
