@@ -27,6 +27,14 @@ import re
 import secrets
 import requests
 from datetime import date, timedelta, datetime, timezone
+try:
+    from zoneinfo import ZoneInfo
+    NZ_TZ = ZoneInfo("Pacific/Auckland")
+except Exception:
+    # 일부 최소 구성 서버 환경엔 시간대 데이터(tzdata)가 없을 수 있습니다 — 그런 경우,
+    # 뉴질랜드 서머타임 기간(대략 9월~4월, UTC+13)에 맞춘 고정 오프셋으로 대체합니다.
+    # (완벽하진 않지만, 겨울철 UTC+12 구간엔 최대 1시간 오차가 생길 수 있습니다.)
+    NZ_TZ = timezone(timedelta(hours=13))
 from functools import wraps
 from flask import Flask, request, jsonify, send_from_directory, session, g
 
@@ -930,6 +938,33 @@ def _sanitize_annual_salary(value):
     if salary <= 0 or salary > 10_000_000:
         return None
     return round(salary, 2)
+
+
+DOCUMENT_TYPES = (
+    "work_visa", "student_visa", "working_holiday_visa", "resident_visa",
+    "food_handler_cert", "first_aid_cert", "other",
+)
+
+
+def _sanitize_documents(documents):
+    """직원의 비자·자격증 등 "만료일이 있는 문서" 목록을 검증/정리합니다. 만료일이
+    없거나 형식이 잘못된 항목은 걸러냅니다. 한 직원당 최대 20개까지만 허용합니다
+    (방어적 제한 — 실제로 이 이상 필요한 경우는 거의 없을 것입니다)."""
+    out = []
+    for d in (documents or [])[:20]:
+        expiry = d.get("expiry_date")
+        try:
+            date.fromisoformat(expiry)
+        except (TypeError, ValueError):
+            continue
+        doc_type = d.get("doc_type") if d.get("doc_type") in DOCUMENT_TYPES else "other"
+        out.append({
+            "id": d.get("id") or secrets.token_hex(6),
+            "doc_type": doc_type,
+            "label": str(d.get("label") or "").strip()[:100],
+            "expiry_date": expiry,
+        })
+    return out
 
 
 def _weekly_salary(employee_dict):
@@ -2095,6 +2130,8 @@ def add_employee(company_id):
         # 직접 조정합니다(정확한 법정 적립 계산 대신, 참고용 추정치로 관리합니다).
         "lieu_day_balance": 0.0,
         "annual_leave_balance_hours": 0.0,
+        # 비자·자격증 등 만료일이 있는 문서 목록 — 각 항목은 {id, doc_type, label, expiry_date}.
+        "documents": [],
     }
     state["employees"].append(employee)
     _log_audit(state, "employee_added", f"직원 추가: {employee['name']} ({employee['id']})", {"employee_id": employee["id"]})
@@ -2114,7 +2151,7 @@ def update_employee(company_id, employee_id):
         "name", "department", "min_hours_per_week", "target_days_per_week",
         "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
         "leave_requests", "recent_night_count", "recent_weekend_count", "hourly_wage",
-        "pay_type", "annual_salary",
+        "pay_type", "annual_salary", "documents",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "leave_requests" in updates:
@@ -2125,6 +2162,8 @@ def update_employee(company_id, employee_id):
         updates["annual_salary"] = _sanitize_annual_salary(updates["annual_salary"])
     if "pay_type" in updates and updates["pay_type"] not in ("hourly", "salary"):
         updates["pay_type"] = "hourly"
+    if "documents" in updates:
+        updates["documents"] = _sanitize_documents(updates["documents"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             if "leave_requests" in updates:
@@ -3054,6 +3093,94 @@ def get_week_agreements(company_id, week_key):
             "agreed": bool(a.get("agreed")), "agreed_at": a.get("agreed_at"),
         })
     return jsonify({"published": bool(week.get("published")), "agreements": rows})
+
+
+@app.route("/api/expiring-documents", methods=["GET"])
+@require_login
+def get_expiring_documents(company_id):
+    """사장/매니저 전용: 곧 만료되거나 이미 만료된 비자·자격증을 보여줍니다.
+    쿼리파라미터 days(기본 30)로 "며칠 이내 만료"까지 포함할지 조절합니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    try:
+        days = int(request.args.get("days", 30))
+    except (TypeError, ValueError):
+        days = 30
+    state = load_state(company_id)
+    today = datetime.now(NZ_TZ).date()
+    cutoff = today + timedelta(days=days)
+    results = []
+    for e in state["employees"]:
+        for d in e.get("documents", []):
+            try:
+                expiry = date.fromisoformat(d["expiry_date"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if expiry <= cutoff:
+                results.append({
+                    "employee_id": e["id"], "employee_name": e["name"],
+                    "doc_id": d["id"], "doc_type": d["doc_type"], "label": d.get("label", ""),
+                    "expiry_date": d["expiry_date"],
+                    "days_remaining": (expiry - today).days,
+                    "expired": expiry < today,
+                })
+    results.sort(key=lambda r: r["expiry_date"])
+    return jsonify(results)
+
+
+@app.route("/api/no-show-alerts", methods=["GET"])
+@require_login
+def get_no_show_alerts(company_id):
+    """사장/매니저 전용: 오늘 스케줄된 근무 중, 시작 시각이 지났는데 아직 클락인
+    기록이 없는 직원을 보여줍니다 — 진짜 노쇼든, 단순히 클락인을 깜빡한 것이든 둘 다
+    잡아냅니다(관리자가 직접 판단해서 연락하면 됩니다). 쿼리파라미터
+    grace_minutes(기본 15)로 "몇 분 지나야 알림 대상으로 볼지" 조절합니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    try:
+        grace_minutes = int(request.args.get("grace_minutes", 15))
+    except (TypeError, ValueError):
+        grace_minutes = 15
+
+    state = load_state(company_id)
+    now_nz = datetime.now(NZ_TZ)
+    today = now_nz.date()
+    today_iso = today.isoformat()
+    this_week_key = _week_key_for_date(today)
+    week = state["weeks"].get(this_week_key)
+    if not week or not week.get("published"):
+        return jsonify([])
+
+    today_day = DAYS[today.weekday()]
+    assignments = (week.get("schedule") or {}).get("assignments") or []
+    shift_times = _effective_shift_times(state)
+    shift_names = {s["id"]: s["name"] for s in state["shift_types"]}
+    employee_names = {e["id"]: e["name"] for e in state["employees"]}
+
+    # 오늘 이미 클락인한(진행중이든 완료든) 직원은 알림 대상에서 제외합니다.
+    clocked_in_today = {te["employee_id"] for te in state["time_entries"] if te.get("date") == today_iso}
+
+    results = []
+    for a in assignments:
+        if a["day"] != today_day or a["employee_id"] in clocked_in_today:
+            continue
+        default_start, _default_end = shift_times.get(a["shift_type"], ("09:00", "17:00"))
+        start_str = a.get("custom_start") or default_start
+        try:
+            sh, sm = map(int, start_str.split(":"))
+        except ValueError:
+            continue
+        scheduled_start = datetime(today.year, today.month, today.day, sh, sm, tzinfo=NZ_TZ)
+        minutes_late = (now_nz - scheduled_start).total_seconds() / 60
+        if minutes_late >= grace_minutes:
+            results.append({
+                "employee_id": a["employee_id"], "employee_name": employee_names.get(a["employee_id"], "?"),
+                "shift_type": a["shift_type"], "shift_name": shift_names.get(a["shift_type"], a["shift_type"]),
+                "scheduled_start": start_str,
+                "minutes_late": round(minutes_late),
+            })
+    results.sort(key=lambda r: -r["minutes_late"])
+    return jsonify(results)
 
 
 @app.route("/api/audit-log", methods=["GET"])
