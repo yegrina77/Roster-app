@@ -511,6 +511,7 @@
         <span id="auth-company-name"></span>
         <button class="btn-ghost btn-sm" id="admin-nav-btn" onclick="showAdminPage()" style="display:none;" data-i18n="admin_nav_btn">👑 Admin</button>
         <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
+        <button class="btn-ghost btn-sm" id="admin-support-nav-btn" onclick="showSupportRequestsAdminPage()" style="display:none;" data-i18n="admin_support_nav_btn">🛟 지원 요청</button>
         <button class="btn-ghost btn-sm" id="manager-menu-btn" onclick="showAdminMenuModal()" style="display:none;" data-i18n="manager_menu_btn">⚙️ 관리자 메뉴</button>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
         <button class="btn-ghost btn-sm" id="delete-account-btn" onclick="startDeleteAccount()" style="color:#ef4444;" data-i18n="account_delete_btn">회원탈퇴</button>
@@ -902,6 +903,15 @@ const I18N = {
     audit_log_sub: "직원·스케줄·근무요건·설정 변경 등 관리 작업 이력을 최신순으로 보여줍니다.",
     audit_log_empty: "아직 기록이 없습니다.",
     audit_log_role_owner: "사장", audit_log_role_manager: "매니저",
+    support_request_nav_btn: "🛟 지원 요청 보내기",
+    support_request_title: "지원 요청 / 버그 제보", support_request_sub: "개발자에게 문의하실 내용을 자유롭게 적어주세요.",
+    support_request_placeholder: "예: 급여 페이지에서 O기능이 이렇게 안 됩니다...",
+    support_request_send_btn: "보내기", support_request_empty: "내용을 입력해주세요.",
+    support_request_sent: "전송되었습니다. 확인 후 연락드리겠습니다.",
+    admin_support_nav_btn: "🛟 지원 요청", admin_support_title: "지원 요청 목록",
+    admin_support_sub: "각 회사에서 보낸 문의를 최신순으로 보여줍니다.",
+    admin_support_empty: "아직 지원 요청이 없습니다.",
+    admin_support_resolve_btn: "처리 완료로 표시", admin_support_reopen_btn: "다시 열기",
     pins_icon: "🔑", pins_nav_btn_text: "직원 PIN 조회",
     manager_nav_btn: "🧑‍💼 매니저 관리", manager_page_title: "매니저 계정 관리",
     manager_page_sub: "사장 본인의 비밀번호를 공유하지 않고도, 매니저마다 별도의 로그인 계정을 만들어줄 수 있습니다. 매니저는 급여 관련 페이지에 접근할 수 있습니다.",
@@ -1194,6 +1204,15 @@ const I18N = {
     audit_log_sub: "Recent changes to employees, schedules, requirements, and settings, newest first.",
     audit_log_empty: "No activity yet.",
     audit_log_role_owner: "Owner", audit_log_role_manager: "Manager",
+    support_request_nav_btn: "🛟 Contact Support",
+    support_request_title: "Support Request / Bug Report", support_request_sub: "Let the developer know what's going on.",
+    support_request_placeholder: "e.g. On the payroll page, X isn't working like this...",
+    support_request_send_btn: "Send", support_request_empty: "Please enter a message.",
+    support_request_sent: "Sent. We'll be in touch after reviewing it.",
+    admin_support_nav_btn: "🛟 Support Requests", admin_support_title: "Support Requests",
+    admin_support_sub: "Messages from companies, newest first.",
+    admin_support_empty: "No support requests yet.",
+    admin_support_resolve_btn: "Mark Resolved", admin_support_reopen_btn: "Reopen",
     pins_icon: "🔑", pins_nav_btn_text: "Employee PINs",
     manager_nav_btn: "🧑‍💼 Managers", manager_page_title: "Manage Manager Accounts",
     manager_page_sub: "Create separate login accounts for managers without sharing your own password. Managers can access payroll-related pages.",
@@ -1458,6 +1477,7 @@ async function checkAuthAndInit() {
     document.getElementById("auth-company-name").textContent = me.name + (me.role === "manager" ? ` ${t("manager_badge")}` : "");
     document.getElementById("admin-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
+    document.getElementById("admin-support-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (me.is_admin || me.role !== "owner") ? "none" : "inline-block";
     document.getElementById("manager-menu-btn").style.display = (me.role === "owner" || me.role === "manager") ? "inline-block" : "none";
     hideAuthScreen();
@@ -1554,6 +1574,7 @@ async function submitAuth() {
     document.getElementById("auth-company-name").textContent = data.name + (data.role === "manager" ? ` ${t("manager_badge")}` : "");
     document.getElementById("admin-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
+    document.getElementById("admin-support-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("delete-account-btn").style.display = (data.is_admin || data.role !== "owner") ? "none" : "inline-block";
     document.getElementById("manager-menu-btn").style.display = (data.role === "owner" || data.role === "manager") ? "inline-block" : "none";
     document.getElementById("auth-email").value = "";
@@ -2098,6 +2119,103 @@ async function showAdminPage() {
   document.body.appendChild(overlay);
 }
 
+async function showSupportRequestsAdminPage() {
+  let requests;
+  try {
+    requests = await api("/api/admin/support-requests");
+  } catch (e) {
+    return;
+  }
+  if (!requests) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "620px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("admin_support_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("admin_support_sub");
+  box.appendChild(sub);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex; flex-direction:column; gap:8px; margin-top:12px; max-height:480px; overflow-y:auto;";
+
+  if (!requests.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = t("admin_support_empty");
+    list.appendChild(empty);
+  }
+
+  const roleLabel = (role) => role === "owner" ? t("audit_log_role_owner") : t("audit_log_role_manager");
+
+  requests.forEach(reqItem => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.style.opacity = reqItem.status === "resolved" ? "0.55" : "1";
+
+    const topLine = document.createElement("div");
+    topLine.style.cssText = "display:flex; justify-content:space-between; align-items:baseline; gap:8px;";
+    const who = document.createElement("div");
+    who.className = "modal-item-title";
+    who.textContent = `${reqItem.company_name} — ${reqItem.sender_name} (${roleLabel(reqItem.sender_role)})`;
+    const when = document.createElement("div");
+    when.style.cssText = "font-size:11px; color:var(--text-muted); white-space:nowrap;";
+    const d = new Date(reqItem.created_at);
+    when.textContent = d.toLocaleString([], {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"});
+    topLine.appendChild(who);
+    topLine.appendChild(when);
+    item.appendChild(topLine);
+
+    const emailLine = document.createElement("div");
+    emailLine.className = "modal-item-detail";
+    emailLine.textContent = reqItem.sender_email || "";
+    item.appendChild(emailLine);
+
+    const msgLine = document.createElement("div");
+    msgLine.style.cssText = "font-size:13px; white-space:pre-wrap; margin-top:6px; padding:8px; background:var(--panel-solid); border-radius:6px;";
+    msgLine.textContent = reqItem.message;
+    item.appendChild(msgLine);
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.className = "btn-ghost btn-sm";
+    toggleBtn.style.marginTop = "6px";
+    toggleBtn.textContent = reqItem.status === "resolved" ? t("admin_support_reopen_btn") : t("admin_support_resolve_btn");
+    toggleBtn.onclick = async () => {
+      await api(`/api/admin/support-requests/${reqItem.id}/resolve`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({resolved: reqItem.status !== "resolved"}),
+      });
+      overlay.remove();
+      showSupportRequestsAdminPage();
+    };
+    item.appendChild(toggleBtn);
+
+    list.appendChild(item);
+  });
+  box.appendChild(list);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
 async function showPendingSignupsPage() {
   let data;
   try {
@@ -2201,6 +2319,7 @@ function showAdminMenuModal() {
     {key: "geofence_nav_btn", fn: showGeofenceModal, ownerOnly: true},
     {key: "audit_log_nav_btn", fn: showAuditLogPage, ownerOnly: false},
     {key: "final_payment_nav_btn", fn: showFinalPaymentPicker, ownerOnly: false},
+    {key: "support_request_nav_btn", fn: showSupportRequestModal, ownerOnly: false},
   ];
   items.forEach(item => {
     if (item.ownerOnly && !(currentCompany && currentCompany.role === "owner")) return;
@@ -2542,6 +2661,77 @@ async function showFinalPaymentEstimate(employeeId) {
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showSupportRequestModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "440px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("support_request_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("support_request_sub");
+  box.appendChild(sub);
+
+  const textarea = document.createElement("textarea");
+  textarea.style.cssText = "width:100%; min-height:120px; margin-top:12px;";
+  textarea.maxLength = 2000;
+  textarea.placeholder = t("support_request_placeholder");
+  box.appendChild(textarea);
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+  box.appendChild(errLine);
+
+  const successLine = document.createElement("div");
+  successLine.style.cssText = "color:var(--opening, #22c55e); font-size:13px; display:none; margin-top:10px; text-align:center;";
+  successLine.textContent = t("support_request_sent");
+  box.appendChild(successLine);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_close");
+  cancelBtn.onclick = () => overlay.remove();
+  const sendBtn = document.createElement("button");
+  sendBtn.className = "btn-primary";
+  sendBtn.textContent = t("support_request_send_btn");
+  sendBtn.onclick = async () => {
+    const message = textarea.value.trim();
+    if (!message) {
+      errLine.textContent = t("support_request_empty");
+      errLine.style.display = "block";
+      return;
+    }
+    sendBtn.disabled = true;
+    try {
+      await api("/api/support-request", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message}),
+      });
+      textarea.value = "";
+      textarea.style.display = "none";
+      sendBtn.style.display = "none";
+      successLine.style.display = "block";
+    } catch (e) {
+      sendBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(sendBtn);
+  box.appendChild(btnRow);
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
