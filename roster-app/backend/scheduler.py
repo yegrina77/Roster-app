@@ -428,16 +428,49 @@ def solve_schedule(
     status_name = solver.StatusName(status)
 
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return ScheduleResult(
-            status="INFEASIBLE",
-            assignments=[],
-            unmet_requirements=[],
-            diagnostics=[
-                "Could not find a schedule that satisfies all constraints. Check whether "
-                "day-off marks, blocked shift types, minimum hours, or department "
-                "assignments are set too strictly for multiple employees at once.",
-            ],
-        )
+        # 여기서 status가 UNKNOWN이면, 이건 "불가능하다고 증명된 것"이 아니라
+        # "제한시간(time_limit_seconds) 안에 결론을 못 냈다"는 뜻입니다 — CP-SAT은
+        # 정말로 불가능함을 증명하는 데도 시간이 걸리는데, 그 증명을 다 못 마친
+        # 상태입니다. 이걸 그냥 INFEASIBLE로 취급해서 "조건이 서로 충돌합니다"라고
+        # 알려주면, 사실 조건 자체는 문제없는데 "이번엔 시간이 부족했을 뿐"인 경우까지
+        # 전부 "불가능하다"고 잘못 안내하게 됩니다(다시 시도하면 되는 경우가 실제로
+        # 꽤 있습니다 — 병렬 탐색이라 매번 완전히 같은 순서로 찾는 게 아니기 때문).
+        # 그래서 UNKNOWN이면, 한 번 더 넉넉한 시간으로 재시도해봅니다.
+        # 재시도는 "이번이 진짜 스케줄 생성 시도"일 때만 합니다(원래 제한시간이 5초
+        # 이상인 경우) — app.py의 자동 진단이 쓰는 1.5초짜리 "찔러보기용" 계산까지
+        # 여기서 15초로 늘려서 재시도하면, 진단 전체에 걸어둔 시간 예산이 깨집니다.
+        if status == cp_model.UNKNOWN and 5.0 <= time_limit_seconds < 15.0:
+            solver.parameters.max_time_in_seconds = 15.0
+            status = solver.Solve(model)
+            status_name = solver.StatusName(status)
+
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            if status == cp_model.UNKNOWN:
+                # 재시도까지 했는데도 결론을 못 냈으면, "불가능하다"가 아니라 "이번엔
+                # 계산이 오래 걸려 판단을 못 냈다"고 정확하게 안내합니다. 이 경우는
+                # (진짜 규칙 충돌이 아니라 계산 시간 문제이므로) app.py의 자동 원인
+                # 진단(규칙 하나씩 꺼보기)을 돌려도 의미가 없어서, status를 구분해서
+                # 돌려줍니다.
+                return ScheduleResult(
+                    status="TIMEOUT",
+                    assignments=[],
+                    unmet_requirements=[],
+                    diagnostics=[
+                        "제한시간 안에 계산을 끝내지 못했습니다(조건이 서로 충돌하는 것과는 다릅니다). "
+                        "직원 수나 근무유형이 많아 계산이 오래 걸리는 경우일 수 있으니, 다시 한 번 "
+                        "시도해주세요.",
+                    ],
+                )
+            return ScheduleResult(
+                status="INFEASIBLE",
+                assignments=[],
+                unmet_requirements=[],
+                diagnostics=[
+                    "Could not find a schedule that satisfies all constraints. Check whether "
+                    "day-off marks, blocked shift types, minimum hours, or department "
+                    "assignments are set too strictly for multiple employees at once.",
+                ],
+            )
 
     shortfall_min = solver.Value(total_shortfall)
     model.Add(total_shortfall <= shortfall_min)

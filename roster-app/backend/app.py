@@ -3462,8 +3462,15 @@ def generate_week_schedule(company_id, week_key):
         # 여기까지 왔다는 건 pin/최소시간/부서용량처럼 미리 걸러낸 흔한 원인들은 다
         # 아니라는 뜻입니다. 남은 하드 규칙들(최소시간, 마감→오픈 연속근무 금지, 금지된
         # 근무유형, 타 부서 배정 금지)을 하나씩 꺼보면서 다시 계산해, "이걸 빼면
-        # 풀린다"를 자동으로 찾아 사용자에게 정확한 원인을 알려줍니다. 진단용 재계산은
-        # 시간제한을 짧게 둬서(3초) 너무 오래 걸리지 않게 합니다.
+        # 풀린다"를 자동으로 찾아 사용자에게 정확한 원인을 알려줍니다.
+        #
+        # ⚠️ 진단 재계산은 반드시 "전체 진단 시간 예산"을 두고 그 안에서만 돕니다 —
+        # 직원 수가 많은 회사는 "규칙 4개 + 직원별 최소시간 확인"을 다 돌리면 계산
+        # 횟수가 많아져서, 예산 없이 돌리면 Render 등 호스팅의 요청 제한시간을 넘겨
+        # 연결이 통째로 끊기고, 그러면 화면엔 아무 설명도 없는 "요청을 처리하지
+        # 못했습니다"만 뜨는 문제가 있었습니다(진단하려다 오히려 더 불친절해진 것).
+        # 예산을 넘기면, 지금까지 찾은 것만으로 답하거나 일반 안내로 넘어갑니다.
+        diagnosis_deadline = time.time() + 12.0  # 진단 전체에 쓸 수 있는 최대 시간(초)
         relax_candidates = [
             ("min_hours", "이 직원(들)의 주당 최소시간 규칙"),
             ("forbidden_consecutive", "마감 근무 다음날 오픈 근무 금지 규칙"),
@@ -3473,6 +3480,8 @@ def generate_week_schedule(company_id, week_key):
         found_causes = []
         min_hours_is_cause = False
         for relax_key, relax_label_ko in relax_candidates:
+            if time.time() >= diagnosis_deadline:
+                break
             trial = solve_schedule(
                 employees, requirements,
                 exclude_solutions=exclude_solutions or None,
@@ -3483,19 +3492,23 @@ def generate_week_schedule(company_id, week_key):
                 shift_defs=shift_defs,
                 departments=departments,
                 relax={relax_key},
-                time_limit_seconds=3.0,
+                time_limit_seconds=1.5,
             )
-            if trial.status != "INFEASIBLE":
+            if trial.status in ("OPTIMAL", "FEASIBLE"):
                 found_causes.append(relax_label_ko)
                 if relax_key == "min_hours":
                     min_hours_is_cause = True
 
         # ---- 2단계 진단: 최소시간이 원인이면, 정확히 어느 직원 때문인지까지 찾아봅니다 ----
+        # (단, 남은 진단 예산 안에서 확인 가능한 직원까지만 — 직원이 아주 많은 회사는
+        # 전원을 다 확인 못 할 수 있고, 그 경우 부분적으로 찾은 이름만 알려줍니다.)
         culprit_names = []
         if min_hours_is_cause:
             for e in employees:
                 if e.min_hours_per_week <= 0:
                     continue
+                if time.time() >= diagnosis_deadline:
+                    break
                 trial = solve_schedule(
                     employees, requirements,
                     exclude_solutions=exclude_solutions or None,
@@ -3506,9 +3519,9 @@ def generate_week_schedule(company_id, week_key):
                     shift_defs=shift_defs,
                     departments=departments,
                     relax_min_hours_employee_ids={e.id},
-                    time_limit_seconds=3.0,
+                    time_limit_seconds=1.5,
                 )
-                if trial.status != "INFEASIBLE":
+                if trial.status in ("OPTIMAL", "FEASIBLE"):
                     culprit_names.append(e.name)
 
         if culprit_names:
