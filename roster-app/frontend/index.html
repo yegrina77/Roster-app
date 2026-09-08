@@ -1000,7 +1000,8 @@ const I18N = {
     btn_publish: "📢 퍼블리시", btn_agreements: "✅ 확인 현황",
     publish_confirm_title: "스케줄 퍼블리시", publish_confirm_msg: "이 주 스케줄을 직원들에게 공개합니다. 동시에 이 주가 잠기며, 수정하려면 잠금을 먼저 풀어야 하고(그러면 직원 확인 기록도 초기화됩니다). 계속할까요?",
     publish_done_title: "퍼블리시 완료", publish_done_msg: "직원들이 이제 자신의 로스터를 확인할 수 있습니다.",
-    publish_reset_title: "퍼블리시 취소됨", publish_reset_msg: "이 주의 잠금을 풀어서, 퍼블리시 상태와 직원들의 확인 기록이 초기화되었습니다. 수정 후 다시 퍼블리시해주세요.",
+    publish_done_partial_msg: "게시되었습니다. 스케줄이 바뀐 {n}명만 다시 확인하면 되고, 나머지 직원은 이미 확인된 상태로 유지됩니다.",
+    publish_reset_title: "퍼블리시 취소됨", publish_reset_msg: "이 주의 잠금을 풀어서 퍼블리시가 취소되었습니다. 수정 후 다시 퍼블리시하면, 실제로 스케줄이 바뀐 직원만 다시 확인하면 됩니다 — 나머지 직원의 확인 기록은 그대로 유지됩니다.",
     agreements_title: "직원별 확인 현황", agreements_sub: "{agreed}/{total}명 확인함",
     agreements_agreed: "확인함", agreements_pending: "대기중",
     confirm_reset_title: "이번 주 스케줄을 초기화할까요?",
@@ -1324,7 +1325,8 @@ const I18N = {
     btn_publish: "📢 Publish", btn_agreements: "✅ Agreement Status",
     publish_confirm_title: "Publish Schedule", publish_confirm_msg: "This will publish this week's schedule to employees. It will also lock the week — to edit it afterward you'll need to unlock it first (which resets employee agreements). Continue?",
     publish_done_title: "Published", publish_done_msg: "Employees can now view their roster.",
-    publish_reset_title: "Publish Cancelled", publish_reset_msg: "Unlocking this week reset its published status and employee agreements. Please re-publish after making changes.",
+    publish_done_partial_msg: "Published. Only {n} employee(s) whose schedule changed need to reconfirm — everyone else stays confirmed.",
+    publish_reset_title: "Publish Cancelled", publish_reset_msg: "Unlocking this week cancelled its published status. When you re-publish after making changes, only employees whose schedule actually changed will need to reconfirm — everyone else's confirmation stays as-is.",
     agreements_title: "Employee Agreement Status", agreements_sub: "{agreed}/{total} agreed",
     agreements_agreed: "Agreed", agreements_pending: "Pending",
     confirm_reset_title: "Reset this week's schedule?",
@@ -5571,11 +5573,15 @@ async function publishWeek() {
     t("btn_publish"), t("btn_cancel"),
   );
   if (!confirmed) return;
-  await api(`/api/weeks/${currentWeekKey}/publish`, {method: "POST"});
+  const result = await api(`/api/weeks/${currentWeekKey}/publish`, {method: "POST"});
   weekPublished = true;
   weekLocked = true;
   updateLockButtonUI();
-  showMessageModal(t("publish_done_title"), t("publish_done_msg"), false);
+  if (result && result.changed_employee_count > 0) {
+    showMessageModal(t("publish_done_title"), tf("publish_done_partial_msg", {n: result.changed_employee_count}), false);
+  } else {
+    showMessageModal(t("publish_done_title"), t("publish_done_msg"), false);
+  }
 }
 
 async function showAgreementsStatus() {
