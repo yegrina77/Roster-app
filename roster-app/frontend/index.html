@@ -549,6 +549,13 @@
       </div>
       <div class="field" id="emp-wage-field"><label data-i18n="label_hourly_wage">시급</label><input id="emp-wage" type="number" min="0" step="0.5" placeholder="25.00" style="width:80px;"></div>
       <div class="field" id="emp-salary-field" style="display:none;"><label data-i18n="label_annual_salary">연봉</label><input id="emp-salary" type="number" min="0" step="500" placeholder="52000" style="width:100px;"></div>
+      <div class="field" id="emp-hours-type-field"><label data-i18n="label_hours_type">근무시간 유형</label>
+        <select id="emp-hours-type">
+          <option value="fixed" data-i18n="opt_hours_fixed">고정</option>
+          <option value="variable" data-i18n="opt_hours_variable">변동</option>
+        </select>
+      </div>
+      <div class="field"><label data-i18n="label_hire_date">입사일</label><input id="emp-hire-date" type="date" style="width:140px;"></div>
       <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
         <select id="emp-min-hours">
           <option value="0" data-i18n="opt_0h">0시간</option>
@@ -723,6 +730,8 @@ const I18N = {
     label_hourly_wage: "시급",
     label_pay_type: "급여 방식", opt_pay_hourly: "시급제", opt_pay_salary: "연봉제",
     label_annual_salary: "연봉", label_min_hours_salary: "주당 계약시간",
+    label_hours_type: "근무시간 유형", opt_hours_fixed: "고정", opt_hours_variable: "변동",
+    label_hire_date: "입사일",
     opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
     modal_training_added_title: "Training 인원이 등록되었습니다",
     modal_employee_added_title: "등록 완료", modal_employee_added_msg: "직원이 추가되었습니다.",
@@ -1011,6 +1020,10 @@ const I18N = {
     pattern_title_pref: "— {day}요일 {shift}에 자주 수동 배치됨",
     pattern_detail_pref: "자동 생성엔 없었는데, 최근 {n}주 동안 직접 이 자리에 넣으셨습니다. \"선호 근무\"에 추가할까요?",
     day_suffix: "일", summary_pref_off: "선호오프 {n}일", summary_pattern_consecutive: "연속휴무선호", summary_pattern_split: "분산휴무선호",
+    week_suffix: "주", leave_advance_consent: "정식 발생 전 당겨쓰기 동의(사장 확인)",
+    final_payment_owp: "OWP(평소 주급): {v}", final_payment_awe: "AWE(평균소득): {v}",
+    final_payment_applied_rate: "적용 시급: {v}",
+    final_payment_data_incomplete: "⚠️ 52주 미만 데이터 기준 — 이력이 쌓일수록 정확해집니다.",
     docs_title: "비자·자격증 만료 관리", docs_desc: "만료일이 있는 문서(비자, 푸드핸들러 자격증 등)를 등록하면, 만료 임박 시 관리자 화면에 알림이 뜹니다.",
     docs_expired_tag: "⛔ 만료됨", docs_label_placeholder: "메모 (예: AEWV)", btn_docs_add: "추가",
     doc_type_work_visa: "취업비자", doc_type_student_visa: "학생비자", doc_type_working_holiday_visa: "워킹홀리데이비자",
@@ -1033,6 +1046,8 @@ const I18N = {
     label_hourly_wage: "Hourly Wage",
     label_pay_type: "Pay Type", opt_pay_hourly: "Hourly", opt_pay_salary: "Salary",
     label_annual_salary: "Annual Salary", label_min_hours_salary: "Contracted Hours/Week",
+    label_hours_type: "Hours Type", opt_hours_fixed: "Fixed", opt_hours_variable: "Variable",
+    label_hire_date: "Hire Date",
     opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
     modal_training_added_title: "Training employee registered",
     modal_employee_added_title: "Added", modal_employee_added_msg: "Employee has been added.",
@@ -1321,6 +1336,10 @@ const I18N = {
     pattern_title_pref: "— often manually placed on {day} {shift}",
     pattern_detail_pref: "Auto-generation never placed this, but you've manually added it here for {n} weeks. Add to \"preferred shifts\"?",
     day_suffix: " days", summary_pref_off: "{n} preferred days off", summary_pattern_consecutive: "Prefers consecutive off", summary_pattern_split: "Prefers split off",
+    week_suffix: " wks", leave_advance_consent: "Consent to take before it's earned (owner-approved)",
+    final_payment_owp: "OWP (Ordinary Weekly Pay): {v}", final_payment_awe: "AWE (Average Weekly Earnings): {v}",
+    final_payment_applied_rate: "Applied hourly rate: {v}",
+    final_payment_data_incomplete: "⚠️ Based on less than 52 weeks of data — accuracy improves as history builds up.",
     docs_title: "Visa & Certificate Expiry", docs_desc: "Track documents with expiry dates (visas, food handler certificates, etc.) — you'll get an alert when one is approaching expiry.",
     docs_expired_tag: "⛔ Expired", docs_label_placeholder: "Note (e.g. AEWV)", btn_docs_add: "Add",
     doc_type_work_visa: "Work Visa", doc_type_student_visa: "Student Visa", doc_type_working_holiday_visa: "Working Holiday Visa",
@@ -1344,6 +1363,9 @@ function updatePayTypeFields() {
   const isSalary = payType === "salary";
   document.getElementById("emp-wage-field").style.display = isSalary ? "none" : "block";
   document.getElementById("emp-salary-field").style.display = isSalary ? "block" : "none";
+  // 연봉제는 OWP/AWE 개념이 사실상 필요 없어서(주급이 애초에 고정), 근무시간 유형
+  // 선택 자체를 숨깁니다.
+  document.getElementById("emp-hours-type-field").style.display = isSalary ? "none" : "block";
   // 연봉제일 때는 "주당 최소시간"이 스케줄용 최소시간이자, 공휴일 추가수당 계산의
   // 기준이 되는 "주당 계약시간"으로도 같이 쓰인다는 걸 알려주기 위해 라벨을 바꿔줍니다.
   const minHoursLabel = document.querySelector('label[data-i18n="label_min_hours"]');
@@ -2670,6 +2692,22 @@ async function showFinalPaymentEstimate(employeeId) {
     table.appendChild(tr);
   });
   box.appendChild(table);
+
+  if (data.rate_breakdown) {
+    const rb = data.rate_breakdown;
+    const rateBox = document.createElement("div");
+    rateBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+    const owpText = rb.owp != null ? `$${rb.owp.toFixed(2)}${rb.owp_weeks_used ? ` (${rb.owp_weeks_used}${t("week_suffix")})` : ""}` : "—";
+    const aweText = rb.awe != null ? `$${rb.awe.toFixed(2)} (${rb.awe_weeks_used}${t("week_suffix")})` : "—";
+    rateBox.innerHTML = `${tf("final_payment_owp", {v: owpText})}<br>${tf("final_payment_awe", {v: aweText})}<br>${tf("final_payment_applied_rate", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"})}`;
+    if (rb.awe_weeks_used != null && rb.awe_weeks_used < 52) {
+      const note = document.createElement("div");
+      note.style.cssText = "margin-top:4px; color:#f59e0b;";
+      note.textContent = t("final_payment_data_incomplete");
+      rateBox.appendChild(note);
+    }
+    box.appendChild(rateBox);
+  }
 
   const totalLine = document.createElement("div");
   totalLine.style.cssText = "text-align:right; font-weight:700; font-size:15px; margin-top:12px;";
@@ -4098,6 +4136,17 @@ function buildRulesPanel(e) {
   reasonInput.maxLength = 200;
   reasonInput.placeholder = t("leave_reason_placeholder");
   reasonInput.style.cssText = "flex:1; min-width:120px;";
+  const advanceLabel = document.createElement("label");
+  advanceLabel.style.cssText = "display:none; align-items:center; gap:4px; font-size:11px; color:var(--text-muted); cursor:pointer;";
+  const advanceCheckbox = document.createElement("input");
+  advanceCheckbox.type = "checkbox";
+  const advanceText = document.createElement("span");
+  advanceText.textContent = t("leave_advance_consent");
+  advanceLabel.appendChild(advanceCheckbox);
+  advanceLabel.appendChild(advanceText);
+  typeSelect.addEventListener("change", () => {
+    advanceLabel.style.display = typeSelect.value === "annual_leave" ? "flex" : "none";
+  });
   const addLeaveBtn = document.createElement("button");
   addLeaveBtn.className = "btn-ghost btn-sm";
   addLeaveBtn.textContent = t("btn_leave_add");
@@ -4119,6 +4168,7 @@ function buildRulesPanel(e) {
       id: "lr_" + Math.random().toString(36).slice(2, 10),
       start_date: startInput.value, end_date: endInput.value,
       leave_type: typeSelect.value, reason: reasonInput.value.trim().slice(0, 200),
+      allow_advance: typeSelect.value === "annual_leave" ? advanceCheckbox.checked : false,
     });
     loadEmployees();
   };
@@ -4127,6 +4177,7 @@ function buildRulesPanel(e) {
   leaveAddRow.appendChild(endInput);
   leaveAddRow.appendChild(typeSelect);
   leaveAddRow.appendChild(reasonInput);
+  leaveAddRow.appendChild(advanceLabel);
   leaveAddRow.appendChild(addLeaveBtn);
   leaveBlock.appendChild(leaveAddRow);
   if (isFeatureEnabled("leave_request")) {
@@ -4332,6 +4383,8 @@ function startEditEmployee(e) {
   document.getElementById("emp-pay-type").value = e.pay_type === "salary" ? "salary" : "hourly";
   document.getElementById("emp-wage").value = e.hourly_wage != null ? e.hourly_wage : "";
   document.getElementById("emp-salary").value = e.annual_salary != null ? e.annual_salary : "";
+  document.getElementById("emp-hours-type").value = e.hours_type === "variable" ? "variable" : "fixed";
+  document.getElementById("emp-hire-date").value = e.hire_date || "";
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
   const isAny = e.target_days_per_week == null;
@@ -4352,6 +4405,8 @@ function cancelEditEmployee() {
   document.getElementById("emp-pay-type").value = "hourly";
   document.getElementById("emp-wage").value = "";
   document.getElementById("emp-salary").value = "";
+  document.getElementById("emp-hours-type").value = "fixed";
+  document.getElementById("emp-hire-date").value = "";
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = "30";
   document.getElementById("emp-target-days").value = "";
@@ -4370,6 +4425,8 @@ async function submitEmployee() {
   const hourly_wage = wageRaw === "" ? null : Number(wageRaw);
   const salaryRaw = document.getElementById("emp-salary").value.trim();
   const annual_salary = salaryRaw === "" ? null : Number(salaryRaw);
+  const hours_type = document.getElementById("emp-hours-type").value === "variable" ? "variable" : "fixed";
+  const hire_date = document.getElementById("emp-hire-date").value || null;
   const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
   const isAny = document.getElementById("emp-target-days-any").checked;
   const targetDaysRaw = document.getElementById("emp-target-days").value;
@@ -4382,7 +4439,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, hours_type, hire_date, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -4391,7 +4448,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, hours_type, hire_date, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
@@ -6638,6 +6695,7 @@ function showAlertsModal() {
   updateAuthLangButtonsUI();
   switchAuthMode("login");
   enableClickToOpenDatePicker(document.getElementById("week-date-picker"));
+  enableClickToOpenDatePicker(document.getElementById("emp-hire-date"));
   enableClickToOpenDatePicker(document.getElementById("ph-date"));
   await checkAuthAndInit();
 })();
