@@ -890,8 +890,6 @@ def _compute_week_payroll(state, week_key):
     }
 
 
-@app.route("/api/weeks/<week_key>/payroll", methods=["GET"])
-@require_login
 def _record_earnings_history(state, week_key, payroll):
     """이 주가 완전히 지난 주(오늘이 그 주의 일요일보다 뒤)라면, 각 직원의 "실제
     기준" 주급을 급여 이력에 기록해둡니다 — OWP(변동시간 근무자)와 AWE 계산은 지난
@@ -929,6 +927,8 @@ def _record_earnings_history(state, week_key, payroll):
         }
 
 
+@app.route("/api/weeks/<week_key>/payroll", methods=["GET"])
+@require_login
 def get_week_payroll(company_id, week_key):
     """이 주의 예상 인건비(Labour Cost)를 요일별/직원별로 계산해서 보여줍니다.
     사장 또는 매니저만 볼 수 있습니다 — 급여 정보라 민감하기 때문에, 나중에 직원 본인
@@ -1001,22 +1001,30 @@ def _sanitize_annual_salary(value):
 
 DOCUMENT_TYPES = (
     "work_visa", "student_visa", "working_holiday_visa", "resident_visa",
-    "food_handler_cert", "first_aid_cert", "other",
+    "citizenship", "food_handler_cert", "first_aid_cert", "other",
 )
+
+# 영주권/시민권은 원래 만료일이 없는 신분이라, 이 두 종류만 만료일 없이("영구") 등록할
+# 수 있게 예외를 둡니다. 나머지(비자, 자격증)는 반드시 만료일이 있어야 등록됩니다.
+NO_EXPIRY_DOCUMENT_TYPES = ("resident_visa", "citizenship")
 
 
 def _sanitize_documents(documents):
-    """직원의 비자·자격증 등 "만료일이 있는 문서" 목록을 검증/정리합니다. 만료일이
-    없거나 형식이 잘못된 항목은 걸러냅니다. 한 직원당 최대 20개까지만 허용합니다
-    (방어적 제한 — 실제로 이 이상 필요한 경우는 거의 없을 것입니다)."""
+    """직원의 비자·자격증 등 "만료일이 있는 문서" 목록을 검증/정리합니다. 영주권/
+    시민권이 아닌데 만료일이 없거나 형식이 잘못된 항목은 걸러냅니다. 한 직원당
+    최대 20개까지만 허용합니다(방어적 제한 — 실제로 이 이상 필요한 경우는 거의
+    없을 것입니다)."""
     out = []
     for d in (documents or [])[:20]:
-        expiry = d.get("expiry_date")
-        try:
-            date.fromisoformat(expiry)
-        except (TypeError, ValueError):
-            continue
         doc_type = d.get("doc_type") if d.get("doc_type") in DOCUMENT_TYPES else "other"
+        expiry = d.get("expiry_date")
+        if doc_type in NO_EXPIRY_DOCUMENT_TYPES and not expiry:
+            expiry = None
+        else:
+            try:
+                date.fromisoformat(expiry)
+            except (TypeError, ValueError):
+                continue
         out.append({
             "id": d.get("id") or secrets.token_hex(6),
             "doc_type": doc_type,
