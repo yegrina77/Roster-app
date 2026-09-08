@@ -967,6 +967,12 @@ const I18N = {
     time_entries_edit_title: "{name} 시간 수정", time_entries_clock_in_label: "클락인 시각",
     time_entries_clock_out_label: "클락아웃 시각", time_entries_reason_label: "수정 사유 (필수)",
     time_entries_reason_placeholder: "예: 직원이 클락인을 깜빡함", time_entries_reason_required: "수정 사유를 입력해주세요.",
+    time_entries_add_btn: "+ 새 기록 추가", time_entries_manual_tag: "(수동 등록)",
+    time_entries_create_title: "클락인/아웃 기록 수동 추가",
+    time_entries_create_sub: "직원이 그날 클락인을 아예 안 찍은 경우, 여기서 직접 기록을 만들 수 있습니다.",
+    time_entries_employee_label: "직원", time_entries_employee_required: "직원을 선택해주세요.",
+    time_entries_clock_in_required: "클락인 날짜와 시각을 입력해주세요.",
+    time_entries_create_reason_placeholder: "예: 직원이 그날 클락인을 아예 안 찍음",
     time_entries_delete_btn: "🗑️ 삭제", time_entries_delete_confirm_title: "클락인/아웃 기록 삭제",
     time_entries_delete_confirm_msg: "{name}님의 {date} 근무 기록을 완전히 삭제합니다. 되돌릴 수 없습니다. 계속할까요?",
     payroll_leave_included: "유급/병가 리브 {n}일 포함",
@@ -1292,6 +1298,12 @@ const I18N = {
     time_entries_edit_title: "Edit time for {name}", time_entries_clock_in_label: "Clock-in time",
     time_entries_clock_out_label: "Clock-out time", time_entries_reason_label: "Reason for edit (required)",
     time_entries_reason_placeholder: "e.g. Employee forgot to clock in", time_entries_reason_required: "Please enter a reason for this edit.",
+    time_entries_add_btn: "+ Add Entry", time_entries_manual_tag: "(Manually added)",
+    time_entries_create_title: "Manually Add Time Entry",
+    time_entries_create_sub: "If an employee never clocked in that day at all, you can create a record here directly.",
+    time_entries_employee_label: "Employee", time_entries_employee_required: "Please select an employee.",
+    time_entries_clock_in_required: "Please enter a clock-in date and time.",
+    time_entries_create_reason_placeholder: "e.g. Employee never clocked in that day",
     time_entries_delete_btn: "🗑️ Delete", time_entries_delete_confirm_title: "Delete Time Entry",
     time_entries_delete_confirm_msg: "This will permanently delete {name}'s time entry for {date}. This cannot be undone. Continue?",
     payroll_leave_included: "Includes {n} day(s) of paid/sick leave",
@@ -3405,9 +3417,17 @@ async function showTimeEntriesPage(weekKey) {
   box.className = "modal-box";
   box.style.maxWidth = "640px";
 
+  const titleRow = document.createElement("div");
+  titleRow.style.cssText = "display:flex; justify-content:space-between; align-items:flex-start; gap:8px;";
   const title = document.createElement("h3");
   title.textContent = t("time_entries_title");
-  box.appendChild(title);
+  titleRow.appendChild(title);
+  const addBtn = document.createElement("button");
+  addBtn.className = "btn-ghost btn-sm";
+  addBtn.textContent = t("time_entries_add_btn");
+  addBtn.onclick = () => showCreateTimeEntryModal(weekKey, () => { overlay.remove(); showTimeEntriesPage(weekKey); });
+  titleRow.appendChild(addBtn);
+  box.appendChild(titleRow);
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
@@ -3436,7 +3456,7 @@ async function showTimeEntriesPage(weekKey) {
 
     const nameLine = document.createElement("div");
     nameLine.className = "modal-item-title";
-    nameLine.textContent = `${entry.employee_name} — ${entry.date}`;
+    nameLine.textContent = `${entry.employee_name} — ${entry.date}${entry.manually_created ? " " + t("time_entries_manual_tag") : ""}`;
     item.appendChild(nameLine);
 
     const timeLine = document.createElement("div");
@@ -3495,6 +3515,148 @@ async function showTimeEntriesPage(weekKey) {
   closeBtn.onclick = () => overlay.remove();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showCreateTimeEntryModal(weekKey, onSaved) {
+  const employees = window._employees || [];
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "420px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("time_entries_create_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("time_entries_create_sub");
+  box.appendChild(sub);
+
+  const empLabel = document.createElement("label");
+  empLabel.textContent = t("time_entries_employee_label");
+  empLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const empSelect = document.createElement("select");
+  empSelect.style.width = "100%";
+  employees.forEach(emp => {
+    const opt = document.createElement("option");
+    opt.value = emp.id;
+    opt.textContent = `${emp.name} (${emp.id})`;
+    empSelect.appendChild(opt);
+  });
+
+  const weekDates = weekKey ? Array.from({length: 7}, (_, i) => addDaysToKey(weekKey, i)) : [];
+
+  const inLabel = document.createElement("label");
+  inLabel.textContent = t("time_entries_clock_in_label");
+  inLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const inRow = document.createElement("div");
+  inRow.style.cssText = "display:flex; gap:8px;";
+  const inDateInput = document.createElement("input");
+  inDateInput.type = "date";
+  inDateInput.style.flex = "1";
+  if (weekDates.length) inDateInput.value = weekDates[0];
+  enableClickToOpenDatePicker(inDateInput);
+  const inTimeInput = document.createElement("input");
+  inTimeInput.type = "time";
+  inTimeInput.style.flex = "1";
+  inTimeInput.value = "09:00";
+  inRow.appendChild(inDateInput);
+  inRow.appendChild(inTimeInput);
+
+  const outLabel = document.createElement("label");
+  outLabel.textContent = t("time_entries_clock_out_label");
+  outLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const outRow = document.createElement("div");
+  outRow.style.cssText = "display:flex; gap:8px;";
+  const outDateInput = document.createElement("input");
+  outDateInput.type = "date";
+  outDateInput.style.flex = "1";
+  if (weekDates.length) outDateInput.value = weekDates[0];
+  enableClickToOpenDatePicker(outDateInput);
+  const outTimeInput = document.createElement("input");
+  outTimeInput.type = "time";
+  outTimeInput.style.flex = "1";
+  outTimeInput.value = "17:00";
+  outRow.appendChild(outDateInput);
+  outRow.appendChild(outTimeInput);
+
+  const reasonLabel = document.createElement("label");
+  reasonLabel.textContent = t("time_entries_reason_label");
+  reasonLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const reasonInput = document.createElement("textarea");
+  reasonInput.style.cssText = "width:100%; min-height:60px;";
+  reasonInput.maxLength = 300;
+  reasonInput.placeholder = t("time_entries_create_reason_placeholder");
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+
+  box.appendChild(empLabel);
+  box.appendChild(empSelect);
+  box.appendChild(inLabel);
+  box.appendChild(inRow);
+  box.appendChild(outLabel);
+  box.appendChild(outRow);
+  box.appendChild(reasonLabel);
+  box.appendChild(reasonInput);
+  box.appendChild(errLine);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    if (!empSelect.value) {
+      errLine.textContent = t("time_entries_employee_required");
+      errLine.style.display = "block";
+      return;
+    }
+    if (!inDateInput.value || !inTimeInput.value) {
+      errLine.textContent = t("time_entries_clock_in_required");
+      errLine.style.display = "block";
+      return;
+    }
+    const reason = reasonInput.value.trim();
+    if (!reason) {
+      errLine.textContent = t("time_entries_reason_required");
+      errLine.style.display = "block";
+      return;
+    }
+    saveBtn.disabled = true;
+    const body = {
+      employee_id: empSelect.value,
+      clock_in: new Date(`${inDateInput.value}T${inTimeInput.value}`).toISOString(),
+      reason,
+    };
+    if (outDateInput.value && outTimeInput.value) {
+      body.clock_out = new Date(`${outDateInput.value}T${outTimeInput.value}`).toISOString();
+    }
+    try {
+      await api("/api/time-entries", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      overlay.remove();
+      onSaved();
+    } catch (e) {
+      saveBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
