@@ -970,7 +970,9 @@ def empty_week():
         "requirements": [], "off_days": {}, "schedule": None, "auto_assignments": [], "locked": False,
         # published: 이 주 스케줄이 직원들에게 공개(퍼블리시)됐는지. agreements: 직원별
         # {"agreed": bool, "agreed_at": ISO날짜|None} — 직원이 "확인" 버튼을 눌렀는지 추적합니다.
-        "published": False, "agreements": {},
+        # last_published_assignments: 지난번 퍼블리시 시점의 배정 스냅샷 — 재퍼블리시할 때
+        # "누구 스케줄이 실제로 바뀌었는지" 비교하는 기준입니다(publish_week 참고).
+        "published": False, "agreements": {}, "last_published_assignments": [],
     }
 
 
@@ -3257,10 +3259,11 @@ def set_week_lock(company_id, week_key):
     """body: {locked: true/false} - 이 주차를 잠그거나 풉니다. 잠긴 동안엔 이 주의
     근무요건/휴무지정/스케줄 생성·수동조정이 모두 서버에서도 거부됩니다.
 
-    이미 퍼블리시된 주를 다시 풀면(unlock), 퍼블리시 상태도 함께 취소되고 직원들의
-    "확인(Agree)" 기록도 초기화됩니다 — 관리자가 이미 직원이 확인한 스케줄을 몰래
-    바꿔놓고 그대로 두는 걸 막기 위함입니다. 수정 후 다시 퍼블리시하면, 직원들은
-    바뀐 내용을 새로 확인해야 합니다."""
+    이미 퍼블리시된 주를 다시 풀면(unlock), 퍼블리시 상태는 취소되지만 직원들의
+    "확인(Agree)" 기록은 이제 더 이상 전부 초기화하지 않습니다 — 대신, 나중에 다시
+    퍼블리시하는 순간에 "실제로 스케줄이 바뀐 직원"만 골라서 그 사람의 확인만
+    초기화합니다(publish_week 참고). 그래야 한 명 스케줄만 급하게 바꿨을 때, 나머지
+    직원들이 매번 다시 확인 버튼을 누를 필요가 없습니다."""
     state = load_state(company_id)
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
@@ -3271,7 +3274,6 @@ def set_week_lock(company_id, week_key):
     republish_reset = False
     if not new_locked and week.get("published"):
         week["published"] = False
-        week["agreements"] = {}
         republish_reset = True
     _log_audit(state, "week_lock_changed", f"{week_key} 주 {'잠금' if new_locked else '잠금 해제'}",
                {"week_key": week_key, "locked": new_locked, "republish_reset": republish_reset})
@@ -3349,14 +3351,29 @@ def _credit_lieu_days_for_week(state, week_key):
     state["lieu_day_credits"] = list(credited)
 
 
+def _assignments_by_employee(assignments):
+    """배정 목록을, 직원별로 "(요일, 근무유형, 커스텀 시작/종료)" 조합의 집합으로
+    묶습니다. 두 시점의 배정을 비교해서 "이 직원의 스케줄이 실제로 바뀌었는지"를
+    판단할 때 씁니다(republish 시 누구만 다시 확인이 필요한지 계산하는 데 사용)."""
+    by_emp = {}
+    for a in assignments or []:
+        key = (a.get("day"), a.get("shift_type"), a.get("custom_start"), a.get("custom_end"))
+        by_emp.setdefault(a.get("employee_id"), set()).add(key)
+    return by_emp
+
+
 @app.route("/api/weeks/<week_key>/publish", methods=["POST"])
 @require_login
 def publish_week(company_id, week_key):
     """사장/매니저 전용: 이 주의 스케줄을 직원들에게 공개합니다. 공개와 동시에 이 주를
     자동으로 잠급니다(locked=True) — 직원이 이미 확인(Agree)한 스케줄을 몰래 바꾸는
-    상황을 막기 위해서입니다. 수정이 필요하면 먼저 잠금을 풀어야 하고, 그 순간
-    퍼블리시도 함께 취소되어 직원들의 확인 기록이 초기화됩니다(set_week_lock 참고).
-    이때 이 주에 공휴일 근무(카테고리 A)가 있으면 Lieu Day도 같이 크레딧됩니다."""
+    상황을 막기 위해서입니다.
+
+    처음 퍼블리시하는 게 아니라 "수정 후 재퍼블리시"하는 경우엔, 지난번 퍼블리시
+    시점의 배정과 지금 배정을 직원별로 비교해서, **실제로 스케줄이 바뀐 직원의
+    확인 기록만** 초기화합니다 — 한 명 스케줄만 급하게 바꿨다고 해서 나머지
+    전원이 다시 확인 버튼을 누를 필요가 없도록 하기 위함입니다. 이때 이 주에
+    공휴일 근무(카테고리 A)가 있으면 Lieu Day도 같이 크레딧됩니다."""
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
     state = load_state(company_id)
@@ -3365,16 +3382,32 @@ def publish_week(company_id, week_key):
         return jsonify({"error": "This week does not exist."}), 404
     if not week.get("schedule") or not (week["schedule"].get("assignments")):
         return jsonify({"error": "게시할 스케줄이 없습니다. 먼저 스케줄을 생성해주세요."}), 400
+
+    new_assignments = week["schedule"]["assignments"]
+    old_assignments = week.get("last_published_assignments") or []
+    old_by_emp = _assignments_by_employee(old_assignments)
+    new_by_emp = _assignments_by_employee(new_assignments)
+    agreements = week.setdefault("agreements", {})
+    employee_names = {e["id"]: e["name"] for e in state["employees"]}
+    changed_employee_ids = []
+    for emp_id in set(old_by_emp) | set(new_by_emp):
+        if old_by_emp.get(emp_id, set()) != new_by_emp.get(emp_id, set()):
+            if emp_id in agreements:
+                del agreements[emp_id]
+            changed_employee_ids.append(emp_id)
+
     week["published"] = True
     week["locked"] = True
-    # 새로 퍼블리시하면 모든 직원의 확인(Agree) 상태를 초기화합니다 — 이전에 확인했던
-    # 기록이 있어도, 이번에 게시되는 내용은 "아직 확인 전"부터 다시 시작해야 합니다.
-    week["agreements"] = {}
+    week["last_published_assignments"] = new_assignments
     _credit_lieu_days_for_week(state, week_key)
     _accrue_annual_leave_for_week(state, week_key)
     _log_audit(state, "week_published", f"{week_key} 주 스케줄 퍼블리시", {"week_key": week_key})
     save_state(company_id, state)
-    return jsonify({"published": True, "locked": True})
+    return jsonify({
+        "published": True, "locked": True,
+        "changed_employee_count": len(changed_employee_ids),
+        "changed_employee_names": [employee_names.get(eid, eid) for eid in changed_employee_ids],
+    })
 
 
 @app.route("/api/weeks/<week_key>/agreements", methods=["GET"])
