@@ -1022,6 +1022,8 @@ const I18N = {
     day_suffix: "일", summary_pref_off: "선호오프 {n}일", summary_pattern_consecutive: "연속휴무선호", summary_pattern_split: "분산휴무선호",
     week_suffix: "주", leave_advance_consent: "정식 발생 전 당겨쓰기 동의(사장 확인)",
     final_payment_owp: "OWP(평소 주급): {v}", final_payment_awe: "AWE(평균소득): {v}",
+    final_payment_awe_prorated: "AWE(경과 주수 기준): {v}",
+    final_payment_advance_note: "⚠️ 입사 1년 미만 — 당겨쓰기 기준(52주가 아닌 실제 근속 주수)으로 계산됨",
     final_payment_applied_rate: "적용 시급: {v}",
     final_payment_data_incomplete: "⚠️ 52주 미만 데이터 기준 — 이력이 쌓일수록 정확해집니다.",
     docs_title: "비자·자격증 만료 관리", docs_desc: "만료일이 있는 문서(비자, 푸드핸들러 자격증 등)를 등록하면, 만료 임박 시 관리자 화면에 알림이 뜹니다.",
@@ -1338,6 +1340,8 @@ const I18N = {
     day_suffix: " days", summary_pref_off: "{n} preferred days off", summary_pattern_consecutive: "Prefers consecutive off", summary_pattern_split: "Prefers split off",
     week_suffix: " wks", leave_advance_consent: "Consent to take before it's earned (owner-approved)",
     final_payment_owp: "OWP (Ordinary Weekly Pay): {v}", final_payment_awe: "AWE (Average Weekly Earnings): {v}",
+    final_payment_awe_prorated: "AWE (prorated by weeks employed): {v}",
+    final_payment_advance_note: "⚠️ Under 12 months employed — calculated using weeks actually worked, not a full 52 weeks.",
     final_payment_applied_rate: "Applied hourly rate: {v}",
     final_payment_data_incomplete: "⚠️ Based on less than 52 weeks of data — accuracy improves as history builds up.",
     docs_title: "Visa & Certificate Expiry", docs_desc: "Track documents with expiry dates (visas, food handler certificates, etc.) — you'll get an alert when one is approaching expiry.",
@@ -2697,10 +2701,16 @@ async function showFinalPaymentEstimate(employeeId) {
     const rb = data.rate_breakdown;
     const rateBox = document.createElement("div");
     rateBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+    const aweLabel = rb.prorated ? "final_payment_awe_prorated" : "final_payment_awe";
     const owpText = rb.owp != null ? `$${rb.owp.toFixed(2)}${rb.owp_weeks_used ? ` (${rb.owp_weeks_used}${t("week_suffix")})` : ""}` : "—";
     const aweText = rb.awe != null ? `$${rb.awe.toFixed(2)} (${rb.awe_weeks_used}${t("week_suffix")})` : "—";
-    rateBox.innerHTML = `${tf("final_payment_owp", {v: owpText})}<br>${tf("final_payment_awe", {v: aweText})}<br>${tf("final_payment_applied_rate", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"})}`;
-    if (rb.awe_weeks_used != null && rb.awe_weeks_used < 52) {
+    rateBox.innerHTML = `${tf("final_payment_owp", {v: owpText})}<br>${tf(aweLabel, {v: aweText})}<br>${tf("final_payment_applied_rate", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"})}`;
+    if (rb.prorated) {
+      const note = document.createElement("div");
+      note.style.cssText = "margin-top:4px; color:#f59e0b;";
+      note.textContent = t("final_payment_advance_note");
+      rateBox.appendChild(note);
+    } else if (rb.awe_weeks_used != null && rb.awe_weeks_used < 52) {
       const note = document.createElement("div");
       note.style.cssText = "margin-top:4px; color:#f59e0b;";
       note.textContent = t("final_payment_data_incomplete");
