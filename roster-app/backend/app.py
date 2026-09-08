@@ -507,6 +507,7 @@ def load_state(company_id):
             "time_entries": [], "payroll_rounding_minutes": DEFAULT_PAYROLL_ROUNDING_MINUTES,
             "geofence": _default_geofence(), "audit_log": [], "lieu_day_credits": [],
             "annual_leave_auto_accrual_enabled": False, "annual_leave_accrual_credits": [],
+            "earnings_history": {},
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -536,6 +537,9 @@ def load_state(company_id):
     # 적용됩니다(잔액에 영향을 주는 자동화라, 조용히 켜져있지 않도록).
     state.setdefault("annual_leave_auto_accrual_enabled", False)
     state.setdefault("annual_leave_accrual_credits", [])
+    # 직원별 주간 실지급액 이력 — OWP(변동시간)/AWE 계산에 씁니다. key는
+    # "직원ID|week_key" 형태의 문자열이고, 지난 주가 완전히 끝난 뒤부터 하나씩 쌓입니다.
+    state.setdefault("earnings_history", {})
     return state
 
 
@@ -873,6 +877,32 @@ def _compute_week_payroll(state, week_key):
 
 @app.route("/api/weeks/<week_key>/payroll", methods=["GET"])
 @require_login
+def _record_earnings_history(state, week_key, payroll):
+    """이 주가 완전히 지난 주(오늘이 그 주의 일요일보다 뒤)라면, 각 직원의 "실제
+    기준" 주급을 급여 이력에 기록해둡니다 — OWP(변동시간 근무자)와 AWE 계산은 지난
+    몇 주간의 실제 지급액이 필요해서, 조회할 때마다 조용히 이렇게 쌓아갑니다. 아직
+    안 지난 주는 기록하지 않습니다(그 주 클락아웃이 다 끝나지 않아 실제 금액이
+    아직 확정이 아니므로). 이미 기록된 주는 최신 값으로 덮어씁니다(그 사이 클락인
+    기록을 수정했을 수도 있으므로)."""
+    try:
+        week_dates = _week_dates(week_key)
+        week_sunday = week_dates[-1]
+    except (ValueError, IndexError):
+        return
+    today = datetime.now(NZ_TZ).date()
+    if week_sunday >= today:
+        return
+    history = state.setdefault("earnings_history", {})
+    for row in payroll["employees"]:
+        if row["weekly_actual_pay"] is None:
+            continue
+        key = f"{row['employee_id']}|{week_key}"
+        history[key] = {
+            "employee_id": row["employee_id"], "week_key": week_key,
+            "gross_pay": row["weekly_actual_pay"], "hours": row["weekly_actual_hours"],
+        }
+
+
 def get_week_payroll(company_id, week_key):
     """이 주의 예상 인건비(Labour Cost)를 요일별/직원별로 계산해서 보여줍니다.
     사장 또는 매니저만 볼 수 있습니다 — 급여 정보라 민감하기 때문에, 나중에 직원 본인
@@ -885,7 +915,10 @@ def get_week_payroll(company_id, week_key):
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
     state = load_state(company_id)
-    return jsonify(_compute_week_payroll(state, week_key))
+    payroll = _compute_week_payroll(state, week_key)
+    _record_earnings_history(state, week_key, payroll)
+    save_state(company_id, state)
+    return jsonify(payroll)
 
 
 def _scheduler_shift_defs(state):
@@ -967,6 +1000,18 @@ def _sanitize_documents(documents):
     return out
 
 
+def _sanitize_date(value):
+    """날짜 입력값(YYYY-MM-DD)을 검증합니다. 형식이 잘못됐거나 미래 날짜(입사일이
+    미래일 수는 없으므로)면 None으로 취급합니다."""
+    try:
+        d = date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if d > date.today():
+        return None
+    return d.isoformat()
+
+
 def _weekly_salary(employee_dict):
     """연봉을 52주로 나눈 고정 주급입니다. 연봉제 직원의 스케줄/실제 근무시간과
     무관하게 매주 동일하게 지급되는 기본급입니다."""
@@ -985,6 +1030,91 @@ def _effective_hourly_rate_for_salary(employee_dict):
     if weekly is None or weekly_hours <= 0:
         return None
     return weekly / weekly_hours
+
+
+def _owp_for_employee(state, employee):
+    """OWP(평소 주급, Ordinary Weekly Pay)를 계산합니다 — Holidays Act 2003 기준.
+      - 근무시간이 고정("fixed", 기본값)이면: 계약 주당 시간 × 현재 시급
+      - 변동("variable")이면: 최근 4주간의 실지급액 평균(earnings_history 기준)
+    돌려주는 값: (OWP 금액|None, 계산에 쓰인 주 수). 변동시간인데 데이터가 아직
+    없으면 (None, 0)을 돌려줍니다 — 시급이 없는 연봉제 직원도 대상이 아닙니다
+    (연봉제는 애초에 주급이 고정이라 이 계산 자체가 필요 없습니다)."""
+    wage = employee.get("hourly_wage")
+    if wage is None:
+        return None, 0
+    if employee.get("hours_type") != "variable":
+        return round((employee.get("min_hours_per_week") or 0) * wage, 2), None
+    history = state.get("earnings_history", {})
+    entries = [h for h in history.values() if h["employee_id"] == employee["id"]]
+    entries.sort(key=lambda h: h["week_key"], reverse=True)
+    recent = entries[:4]
+    if not recent:
+        return None, 0
+    return round(sum(h["gross_pay"] for h in recent) / len(recent), 2), len(recent)
+
+
+def _awe_for_employee(state, employee):
+    """AWE(최근 52주 평균소득, Average Weekly Earnings)를 계산합니다. 데이터가
+    52주 미만이면 있는 만큼만으로 평균 냅니다 — 정확한 법정 계산이 아니라 "지금까지
+    RosterFlow가 기록한 데이터 기준" 추정치이니, 사용하는 쪽에서 데이터 주 수를
+    같이 확인해야 합니다."""
+    history = state.get("earnings_history", {})
+    entries = [h for h in history.values() if h["employee_id"] == employee["id"]]
+    entries.sort(key=lambda h: h["week_key"], reverse=True)
+    recent = entries[:52]
+    if not recent:
+        return None, 0
+    return round(sum(h["gross_pay"] for h in recent) / len(recent), 2), len(recent)
+
+
+def _applicable_leave_rate(state, employee):
+    """이 직원이 정식 발생한 애뉴얼 리브를 쓸 때 적용할 "주급 단가"를 계산합니다 —
+    OWP와 AWE 중 더 높은 쪽(Holidays Act 2003 21조: "whichever is greater")입니다."""
+    owp, owp_weeks = _owp_for_employee(state, employee)
+    awe, awe_weeks = _awe_for_employee(state, employee)
+    candidates = [v for v in (owp, awe) if v is not None]
+    applied = max(candidates) if candidates else None
+    return applied, {"owp": owp, "awe": awe, "owp_weeks_used": owp_weeks, "awe_weeks_used": awe_weeks}
+
+
+def _process_annual_leave_anniversary(employee):
+    """입사일(hire_date)이 등록되어 있으면, 지금까지 지난 12개월 기념일마다 4주치
+    시간(주당 계약시간 × 4)을 애뉴얼 리브 잔액에 자동으로 더합니다 — Holidays Act상
+    "1년 근속 시 4주 정식 발생"을 반영한 것입니다. 이미 지급된 기념일은
+    annual_leave_anniversaries_granted에 기록해서 중복 지급을 막습니다. 당겨쓴
+    리브로 잔액이 마이너스였다면, 새로 발생한 4주가 그 위에 그대로 더해지면서
+    자연스럽게 상쇄되는 구조입니다(별도 계산 없이 잔액에 더하기만 하면 됨).
+    돌려주는 값: 잔액이 실제로 바뀌었으면 True."""
+    hire_date_str = employee.get("hire_date")
+    if not hire_date_str:
+        return False
+    try:
+        hire = date.fromisoformat(hire_date_str)
+    except ValueError:
+        return False
+    today = date.today()
+    granted = set(employee.get("annual_leave_anniversaries_granted") or [])
+    changed = False
+    anniversary_num = 1
+    while True:
+        # N번째 기념일 날짜 = 입사일 + N*365일 (윤년 등으로 인한 하루이틀 오차는
+        # 감안한 근사치입니다 — 실무적으로는 문제없는 수준입니다).
+        anniversary_date = hire + timedelta(days=365 * anniversary_num)
+        if anniversary_date > today:
+            break
+        key = str(anniversary_num)
+        if key not in granted:
+            weekly_hours = employee.get("min_hours_per_week") or 0
+            employee["annual_leave_balance_hours"] = round(
+                (employee.get("annual_leave_balance_hours") or 0.0) + weekly_hours * 4, 2
+            )
+            granted.add(key)
+            changed = True
+        anniversary_num += 1
+        if anniversary_num > 60:  # 방어적 상한(60년치) — 무한루프 방지용
+            break
+    employee["annual_leave_anniversaries_granted"] = list(granted)
+    return changed
 
 
 DEFAULT_GEOFENCE_RADIUS_M = 100  # 디퓨티 등 실제 업체들이 "GPS 오차 감안 시 최소 권장값"으로
@@ -1076,7 +1206,12 @@ def _apply_leave_balance_diff(employee, new_requests):
     새로 추가되거나 종류가 바뀐 Lieu Day/애뉴얼 리브 신청은 잔액에서 차감하고, 삭제되거나
     종류가 바뀐 신청은 그만큼 잔액을 되돌립니다. 잔액이 모자라면 (None, 에러메시지)를
     돌려주고, 성공하면 (갱신된 잔액 dict, None)을 돌려줍니다 — 호출한 쪽에서 이 결과를
-    보고 전체 수정을 거부하거나 반영해야 합니다."""
+    보고 전체 수정을 거부하거나 반영해야 합니다.
+
+    애뉴얼 리브는 아직 정식 발생 전이라도(입사 12개월 전) 사장 동의하에 "당겨쓰기"가
+    가능합니다(Holidays Act 2003 21A조) — 새로 추가되는 신청에 allow_advance:true가
+    붙어있으면, 그 신청 때문에 잔액이 마이너스가 되는 것까지는 허용합니다(Lieu Day는
+    당겨쓰기 개념이 없어서 이 예외가 적용되지 않습니다)."""
     old_requests = employee.get("leave_requests") or []
     old_by_id = {r.get("id"): r for r in old_requests if r.get("id")}
     new_by_id = {r.get("id"): r for r in (new_requests or []) if r.get("id")}
@@ -1084,6 +1219,7 @@ def _apply_leave_balance_diff(employee, new_requests):
     lieu_delta_days = 0.0
     annual_delta_days = 0.0
     today = date.today()
+    advance_allowed = False
     for rid in set(old_by_id) | set(new_by_id):
         old_r, new_r = old_by_id.get(rid), new_by_id.get(rid)
         old_type = old_r.get("leave_type") if old_r else None
@@ -1110,6 +1246,8 @@ def _apply_leave_balance_diff(employee, new_requests):
                 lieu_delta_days -= new_span
             elif new_type == "annual_leave":
                 annual_delta_days -= new_span
+                if new_r.get("allow_advance"):
+                    advance_allowed = True
 
     avg_hours = _average_day_hours(employee)
     new_lieu_balance = employee.get("lieu_day_balance", 0.0) + lieu_delta_days
@@ -1117,7 +1255,7 @@ def _apply_leave_balance_diff(employee, new_requests):
 
     if new_lieu_balance < -0.01:
         return None, f"Lieu Day 잔액이 부족합니다 (보유: {employee.get('lieu_day_balance', 0):.1f}일)."
-    if new_annual_balance < -0.01:
+    if new_annual_balance < -0.01 and not advance_allowed:
         return None, f"애뉴얼 리브 잔액이 부족합니다 (보유: {employee.get('annual_leave_balance_hours', 0):.1f}시간)."
     return {
         "lieu_day_balance": round(new_lieu_balance, 2),
@@ -2050,6 +2188,15 @@ def reset_shift_time_setting(company_id, shift_type):
 @require_login
 def list_employees(company_id):
     state = load_state(company_id)
+    # 조회할 때마다, 입사일이 지난 기념일(12개월 단위)이 있으면 애뉴얼 리브 4주를
+    # 자동으로 지급합니다 — 별도 예약 작업(cron) 없이도, 누군가 직원 목록을 볼 때마다
+    # 자연스럽게 체크되는 구조입니다.
+    any_changed = False
+    for e in state["employees"]:
+        if _process_annual_leave_anniversary(e):
+            any_changed = True
+    if any_changed:
+        save_state(company_id, state)
     out = []
     for e in state["employees"]:
         e2 = dict(e)
@@ -2120,16 +2267,24 @@ def add_employee(company_id):
         "hourly_wage": _sanitize_wage(payload.get("hourly_wage")),
         # 연봉(연봉제 직원용). 설정 안 하면 None.
         "annual_salary": _sanitize_annual_salary(payload.get("annual_salary")),
+        # 입사일 — 애뉴얼 리브 기념일(12개월마다 4주 자동 발생) 계산의 기준점입니다.
+        "hire_date": _sanitize_date(payload.get("hire_date")),
+        # 근무시간 고정("fixed") 또는 변동("variable") — OWP(평소 주급) 계산 방식을
+        # 결정합니다. 고정이면 계약시간×현재시급, 변동이면 최근 4주 평균 실지급액을 씁니다.
+        "hours_type": payload.get("hours_type") if payload.get("hours_type") in ("fixed", "variable") else "fixed",
         # 직원 로그인용 PIN — 등록 시 자동으로 무작위 생성됩니다. 관리자/매니저가
         # "직원 PIN 조회" 화면에서 확인하거나 재발급할 수 있습니다.
         "pin": _generate_pin(),
         "pin_failed_attempts": 0,
         "pin_locked_until": None,
         # Lieu Day 잔액(일 단위)과 애뉴얼 리브 잔액(시간 단위) — 둘 다 0에서 시작합니다.
-        # Lieu Day는 공휴일 근무(카테고리 A) 시 자동으로 쌓이고, 애뉴얼 리브는 사장이
-        # 직접 조정합니다(정확한 법정 적립 계산 대신, 참고용 추정치로 관리합니다).
+        # Lieu Day는 공휴일 근무(카테고리 A) 시 자동으로 쌓이고, 애뉴얼 리브는 기념일마다
+        # 자동으로 4주씩 발생하거나(입사일이 등록된 경우) 사장이 직접 조정합니다.
         "lieu_day_balance": 0.0,
         "annual_leave_balance_hours": 0.0,
+        # 이미 지급된(정산된) 애뉴얼 리브 기념일 목록 — 같은 기념일에 중복으로 4주가
+        # 또 발생하지 않도록 기록해둡니다.
+        "annual_leave_anniversaries_granted": [],
         # 비자·자격증 등 만료일이 있는 문서 목록 — 각 항목은 {id, doc_type, label, expiry_date}.
         "documents": [],
     }
@@ -2151,7 +2306,7 @@ def update_employee(company_id, employee_id):
         "name", "department", "min_hours_per_week", "target_days_per_week",
         "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
         "leave_requests", "recent_night_count", "recent_weekend_count", "hourly_wage",
-        "pay_type", "annual_salary", "documents",
+        "pay_type", "annual_salary", "documents", "hire_date", "hours_type",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "leave_requests" in updates:
@@ -2164,6 +2319,10 @@ def update_employee(company_id, employee_id):
         updates["pay_type"] = "hourly"
     if "documents" in updates:
         updates["documents"] = _sanitize_documents(updates["documents"])
+    if "hire_date" in updates:
+        updates["hire_date"] = _sanitize_date(updates["hire_date"])
+    if "hours_type" in updates and updates["hours_type"] not in ("fixed", "variable"):
+        updates["hours_type"] = "fixed"
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             if "leave_requests" in updates:
@@ -2233,11 +2392,13 @@ def adjust_annual_leave(company_id, employee_id):
 @require_login
 def final_payment_estimate(company_id, employee_id):
     """사장/매니저 전용: 퇴사 시 지급해야 할 것으로 추정되는 금액을 계산합니다.
+    애뉴얼 리브(정식 발생분) 정산은 OWP(평소 주급)와 AWE(최근 52주 평균소득) 중 더
+    높은 쪽을 적용합니다(Holidays Act 2003 21조). 단, AWE/변동시간 OWP는
+    RosterFlow가 그동안 기록해온 실지급 이력에 기반한 추정치라, 이력이 짧으면
+    (특히 52주 미만) 실제 법정 금액과 다를 수 있습니다 — 데이터 주 수를 같이
+    표시하니 참고하세요.
 
-    ⚠️ 이건 참고용 추정치입니다. 실제 뉴질랜드 Holidays Act상 최종 정산은 "평소 주급
-    (OWP)"과 "최근 52주 평균 소득(AWE)" 중 더 높은 쪽으로 애뉴얼 리브를 지급해야 하는
-    등 훨씬 복잡한 계산이 필요하고, 여기서는 그 과거 소득 이력 전체를 갖고 있지 않아
-    정확히 재현할 수 없습니다. 실제 지급 전 반드시 회계사/노무사 확인을 받으세요."""
+    ⚠️ 이건 참고용 추정치입니다. 실제 지급 전 반드시 회계사/노무사 확인을 받으세요."""
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
     state = load_state(company_id)
@@ -2246,13 +2407,23 @@ def final_payment_estimate(company_id, employee_id):
         return jsonify({"error": "Employee not found."}), 404
 
     is_salary = employee.get("pay_type") == "salary"
-    hourly_rate = _effective_hourly_rate_for_salary(employee) if is_salary else employee.get("hourly_wage")
-
+    weekly_hours = employee.get("min_hours_per_week") or 0
     annual_leave_hours = employee.get("annual_leave_balance_hours", 0.0)
     lieu_days = employee.get("lieu_day_balance", 0.0)
     avg_day_hours = _average_day_hours(employee)
 
-    annual_leave_payout = annual_leave_hours * hourly_rate if hourly_rate is not None else None
+    rate_breakdown = None
+    if is_salary:
+        # 연봉제는 주급이 애초에 고정이라 OWP/AWE 비교가 사실상 의미가 없어서, 지금까지
+        # 쓰던 환산시급 방식을 그대로 씁니다.
+        hourly_rate = _effective_hourly_rate_for_salary(employee)
+        applied_hourly_rate = hourly_rate
+    else:
+        hourly_rate = employee.get("hourly_wage")
+        applied_weekly_rate, rate_breakdown = _applicable_leave_rate(state, employee)
+        applied_hourly_rate = (applied_weekly_rate / weekly_hours) if (applied_weekly_rate is not None and weekly_hours > 0) else None
+
+    annual_leave_payout = annual_leave_hours * applied_hourly_rate if applied_hourly_rate is not None else None
     lieu_day_payout = (lieu_days * avg_day_hours * hourly_rate) if hourly_rate is not None else None
     total = None
     if annual_leave_payout is not None and lieu_day_payout is not None:
@@ -2262,6 +2433,8 @@ def final_payment_estimate(company_id, employee_id):
         "employee_id": employee_id, "employee_name": employee["name"],
         "pay_type": employee.get("pay_type", "hourly"),
         "hourly_rate_used": round(hourly_rate, 2) if hourly_rate is not None else None,
+        "applied_hourly_rate": round(applied_hourly_rate, 2) if applied_hourly_rate is not None else None,
+        "rate_breakdown": rate_breakdown,
         "annual_leave_balance_hours": round(annual_leave_hours, 2),
         "annual_leave_payout_estimate": round(annual_leave_payout, 2) if annual_leave_payout is not None else None,
         "lieu_day_balance": round(lieu_days, 2),
