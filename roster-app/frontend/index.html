@@ -1024,6 +1024,10 @@ const I18N = {
     final_payment_owp: "OWP(평소 주급): {v}", final_payment_awe: "AWE(평균소득): {v}",
     final_payment_awe_prorated: "AWE(경과 주수 기준): {v}",
     final_payment_advance_note: "⚠️ 입사 1년 미만 — 당겨쓰기 기준(52주가 아닌 실제 근속 주수)으로 계산됨",
+    final_payment_s23_title: "1년 미만 퇴사 정산 (Holidays Act 23조)",
+    final_payment_s23_gross: "입사일부터 총소득: {v}", final_payment_s23_eight_percent: "그 8%: {v}",
+    final_payment_s23_advance_paid: "이미 당겨써서 지급됨: {v}",
+    final_payment_s23_owes_back: "⚠️ 마이너스입니다 — 직원이 사장님께 차액을 반환해야 하는 상황입니다. 실제 회수는 회계사/노무사와 상의하세요.",
     final_payment_applied_rate: "적용 시급: {v}",
     final_payment_data_incomplete: "⚠️ 52주 미만 데이터 기준 — 이력이 쌓일수록 정확해집니다.",
     docs_title: "비자·자격증 만료 관리", docs_desc: "만료일이 있는 문서(비자, 푸드핸들러 자격증 등)를 등록하면, 만료 임박 시 관리자 화면에 알림이 뜹니다.",
@@ -1342,6 +1346,10 @@ const I18N = {
     final_payment_owp: "OWP (Ordinary Weekly Pay): {v}", final_payment_awe: "AWE (Average Weekly Earnings): {v}",
     final_payment_awe_prorated: "AWE (prorated by weeks employed): {v}",
     final_payment_advance_note: "⚠️ Under 12 months employed — calculated using weeks actually worked, not a full 52 weeks.",
+    final_payment_s23_title: "Under-12-months Settlement (Holidays Act s23)",
+    final_payment_s23_gross: "Gross earnings since hire: {v}", final_payment_s23_eight_percent: "8% of that: {v}",
+    final_payment_s23_advance_paid: "Already paid for advance leave: {v}",
+    final_payment_s23_owes_back: "⚠️ Negative — the employee owes this difference back to the employer. Discuss recovery with an accountant/payroll professional.",
     final_payment_applied_rate: "Applied hourly rate: {v}",
     final_payment_data_incomplete: "⚠️ Based on less than 52 weeks of data — accuracy improves as history builds up.",
     docs_title: "Visa & Certificate Expiry", docs_desc: "Track documents with expiry dates (visas, food handler certificates, etc.) — you'll get an alert when one is approaching expiry.",
@@ -2697,7 +2705,25 @@ async function showFinalPaymentEstimate(employeeId) {
   });
   box.appendChild(table);
 
-  if (data.rate_breakdown) {
+  if (data.section23) {
+    const s23 = data.section23;
+    const s23Box = document.createElement("div");
+    const isNegative = data.annual_leave_payout_estimate != null && data.annual_leave_payout_estimate < 0;
+    s23Box.style.cssText = `font-size:11.5px; margin-top:10px; padding:8px 10px; border-radius:6px; background:${isNegative ? "rgba(239,68,68,0.1)" : "var(--panel-solid)"}; color:${isNegative ? "var(--danger, #ef4444)" : "var(--text-muted)"};`;
+    s23Box.innerHTML = `
+      <div style="font-weight:600; margin-bottom:4px;">${t("final_payment_s23_title")}</div>
+      ${tf("final_payment_s23_gross", {v: `$${s23.gross_earnings.toFixed(2)} (${s23.weeks_used}${t("week_suffix")})`})}<br>
+      ${tf("final_payment_s23_eight_percent", {v: `$${s23.eight_percent.toFixed(2)}`})}<br>
+      ${tf("final_payment_s23_advance_paid", {v: `$${s23.advance_leave_paid.toFixed(2)}`})}
+    `;
+    if (isNegative) {
+      const note = document.createElement("div");
+      note.style.cssText = "margin-top:4px; font-weight:600;";
+      note.textContent = t("final_payment_s23_owes_back");
+      s23Box.appendChild(note);
+    }
+    box.appendChild(s23Box);
+  } else if (data.rate_breakdown) {
     const rb = data.rate_breakdown;
     const rateBox = document.createElement("div");
     rateBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
