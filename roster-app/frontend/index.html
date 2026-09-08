@@ -1030,10 +1030,12 @@ const I18N = {
     final_payment_s23_owes_back: "⚠️ 마이너스입니다 — 직원이 사장님께 차액을 반환해야 하는 상황입니다. 실제 회수는 회계사/노무사와 상의하세요.",
     final_payment_applied_rate: "적용 시급: {v}",
     final_payment_data_incomplete: "⚠️ 52주 미만 데이터 기준 — 이력이 쌓일수록 정확해집니다.",
+    final_payment_salary_note: "연봉제는 급여가 고정되어 있어 OWP/AWE 비교가 적용되지 않습니다 — 환산 시급 {v}이 그대로 적용됩니다.",
     docs_title: "비자·자격증 만료 관리", docs_desc: "만료일이 있는 문서(비자, 푸드핸들러 자격증 등)를 등록하면, 만료 임박 시 관리자 화면에 알림이 뜹니다.",
     docs_expired_tag: "⛔ 만료됨", docs_label_placeholder: "메모 (예: AEWV)", btn_docs_add: "추가",
     doc_type_work_visa: "취업비자", doc_type_student_visa: "학생비자", doc_type_working_holiday_visa: "워킹홀리데이비자",
-    doc_type_resident_visa: "영주권", doc_type_food_handler_cert: "푸드핸들러 자격증", doc_type_first_aid_cert: "응급처치 자격증", doc_type_other: "기타",
+    doc_type_resident_visa: "영주권", doc_type_citizenship: "시민권", doc_type_food_handler_cert: "푸드핸들러 자격증", doc_type_first_aid_cert: "응급처치 자격증", doc_type_other: "기타",
+    docs_no_expiry_note: "만료 없음(영구)",
     alerts_banner: "⚠️ 확인이 필요한 알림 {n}건이 있습니다", alerts_modal_title: "알림",
     alerts_noshow_title: "🔴 노쇼/클락인 누락", alerts_noshow_detail: "{shift} ({time} 시작) — {minutes}분 경과",
     alerts_docs_title: "🟡 만료 임박 비자·자격증", alerts_docs_days_left: "{n}일 남음",
@@ -1352,10 +1354,12 @@ const I18N = {
     final_payment_s23_owes_back: "⚠️ Negative — the employee owes this difference back to the employer. Discuss recovery with an accountant/payroll professional.",
     final_payment_applied_rate: "Applied hourly rate: {v}",
     final_payment_data_incomplete: "⚠️ Based on less than 52 weeks of data — accuracy improves as history builds up.",
+    final_payment_salary_note: "Salaried employees have fixed pay, so OWP/AWE comparison doesn't apply — the converted hourly rate {v} is used directly.",
     docs_title: "Visa & Certificate Expiry", docs_desc: "Track documents with expiry dates (visas, food handler certificates, etc.) — you'll get an alert when one is approaching expiry.",
     docs_expired_tag: "⛔ Expired", docs_label_placeholder: "Note (e.g. AEWV)", btn_docs_add: "Add",
     doc_type_work_visa: "Work Visa", doc_type_student_visa: "Student Visa", doc_type_working_holiday_visa: "Working Holiday Visa",
-    doc_type_resident_visa: "Resident Visa", doc_type_food_handler_cert: "Food Handler Certificate", doc_type_first_aid_cert: "First Aid Certificate", doc_type_other: "Other",
+    doc_type_resident_visa: "Resident Visa", doc_type_citizenship: "Citizenship", doc_type_food_handler_cert: "Food Handler Certificate", doc_type_first_aid_cert: "First Aid Certificate", doc_type_other: "Other",
+    docs_no_expiry_note: "No expiry (permanent)",
     alerts_banner: "⚠️ {n} alert(s) need your attention", alerts_modal_title: "Alerts",
     alerts_noshow_title: "🔴 No-show / Missed Clock-in", alerts_noshow_detail: "{shift} (started {time}) — {minutes} min ago",
     alerts_docs_title: "🟡 Expiring Visas & Certificates", alerts_docs_days_left: "{n} day(s) left",
@@ -2743,6 +2747,11 @@ async function showFinalPaymentEstimate(employeeId) {
       rateBox.appendChild(note);
     }
     box.appendChild(rateBox);
+  } else if (data.pay_type === "salary") {
+    const salaryNote = document.createElement("div");
+    salaryNote.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+    salaryNote.textContent = tf("final_payment_salary_note", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"});
+    box.appendChild(salaryNote);
   }
 
   const totalLine = document.createElement("div");
@@ -4228,15 +4237,19 @@ function buildRulesPanel(e) {
   rulesDraft.documents.forEach((doc, idx) => {
     const row = document.createElement("div");
     row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12px;";
-    const isExpired = doc.expiry_date < todayStr;
-    const daysLeft = Math.ceil((new Date(doc.expiry_date) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
-    const isSoon = !isExpired && daysLeft <= 30;
     const label = document.createElement("span");
-    label.style.cssText = isExpired ? "color:var(--danger, #ef4444); font-weight:600;" : (isSoon ? "color:#f59e0b; font-weight:600;" : "");
     const typeLabel = t(`doc_type_${doc.doc_type || "other"}`);
     const labelText = doc.label ? ` (${doc.label})` : "";
-    const tag = isExpired ? ` ${t("docs_expired_tag")}` : (isSoon ? ` (${daysLeft}${t("day_suffix")})` : "");
-    label.textContent = `${typeLabel}${labelText} — ${doc.expiry_date}${tag}`;
+    if (!doc.expiry_date) {
+      label.textContent = `${typeLabel}${labelText} — ${t("docs_no_expiry_note")}`;
+    } else {
+      const isExpired = doc.expiry_date < todayStr;
+      const daysLeft = Math.ceil((new Date(doc.expiry_date) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
+      const isSoon = !isExpired && daysLeft <= 30;
+      label.style.cssText = isExpired ? "color:var(--danger, #ef4444); font-weight:600;" : (isSoon ? "color:#f59e0b; font-weight:600;" : "");
+      const tag = isExpired ? ` ${t("docs_expired_tag")}` : (isSoon ? ` (${daysLeft}${t("day_suffix")})` : "");
+      label.textContent = `${typeLabel}${labelText} — ${doc.expiry_date}${tag}`;
+    }
     const removeBtn = document.createElement("button");
     removeBtn.className = "btn-danger btn-sm";
     removeBtn.textContent = t("btn_delete");
@@ -4252,9 +4265,10 @@ function buildRulesPanel(e) {
 
   const docsAddRow = document.createElement("div");
   docsAddRow.style.cssText = "display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;";
+  const NO_EXPIRY_DOC_TYPES = ["resident_visa", "citizenship"];
   const docTypeSelect = document.createElement("select");
   docTypeSelect.style.cssText = "min-width:130px;";
-  ["work_visa", "student_visa", "working_holiday_visa", "resident_visa", "food_handler_cert", "first_aid_cert", "other"].forEach(dt => {
+  ["work_visa", "student_visa", "working_holiday_visa", "resident_visa", "citizenship", "food_handler_cert", "first_aid_cert", "other"].forEach(dt => {
     const opt = document.createElement("option");
     opt.value = dt;
     opt.textContent = t(`doc_type_${dt}`);
@@ -4268,22 +4282,34 @@ function buildRulesPanel(e) {
   const docExpiryInput = document.createElement("input");
   docExpiryInput.type = "date";
   enableClickToOpenDatePicker(docExpiryInput);
+  const docNoExpiryNote = document.createElement("span");
+  docNoExpiryNote.style.cssText = "display:none; font-size:11px; color:var(--text-muted);";
+  docNoExpiryNote.textContent = t("docs_no_expiry_note");
+  const updateExpiryFieldVisibility = () => {
+    const isNoExpiry = NO_EXPIRY_DOC_TYPES.includes(docTypeSelect.value);
+    docExpiryInput.style.display = isNoExpiry ? "none" : "inline-block";
+    docNoExpiryNote.style.display = isNoExpiry ? "inline" : "none";
+  };
+  docTypeSelect.addEventListener("change", updateExpiryFieldVisibility);
+  updateExpiryFieldVisibility();
   const addDocBtn = document.createElement("button");
   addDocBtn.className = "btn-ghost btn-sm";
   addDocBtn.textContent = t("btn_docs_add");
   addDocBtn.onclick = () => {
-    if (!docExpiryInput.value) return;
+    const isNoExpiry = NO_EXPIRY_DOC_TYPES.includes(docTypeSelect.value);
+    if (!isNoExpiry && !docExpiryInput.value) return;
     rulesDraft.documents.push({
       id: "doc_" + Math.random().toString(36).slice(2, 10),
       doc_type: docTypeSelect.value,
       label: docLabelInput.value.trim().slice(0, 100),
-      expiry_date: docExpiryInput.value,
+      expiry_date: isNoExpiry ? null : docExpiryInput.value,
     });
     loadEmployees();
   };
   docsAddRow.appendChild(docTypeSelect);
   docsAddRow.appendChild(docLabelInput);
   docsAddRow.appendChild(docExpiryInput);
+  docsAddRow.appendChild(docNoExpiryNote);
   docsAddRow.appendChild(addDocBtn);
   docsBlock.appendChild(docsAddRow);
   wrap.appendChild(docsBlock);
