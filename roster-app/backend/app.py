@@ -2979,6 +2979,68 @@ def list_time_entries(company_id):
     return jsonify(out)
 
 
+@app.route("/api/time-entries", methods=["POST"])
+@require_login
+def create_time_entry(company_id):
+    """사장/매니저 전용: 직원이 그날 클락인 자체를 아예 안 찍어서 기록이 하나도
+    없는 경우, 관리자가 직접 그 날짜의 클락인/아웃 기록을 새로 만들어 넣습니다.
+    수정과 마찬가지로 사유가 필수이고, 감사기록·수정이력에 남습니다 — "실제 클락인
+    기록"이 아니라 "관리자가 나중에 채워 넣은 기록"이라는 게 항상 투명하게
+    구분되도록 하기 위함입니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    employee_id = payload.get("employee_id")
+    reason = (payload.get("reason") or "").strip()
+    if not employee_id:
+        return jsonify({"error": "직원을 선택해주세요."}), 400
+    if not reason:
+        return jsonify({"error": "기록을 추가하는 사유를 입력해주세요."}), 400
+
+    state = load_state(company_id)
+    employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not employee:
+        return jsonify({"error": "Employee not found."}), 404
+
+    clock_in = payload.get("clock_in")
+    clock_out = payload.get("clock_out")
+    if not clock_in:
+        return jsonify({"error": "클락인 시각을 입력해주세요."}), 400
+    try:
+        clock_in_dt = datetime.fromisoformat(clock_in)
+        if clock_out:
+            clock_out_dt = datetime.fromisoformat(clock_out)
+            if clock_out_dt < clock_in_dt:
+                return jsonify({"error": "클락아웃 시각이 클락인 시각보다 빠를 수 없습니다."}), 400
+    except (TypeError, ValueError):
+        return jsonify({"error": "날짜/시간 형식이 올바르지 않습니다."}), 400
+
+    entry_date = clock_in_dt.date().isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    entry = {
+        "id": secrets.token_hex(8),
+        "employee_id": employee_id,
+        "date": entry_date,
+        "clock_in": clock_in,
+        "clock_out": clock_out or None,
+        "breaks": [],
+        "clock_in_location": None, "clock_out_location": None,
+        # 실제 클락인이 아니라 관리자가 수기로 채워 넣은 기록임을 표시합니다 — 화면에서
+        # "수정됨"과는 별도로 "수동 등록"이라고 구분해서 보여줄 수 있게 하기 위함입니다.
+        "manually_created": True,
+        "edited": True,
+        "edit_history": [{
+            "edited_by": g.user_name, "edited_by_role": g.role, "edited_at": now_iso,
+            "reason": reason[:300], "old_clock_in": None, "old_clock_out": None,
+        }],
+    }
+    state["time_entries"].append(entry)
+    _log_audit(state, "time_entry_created", f"{employee['name']}의 {entry_date} 클락인/아웃 기록을 수동 등록",
+               {"employee_id": employee_id, "date": entry_date})
+    save_state(company_id, state)
+    return jsonify(entry), 201
+
+
 @app.route("/api/time-entries/<entry_id>", methods=["PUT"])
 @require_login
 def edit_time_entry(company_id, entry_id):
