@@ -2767,14 +2767,15 @@ def employee_clock_status(company_id, employee):
             on_break = True
             break_start = breaks[-1]["start"]
     now = datetime.now(timezone.utc)
-    today_iso = now.date().isoformat()
+    today_nz = now.astimezone(NZ_TZ).date()
+    today_iso = today_nz.isoformat()
     done_for_today = any(
         e["employee_id"] == employee["id"] and e.get("date") == today_iso and e.get("clock_out")
         for e in state["time_entries"]
     ) and not open_entry
 
     # 이번 주 스케줄을 확인(Agree)했는지 — 클락인 가능 여부를 화면에 미리 보여주기 위함.
-    this_week_key = _week_key_for_date(now.date())
+    this_week_key = _week_key_for_date(today_nz)
     this_week = state["weeks"].get(this_week_key)
     week_published = bool(this_week and this_week.get("published"))
     week_agreed = bool(week_published and (this_week.get("agreements") or {}).get(employee["id"], {}).get("agreed"))
@@ -2802,12 +2803,13 @@ def employee_clock_in(company_id, employee):
         return jsonify({"error": "이미 클락인되어 있습니다. 먼저 클락아웃해주세요."}), 400
 
     now = datetime.now(timezone.utc)
-    today_iso = now.date().isoformat()
+    today_nz = now.astimezone(NZ_TZ).date()
+    today_iso = today_nz.isoformat()
 
     # 이번 주 스케줄을 "확인했습니다" 버튼으로 먼저 확인해야만 클락인할 수 있습니다 —
     # 이렇게 해야 "이 직원이 스케줄을 언제/정말로 확인했는지"가 명확한 시각 기록으로
     # 남아서, 나중에 "몰랐다"는 식의 분쟁을 막을 수 있습니다.
-    this_week_key = _week_key_for_date(now.date())
+    this_week_key = _week_key_for_date(today_nz)
     this_week = state["weeks"].get(this_week_key)
     if not this_week or not this_week.get("published"):
         return jsonify({"error": "이번 주 스케줄이 아직 게시(퍼블리시)되지 않았습니다. 관리자에게 문의해주세요."}), 400
@@ -3015,7 +3017,7 @@ def create_time_entry(company_id):
     except (TypeError, ValueError):
         return jsonify({"error": "날짜/시간 형식이 올바르지 않습니다."}), 400
 
-    entry_date = clock_in_dt.date().isoformat()
+    entry_date = clock_in_dt.astimezone(NZ_TZ).date().isoformat()
     now_iso = datetime.now(timezone.utc).isoformat()
     entry = {
         "id": secrets.token_hex(8),
