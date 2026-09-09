@@ -964,6 +964,8 @@ const I18N = {
     time_entries_hours: "{h}시간", time_entries_edited_by: "{name}님이 {date}에 수정함 — 사유: {reason}",
     time_entries_breaks_label: "휴게 시작/종료", time_entries_breaks_empty: "등록된 휴게 기록이 없습니다.",
     time_entries_break_add_btn: "휴게 추가", modal_break_range_invalid: "휴게 종료 시각이 시작 시각보다 늦어야 합니다.",
+    time_entries_break_start_label: "휴게 시작", time_entries_break_end_label: "휴게 종료",
+    time_entries_break_fields_required: "날짜와 시각을 모두 입력해주세요.",
     time_entries_break_line: "휴게 {h}시간 ({list})",
     time_entries_distance_in: "클락인 매장서 {m}m", time_entries_distance_out: "클락아웃 매장서 {m}m",
     time_entries_edit_title: "{name} 시간 수정", time_entries_clock_in_label: "클락인 시각",
@@ -1297,6 +1299,8 @@ const I18N = {
     time_entries_hours: "{h}h", time_entries_edited_by: "Edited by {name} on {date} — reason: {reason}",
     time_entries_breaks_label: "Break Start/End", time_entries_breaks_empty: "No breaks recorded.",
     time_entries_break_add_btn: "Add Break", modal_break_range_invalid: "Break end time must be after the start time.",
+    time_entries_break_start_label: "Break Start", time_entries_break_end_label: "Break End",
+    time_entries_break_fields_required: "Please fill in both the date and time.",
     time_entries_break_line: "Break {h}h ({list})",
     time_entries_distance_in: "Clock-in {m}m from store", time_entries_distance_out: "Clock-out {m}m from store",
     time_entries_edit_title: "Edit time for {name}", time_entries_clock_in_label: "Clock-in time",
@@ -3625,42 +3629,69 @@ function buildBreaksEditor(breaksDraft) {
   };
   renderList();
 
-  const addRow = document.createElement("div");
-  addRow.style.cssText = "display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;";
+  const addBox = document.createElement("div");
+  addBox.style.cssText = "margin-top:8px; padding:10px; border:1px solid var(--line); border-radius:8px;";
+
+  const startLabel = document.createElement("div");
+  startLabel.textContent = t("time_entries_break_start_label");
+  startLabel.style.cssText = "font-size:11px; color:var(--text-muted); margin-bottom:3px;";
+  const startRow = document.createElement("div");
+  startRow.style.cssText = "display:flex; gap:6px;";
   const startField = createNZDateField("");
-  startField.style.maxWidth = "120px";
   const startTimeInput = document.createElement("input");
   startTimeInput.type = "time";
-  startTimeInput.style.width = "90px";
-  const arrow = document.createElement("span");
-  arrow.textContent = "→";
-  arrow.style.color = "var(--text-muted)";
+  startTimeInput.style.cssText = "width:110px; flex-shrink:0;";
+  startRow.appendChild(startField);
+  startRow.appendChild(startTimeInput);
+
+  const endLabel = document.createElement("div");
+  endLabel.textContent = t("time_entries_break_end_label");
+  endLabel.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:8px; margin-bottom:3px;";
+  const endRow = document.createElement("div");
+  endRow.style.cssText = "display:flex; gap:6px;";
   const endField = createNZDateField("");
-  endField.style.maxWidth = "120px";
   const endTimeInput = document.createElement("input");
   endTimeInput.type = "time";
-  endTimeInput.style.width = "90px";
+  endTimeInput.style.cssText = "width:110px; flex-shrink:0;";
+  endRow.appendChild(endField);
+  endRow.appendChild(endTimeInput);
+
+  const breakErrLine = document.createElement("div");
+  breakErrLine.style.cssText = "color:#ef4444; font-size:11px; display:none; margin-top:6px;";
+
   const addBtn = document.createElement("button");
   addBtn.className = "btn-ghost btn-sm";
   addBtn.textContent = t("time_entries_break_add_btn");
+  addBtn.style.marginTop = "8px";
   addBtn.onclick = () => {
-    if (!startField.getValue() || !startTimeInput.value || !endField.getValue() || !endTimeInput.value) return;
+    breakErrLine.style.display = "none";
+    if (!startField.getValue() || !startTimeInput.value || !endField.getValue() || !endTimeInput.value) {
+      breakErrLine.textContent = t("time_entries_break_fields_required");
+      breakErrLine.style.display = "block";
+      return;
+    }
     const startIso = new Date(`${startField.getValue()}T${startTimeInput.value}`).toISOString();
     const endIso = new Date(`${endField.getValue()}T${endTimeInput.value}`).toISOString();
     if (endIso <= startIso) {
-      showMessageModal(t("modal_input_check_title"), t("modal_break_range_invalid"), true);
+      breakErrLine.textContent = t("modal_break_range_invalid");
+      breakErrLine.style.display = "block";
       return;
     }
     breaksDraft.push({id: "br_" + Math.random().toString(36).slice(2, 10), start: startIso, end: endIso});
+    startField.setValue("");
+    startTimeInput.value = "";
+    endField.setValue("");
+    endTimeInput.value = "";
     renderList();
   };
-  addRow.appendChild(startField);
-  addRow.appendChild(startTimeInput);
-  addRow.appendChild(arrow);
-  addRow.appendChild(endField);
-  addRow.appendChild(endTimeInput);
-  addRow.appendChild(addBtn);
-  wrap.appendChild(addRow);
+
+  addBox.appendChild(startLabel);
+  addBox.appendChild(startRow);
+  addBox.appendChild(endLabel);
+  addBox.appendChild(endRow);
+  addBox.appendChild(breakErrLine);
+  addBox.appendChild(addBtn);
+  wrap.appendChild(addBox);
 
   return wrap;
 }
