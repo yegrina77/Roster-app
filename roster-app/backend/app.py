@@ -1168,33 +1168,22 @@ def _is_before_first_anniversary(employee, as_of=None):
     return (as_of or date.today()) < hire + timedelta(days=365)
 
 
-def _section23_settlement(state, employee):
-    """Holidays Act 2003 23조: 입사 12개월이 되기 전에 퇴사하는 경우의 애뉴얼 리브
-    정산액을 계산합니다.
-
-        정산액 = 입사일부터 지금까지 총소득의 8% − 이미 당겨써서 지급받은 금액
-
-    이 값이 마이너스가 나올 수도 있습니다 — 8% 적립분보다 더 많이 당겨썼으면,
-    법적으로 그 차액을 직원이 사장에게 돌려줘야 하는 상황입니다(실제 회수 방법은
-    별도 법적 절차가 필요할 수 있으니 회계사 확인이 필요합니다).
-
+def _eight_percent_since(state, employee, since_date):
+    """이 직원의 since_date 이후 총소득의 8%에서, 그 사이 이미 당겨써서 지급받은
+    애뉴얼 리브 금액을 뺀 값을 계산합니다 — Holidays Act 2003상 "아직 정식으로
+    발생 안 한(또는 마지막 기념일 이후로 새로 쌓이고 있는) 리브"에 대한 정산
+    공식입니다. 이 값이 마이너스가 나올 수도 있습니다(당겨쓴 게 8% 적립분보다
+    많으면, 직원이 사장에게 돌려줘야 하는 상황).
     돌려주는 값: (정산액|None, 계산에 쓰인 세부 내역 dict). earnings_history에
-    데이터가 아예 없으면(급여 이력이 아직 하나도 안 쌓였으면) None을 돌려줍니다."""
-    hire_date_str = employee.get("hire_date")
-    if not hire_date_str:
-        return None, None
-    try:
-        hire = date.fromisoformat(hire_date_str)
-    except ValueError:
-        return None, None
-    hire_week_key = _week_key_for_date(hire)
+    since_date 이후 데이터가 아예 없으면 0으로 채워진 내역을 돌려줍니다."""
+    since_week_key = _week_key_for_date(since_date)
     history = state.get("earnings_history", {})
     relevant = [
         h for h in history.values()
-        if h["employee_id"] == employee["id"] and h["week_key"] >= hire_week_key
+        if h["employee_id"] == employee["id"] and h["week_key"] >= since_week_key
     ]
     if not relevant:
-        return None, {"weeks_used": 0, "gross_earnings": 0.0, "advance_leave_paid": 0.0, "eight_percent": 0.0}
+        return 0.0, {"weeks_used": 0, "gross_earnings": 0.0, "advance_leave_paid": 0.0, "eight_percent": 0.0}
 
     gross_earnings = sum(h["gross_pay"] for h in relevant)
     advance_leave_paid = sum(h.get("annual_leave_pay", 0.0) for h in relevant)
@@ -1206,6 +1195,53 @@ def _section23_settlement(state, employee):
         "advance_leave_paid": round(advance_leave_paid, 2),
         "eight_percent": round(eight_percent, 2),
     }
+
+
+def _section23_settlement(state, employee):
+    """Holidays Act 2003 23조: 입사 12개월이 되기 전에 퇴사하는 경우의 애뉴얼 리브
+    정산액을 계산합니다.
+
+        정산액 = 입사일부터 지금까지 총소득의 8% − 이미 당겨써서 지급받은 금액
+
+    이 값이 마이너스가 나올 수도 있습니다 — 8% 적립분보다 더 많이 당겨썼으면,
+    법적으로 그 차액을 직원이 사장에게 돌려줘야 하는 상황입니다(실제 회수 방법은
+    별도 법적 절차가 필요할 수 있으니 회계사 확인이 필요합니다).
+
+    돌려주는 값: (정산액|None, 계산에 쓰인 세부 내역 dict). 입사일이 없으면
+    None을 돌려줍니다."""
+    hire_date_str = employee.get("hire_date")
+    if not hire_date_str:
+        return None, None
+    try:
+        hire = date.fromisoformat(hire_date_str)
+    except ValueError:
+        return None, None
+    return _eight_percent_since(state, employee, hire)
+
+
+def _last_anniversary_date(employee, as_of=None):
+    """이 직원의 "가장 최근에 이미 지난" 근속 기념일 날짜를 돌려줍니다(아직 한 번도
+    기념일을 맞지 않았으면 None). 퇴사 정산 시 "마지막 기념일 이후 8%"를 계산할
+    기준점으로 씁니다."""
+    hire_date_str = employee.get("hire_date")
+    if not hire_date_str:
+        return None
+    try:
+        hire = date.fromisoformat(hire_date_str)
+    except ValueError:
+        return None
+    as_of = as_of or date.today()
+    last = None
+    n = 1
+    while True:
+        anniversary_date = hire + timedelta(days=365 * n)
+        if anniversary_date > as_of:
+            break
+        last = anniversary_date
+        n += 1
+        if n > 60:
+            break
+    return last
 
 
 def _applicable_leave_rate(state, employee, prorated=None):
@@ -1225,14 +1261,23 @@ def _applicable_leave_rate(state, employee, prorated=None):
     }
 
 
-def _process_annual_leave_anniversary(employee):
-    """입사일(hire_date)이 등록되어 있으면, 지금까지 지난 12개월 기념일마다 4주치
-    시간(주당 계약시간 × 4)을 애뉴얼 리브 잔액에 자동으로 더합니다 — Holidays Act상
-    "1년 근속 시 4주 정식 발생"을 반영한 것입니다. 이미 지급된 기념일은
-    annual_leave_anniversaries_granted에 기록해서 중복 지급을 막습니다. 당겨쓴
-    리브로 잔액이 마이너스였다면, 새로 발생한 4주가 그 위에 그대로 더해지면서
-    자연스럽게 상쇄되는 구조입니다(별도 계산 없이 잔액에 더하기만 하면 됨).
-    돌려주는 값: 잔액이 실제로 바뀌었으면 True."""
+def _process_annual_leave_anniversary(employee, state):
+    """입사일(hire_date)이 등록되어 있으면, 지금까지 지난 12개월 기념일마다 애뉴얼
+    리브를 정리합니다 — Holidays Act상 "1년 근속 시 4주 정식 발생"을 반영한
+    것입니다. 이미 처리된 기념일은 annual_leave_anniversaries_granted에 기록해서
+    중복 처리를 막습니다. 돌려주는 값: 잔액이 실제로 바뀌었으면 True.
+
+    ⚠️ 8% 자동 적립(annual_leave_auto_accrual_enabled)과 겹치지 않게 주의해서
+    처리합니다 — 실제 payroll 자료에 따르면 "매주 8%씩 쌓인 것이 12개월 시점에
+    그대로 4주 정식 발생분으로 전환되고, 적립 카운터가 리셋"되는 구조입니다(8%라는
+    숫자 자체가 4주÷52주를 올림한 값이라, 1년 내내 쌓으면 자연스럽게 4주 분량에
+    도달합니다). 그래서 **첫 번째 기념일**에서, 자동 적립이 켜져 있었다면(그 1년
+    동안 이미 8%로 쌓였을 것이므로) 4주를 "추가로 더 얹지" 않고, 이미 쌓인 걸 그대로
+    그 해의 정식 발생분으로 인정합니다 — 안 그러면 8%로 쌓인 것 위에 4주를 또
+    더해서 거의 두 배로 부풀려집니다. 두 번째 기념일부터는 자동 적립이 이미 멈춘
+    뒤(연속 적립은 첫 기념일 전까지만 동작)라 겹칠 일이 없으므로, 정상적으로 4주씩
+    더합니다. 자동 적립을 아예 안 켜두신 회사는 첫 기념일에도 정상적으로 4주가
+    더해집니다(쌓인 게 없으니 더해야 함)."""
     hire_date_str = employee.get("hire_date")
     if not hire_date_str:
         return False
@@ -1252,10 +1297,12 @@ def _process_annual_leave_anniversary(employee):
             break
         key = str(anniversary_num)
         if key not in granted:
-            weekly_hours = employee.get("min_hours_per_week") or 0
-            employee["annual_leave_balance_hours"] = round(
-                (employee.get("annual_leave_balance_hours") or 0.0) + weekly_hours * 4, 2
-            )
+            is_first_and_already_accrued = anniversary_num == 1 and state.get("annual_leave_auto_accrual_enabled")
+            if not is_first_and_already_accrued:
+                weekly_hours = employee.get("min_hours_per_week") or 0
+                employee["annual_leave_balance_hours"] = round(
+                    (employee.get("annual_leave_balance_hours") or 0.0) + weekly_hours * 4, 2
+                )
             granted.add(key)
             changed = True
         anniversary_num += 1
@@ -2341,7 +2388,7 @@ def list_employees(company_id):
     # 자연스럽게 체크되는 구조입니다.
     any_changed = False
     for e in state["employees"]:
-        if _process_annual_leave_anniversary(e):
+        if _process_annual_leave_anniversary(e, state):
             any_changed = True
     if any_changed:
         save_state(company_id, state)
@@ -2541,7 +2588,8 @@ def adjust_annual_leave(company_id, employee_id):
 def final_payment_estimate(company_id, employee_id):
     """사장/매니저 전용: 퇴사 시 지급해야 할 것으로 추정되는 금액을 계산합니다.
       - 입사 12개월 이상: 정식 발생한 애뉴얼 리브 잔액 × (OWP와 AWE 중 더 높은 쪽,
-        Holidays Act 2003 21조)
+        Holidays Act 2003 21조) + 마지막 기념일 이후로 일한 기간에 대한 8%(아직
+        정식 발생 전인, 새로 쌓이고 있는 중인 부분)
       - 입사 12개월 미만: 총소득의 8% − 이미 당겨써서 지급받은 금액(23조) — 이
         값은 마이너스가 나올 수 있고, 그 경우 직원이 사장에게 돌려줘야 하는
         금액입니다.
@@ -2564,6 +2612,7 @@ def final_payment_estimate(company_id, employee_id):
 
     rate_breakdown = None
     section23_info = None
+    post_anniversary_info = None
     if is_salary:
         # 연봉제는 주급이 애초에 고정이라 OWP/AWE 비교가 사실상 의미가 없어서, 지금까지
         # 쓰던 환산시급 방식을 그대로 씁니다.
@@ -2584,6 +2633,18 @@ def final_payment_estimate(company_id, employee_id):
             section23_settlement, section23_info = _section23_settlement(state, employee)
             if section23_settlement is not None:
                 annual_leave_payout = section23_settlement
+        else:
+            # 입사 12개월 이상 퇴사 — 남은 정식 리브 잔액(위에서 이미 계산됨)에 더해,
+            # "마지막 기념일 이후로 일한 기간"에 대한 8%도 추가로 지급해야 합니다.
+            # 이 기간은 아직 정식으로 4주가 발생하지 않은, 새로 쌓이고 있는 중인
+            # 부분이기 때문입니다(다음 기념일이 와야 정식 발생함).
+            last_anniversary = _last_anniversary_date(employee)
+            if last_anniversary:
+                post_settlement, post_anniversary_info = _eight_percent_since(state, employee, last_anniversary)
+                if post_anniversary_info:
+                    post_anniversary_info["since_date"] = last_anniversary.isoformat()
+                if post_settlement is not None and annual_leave_payout is not None:
+                    annual_leave_payout = round(annual_leave_payout + post_settlement, 2)
 
     lieu_day_payout = (lieu_days * avg_day_hours * hourly_rate) if hourly_rate is not None else None
     total = None
@@ -2597,6 +2658,7 @@ def final_payment_estimate(company_id, employee_id):
         "applied_hourly_rate": round(applied_hourly_rate, 2) if applied_hourly_rate is not None else None,
         "rate_breakdown": rate_breakdown,
         "section23": section23_info,
+        "post_anniversary_eight_percent": post_anniversary_info,
         "annual_leave_balance_hours": round(annual_leave_hours, 2),
         "annual_leave_payout_estimate": round(annual_leave_payout, 2) if annual_leave_payout is not None else None,
         "lieu_day_balance": round(lieu_days, 2),
@@ -3395,7 +3457,10 @@ def _accrue_annual_leave_for_week(state, week_key):
     """이번 주 스케줄을 퍼블리시할 때, (자동 적립이 켜져 있으면) 시급제 직원들에게
     그 주 예상(스케줄 기준) 급여의 8%만큼을 애뉴얼 리브 잔액(시간)으로 자동 적립합니다.
     연봉제는 보통 애뉴얼 리브가 이미 연봉에 포함된 구조라 이 자동 적립 대상에서
-    제외합니다. 같은 주에 대해 같은 직원이 중복 적립되지 않도록
+    제외합니다. 입사일이 등록되어 있고 이미 첫 기념일(12개월)이 지난 직원은 여기서
+    적립을 멈춥니다 — 그 이후는 _process_annual_leave_anniversary가 주는 "기념일마다
+    4주 한 번에 발생" 방식으로 넘어가야 하고, 두 방식이 동시에 계속 쌓이면 중복
+    적립이 되기 때문입니다. 같은 주에 대해 같은 직원이 중복 적립되지 않도록
     state["annual_leave_accrual_credits"]에 기록해둡니다."""
     if not state.get("annual_leave_auto_accrual_enabled"):
         return
@@ -3407,6 +3472,14 @@ def _accrue_annual_leave_for_week(state, week_key):
         emp_id = row["employee_id"]
         employee = employees_by_id.get(emp_id)
         if not employee or employee.get("pay_type") == "salary":
+            continue
+        # 입사일이 등록되어 있고, 이미 첫 기념일(12개월)이 지났으면 여기서 8% 주간
+        # 적립을 멈춥니다 — 그 이후부터는 _process_annual_leave_anniversary가 주는
+        # "기념일마다 4주 한 번에 발생"으로 넘어가야 하고, 두 방식을 동시에 계속
+        # 쌓으면 잔액이 실제보다 부풀려지는 중복 적립이 됩니다. 입사일이 아직 등록
+        # 안 된 직원은 근속 기간을 판단할 수 없으므로, 예전처럼 계속 8%를 적립합니다
+        # (등록해두시면 그때부터 정확히 전환됩니다).
+        if employee.get("hire_date") and not _is_before_first_anniversary(employee):
             continue
         credit_key = f"{emp_id}|{week_key}"
         if credit_key in credited:
