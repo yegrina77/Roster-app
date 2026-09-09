@@ -555,7 +555,7 @@
           <option value="variable" data-i18n="opt_hours_variable">변동</option>
         </select>
       </div>
-      <div class="field"><label data-i18n="label_hire_date">입사일</label><input id="emp-hire-date" type="date" style="width:140px;"></div>
+      <div class="field"><label data-i18n="label_hire_date">입사일</label><span id="emp-hire-date-slot" style="display:inline-flex; width:140px;"></span></div>
       <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
         <select id="emp-min-hours">
           <option value="0" data-i18n="opt_0h">0시간</option>
@@ -619,7 +619,7 @@
     <h2 data-i18n="ph_title">Public Holidays</h2>
     <p class="desc" data-i18n="ph_desc">1년치 공휴일을 미리 등록해두면, 그 날짜가 포함된 주로 이동할 때 자동으로 알려드리고, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인할 수 있습니다.</p>
     <div class="row-form">
-      <div class="field"><label data-i18n="ph_date">날짜</label><input type="date" id="ph-date"></div>
+      <div class="field"><label data-i18n="ph_date">날짜</label><span id="ph-date-slot" style="display:inline-flex; width:140px;"></span></div>
       <div class="field"><label data-i18n="ph_name">이름</label><input id="ph-name" placeholder="Waitangi Day"></div>
       <button class="btn-primary" onclick="addPublicHoliday()" data-i18n="btn_add_generic">추가</button>
       <button class="btn-ghost" onclick="showPublicHolidayPolicyModal()" data-i18n="ph_policy_btn">⚙️ 판정 기준 설정</button>
@@ -636,7 +636,7 @@
       <button class="btn-ghost btn-sm" onclick="navigateWeek(-7)" data-i18n="btn_prev_week">◀ 이전 주</button>
       <div id="week-label" style="font-weight:600; font-size:14px;"></div>
       <button class="btn-ghost btn-sm" onclick="navigateWeek(7)" data-i18n="btn_next_week">다음 주 ▶</button>
-      <input type="date" id="week-date-picker" onchange="jumpToDate(this.value)" style="margin-left:8px;">
+      <span id="week-date-picker-slot" style="display:inline-flex; width:150px; margin-left:8px;"></span>
     </div>
     <p class="desc" data-i18n="sched_desc">
       빈 칸을 클릭해 근무(Opening/Helper/Closing1/Closing2)를 추가하거나 <b>Off(휴무)</b>로 지정할 수 있습니다.
@@ -1952,7 +1952,7 @@ async function loadEmployeeWeek() {
   if (data.agreed) {
     const doneMsg = document.createElement("div");
     doneMsg.style.cssText = "color:var(--opening, #22c55e); font-weight:600;";
-    doneMsg.textContent = "✅ " + tf("emp_view_agreed_at", {date: (data.agreed_at || "").slice(0, 10)});
+    doneMsg.textContent = "✅ " + tf("emp_view_agreed_at", {date: formatDateNZ((data.agreed_at || "").slice(0, 10))});
     agreeBox.appendChild(doneMsg);
   } else {
     const agreeBtn = document.createElement("button");
@@ -4375,15 +4375,13 @@ function buildRulesPanel(e) {
 
   const leaveAddRow = document.createElement("div");
   leaveAddRow.style.cssText = "display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;";
-  const startInput = document.createElement("input");
-  startInput.type = "date";
-  enableClickToOpenDatePicker(startInput);
+  const leaveStartField = createNZDateField("");
+  leaveStartField.style.maxWidth = "130px";
   const dash = document.createElement("span");
   dash.textContent = t("week_range_join");
   dash.style.color = "var(--text-muted)";
-  const endInput = document.createElement("input");
-  endInput.type = "date";
-  enableClickToOpenDatePicker(endInput);
+  const leaveEndField = createNZDateField("");
+  leaveEndField.style.maxWidth = "130px";
   const typeSelect = document.createElement("select");
   typeSelect.style.cssText = "min-width:90px;";
   [["paid", "leave_type_paid"], ["unpaid", "leave_type_unpaid"], ["sick", "leave_type_sick"],
@@ -4413,8 +4411,8 @@ function buildRulesPanel(e) {
   addLeaveBtn.className = "btn-ghost btn-sm";
   addLeaveBtn.textContent = t("btn_leave_add");
   addLeaveBtn.onclick = () => {
-    if (!startInput.value || !endInput.value) return;
-    if (startInput.value > endInput.value) {
+    if (!leaveStartField.getValue() || !leaveEndField.getValue()) return;
+    if (leaveStartField.getValue() > leaveEndField.getValue()) {
       showMessageModal(t("modal_input_check_title"), t("modal_leave_range_invalid"), true);
       return;
     }
@@ -4422,21 +4420,21 @@ function buildRulesPanel(e) {
     // 자동으로 목록에서 조용히 사라집니다. 그 상태로 저장했다가 나중에 "사라졌다"고
     // 헷갈리시는 것보다, 입력하는 지금 바로 알려드리는 게 낫습니다.
     const todayStr = new Date().toISOString().slice(0, 10);
-    if (endInput.value < todayStr) {
+    if (leaveEndField.getValue() < todayStr) {
       showMessageModal(t("modal_input_check_title"), t("modal_leave_end_in_past"), true);
       return;
     }
     rulesDraft.leave_requests.push({
       id: "lr_" + Math.random().toString(36).slice(2, 10),
-      start_date: startInput.value, end_date: endInput.value,
+      start_date: leaveStartField.getValue(), end_date: leaveEndField.getValue(),
       leave_type: typeSelect.value, reason: reasonInput.value.trim().slice(0, 200),
       allow_advance: typeSelect.value === "annual_leave" ? advanceCheckbox.checked : false,
     });
     loadEmployees();
   };
-  leaveAddRow.appendChild(startInput);
+  leaveAddRow.appendChild(leaveStartField);
   leaveAddRow.appendChild(dash);
-  leaveAddRow.appendChild(endInput);
+  leaveAddRow.appendChild(leaveEndField);
   leaveAddRow.appendChild(typeSelect);
   leaveAddRow.appendChild(reasonInput);
   leaveAddRow.appendChild(advanceLabel);
@@ -4496,15 +4494,14 @@ function buildRulesPanel(e) {
   docLabelInput.maxLength = 100;
   docLabelInput.placeholder = t("docs_label_placeholder");
   docLabelInput.style.cssText = "flex:1; min-width:120px;";
-  const docExpiryInput = document.createElement("input");
-  docExpiryInput.type = "date";
-  enableClickToOpenDatePicker(docExpiryInput);
+  const docExpiryField = createNZDateField("");
+  docExpiryField.style.maxWidth = "130px";
   const docNoExpiryNote = document.createElement("span");
   docNoExpiryNote.style.cssText = "display:none; font-size:11px; color:var(--text-muted);";
   docNoExpiryNote.textContent = t("docs_no_expiry_note");
   const updateExpiryFieldVisibility = () => {
     const isNoExpiry = NO_EXPIRY_DOC_TYPES.includes(docTypeSelect.value);
-    docExpiryInput.style.display = isNoExpiry ? "none" : "inline-block";
+    docExpiryField.style.display = isNoExpiry ? "none" : "inline-flex";
     docNoExpiryNote.style.display = isNoExpiry ? "inline" : "none";
   };
   docTypeSelect.addEventListener("change", updateExpiryFieldVisibility);
@@ -4514,18 +4511,18 @@ function buildRulesPanel(e) {
   addDocBtn.textContent = t("btn_docs_add");
   addDocBtn.onclick = () => {
     const isNoExpiry = NO_EXPIRY_DOC_TYPES.includes(docTypeSelect.value);
-    if (!isNoExpiry && !docExpiryInput.value) return;
+    if (!isNoExpiry && !docExpiryField.getValue()) return;
     rulesDraft.documents.push({
       id: "doc_" + Math.random().toString(36).slice(2, 10),
       doc_type: docTypeSelect.value,
       label: docLabelInput.value.trim().slice(0, 100),
-      expiry_date: isNoExpiry ? null : docExpiryInput.value,
+      expiry_date: isNoExpiry ? null : docExpiryField.getValue(),
     });
     loadEmployees();
   };
   docsAddRow.appendChild(docTypeSelect);
   docsAddRow.appendChild(docLabelInput);
-  docsAddRow.appendChild(docExpiryInput);
+  docsAddRow.appendChild(docExpiryField);
   docsAddRow.appendChild(docNoExpiryNote);
   docsAddRow.appendChild(addDocBtn);
   docsBlock.appendChild(docsAddRow);
@@ -4663,7 +4660,7 @@ function startEditEmployee(e) {
   document.getElementById("emp-wage").value = e.hourly_wage != null ? e.hourly_wage : "";
   document.getElementById("emp-salary").value = e.annual_salary != null ? e.annual_salary : "";
   document.getElementById("emp-hours-type").value = e.hours_type === "variable" ? "variable" : "fixed";
-  document.getElementById("emp-hire-date").value = e.hire_date || "";
+  document.getElementById("emp-hire-date").setValue(e.hire_date || "");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
   const isAny = e.target_days_per_week == null;
@@ -4685,7 +4682,7 @@ function cancelEditEmployee() {
   document.getElementById("emp-wage").value = "";
   document.getElementById("emp-salary").value = "";
   document.getElementById("emp-hours-type").value = "fixed";
-  document.getElementById("emp-hire-date").value = "";
+  document.getElementById("emp-hire-date").setValue("");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = "30";
   document.getElementById("emp-target-days").value = "";
@@ -4705,7 +4702,7 @@ async function submitEmployee() {
   const salaryRaw = document.getElementById("emp-salary").value.trim();
   const annual_salary = salaryRaw === "" ? null : Number(salaryRaw);
   const hours_type = document.getElementById("emp-hours-type").value === "variable" ? "variable" : "fixed";
-  const hire_date = document.getElementById("emp-hire-date").value || null;
+  const hire_date = document.getElementById("emp-hire-date").getValue() || null;
   const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
   const isAny = document.getElementById("emp-target-days-any").checked;
   const targetDaysRaw = document.getElementById("emp-target-days").value;
@@ -4840,14 +4837,14 @@ function mondayKeyFromDate(date) {
 
 function updateWeekLabel() {
   document.getElementById("week-label").textContent = formatWeekLabel(currentWeekKey);
-  document.getElementById("week-date-picker").value = currentWeekKey;
+  document.getElementById("week-date-picker").setValue(currentWeekKey);
 }
 
 function formatWeekLabel(weekKey) {
   const mondayDate = keyToDate(weekKey);
   const sundayKey = addDaysToKey(weekKey, 6);
   const sundayDate = keyToDate(sundayKey);
-  const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+  const fmt = (d) => `${d.getDate()}/${d.getMonth() + 1}`;
   return `${fmt(mondayDate)}(${DAY_LABEL.mon}) ${t("week_range_join")} ${fmt(sundayDate)}(${DAY_LABEL.sun})`;
 }
 
@@ -5235,7 +5232,7 @@ async function loadPublicHolidays() {
 
   displayHolidays.forEach(h => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${h.date}</td><td>${h.name || "-"}</td><td><button class="btn-danger btn-sm" onclick="deletePublicHoliday('${h.date}')">${t("btn_delete")}</button></td>`;
+    tr.innerHTML = `<td>${formatDateNZ(h.date)}</td><td>${h.name || "-"}</td><td><button class="btn-danger btn-sm" onclick="deletePublicHoliday('${h.date}')">${t("btn_delete")}</button></td>`;
     tbody.appendChild(tr);
   });
 
@@ -5261,7 +5258,7 @@ async function loadPublicHolidays() {
 }
 
 async function addPublicHoliday() {
-  const dateVal = document.getElementById("ph-date").value;
+  const dateVal = document.getElementById("ph-date").getValue();
   const nameVal = document.getElementById("ph-name").value.trim();
   if (!dateVal) { showMessageModal(t("modal_input_check_title"), t("modal_ph_date_required"), true); return; }
   await api("/api/public-holidays", {
@@ -5269,7 +5266,7 @@ async function addPublicHoliday() {
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({date: dateVal, name: nameVal})
   });
-  document.getElementById("ph-date").value = "";
+  document.getElementById("ph-date").setValue("");
   document.getElementById("ph-name").value = "";
   loadPublicHolidays();
 }
@@ -5321,7 +5318,7 @@ function showPublicHolidaySimpleNotice(holidays) {
   holidays.forEach(holiday => {
     const item = document.createElement("div");
     item.className = "modal-item";
-    item.innerHTML = `<div class="modal-item-title">${DAY_LABEL[holiday.day]} · ${holiday.date}${holiday.name ? " · " + holiday.name : ""}</div>`;
+    item.innerHTML = `<div class="modal-item-title">${DAY_LABEL[holiday.day]} · ${formatDateNZ(holiday.date)}${holiday.name ? " · " + holiday.name : ""}</div>`;
     box.appendChild(item);
   });
 
@@ -5373,7 +5370,7 @@ function showPublicHolidayModal(info) {
   info.holidays.forEach(holiday => {
     const holidayHeader = document.createElement("div");
     holidayHeader.style.cssText = "font-weight:700; margin-top:14px; margin-bottom:8px; color:var(--cyan);";
-    holidayHeader.textContent = `${DAY_LABEL[holiday.day]} · ${holiday.date}${holiday.name ? " · " + holiday.name : ""}`;
+    holidayHeader.textContent = `${DAY_LABEL[holiday.day]} · ${formatDateNZ(holiday.date)}${holiday.name ? " · " + holiday.name : ""}`;
     box.appendChild(holidayHeader);
 
     const rows = info.categories[holiday.day] || [];
@@ -6977,9 +6974,25 @@ function showAlertsModal() {
   applyI18nStatic();
   updateAuthLangButtonsUI();
   switchAuthMode("login");
-  enableClickToOpenDatePicker(document.getElementById("week-date-picker"));
-  enableClickToOpenDatePicker(document.getElementById("emp-hire-date"));
-  enableClickToOpenDatePicker(document.getElementById("ph-date"));
+  // 이 세 날짜 입력칸은 뉴질랜드 형식(DD/MM/YYYY)으로 보이도록 createNZDateField로
+  // 만들어서, id는 기존 코드가 document.getElementById(...)로 찾는 이름 그대로
+  // 유지합니다(찾은 뒤엔 .value 대신 .getValue()/.setValue()를 씁니다).
+  const weekPickerField = createNZDateField("");
+  weekPickerField.id = "week-date-picker";
+  weekPickerField.querySelector('input[type="date"]').addEventListener("change", () => {
+    const val = weekPickerField.getValue();
+    if (val) jumpToDate(val);
+  });
+  document.getElementById("week-date-picker-slot").replaceWith(weekPickerField);
+
+  const hireDateField = createNZDateField("");
+  hireDateField.id = "emp-hire-date";
+  document.getElementById("emp-hire-date-slot").replaceWith(hireDateField);
+
+  const phDateField = createNZDateField("");
+  phDateField.id = "ph-date";
+  document.getElementById("ph-date-slot").replaceWith(phDateField);
+
   await checkAuthAndInit();
 })();
 </script>
