@@ -1402,6 +1402,31 @@ function updatePayTypeFields() {
   if (minHoursLabel) minHoursLabel.textContent = isSalary ? t("label_min_hours_salary") : t("label_min_hours");
 }
 
+function formatDateNZ(isoDate) {
+  // "YYYY-MM-DD" -> "DD/MM/YYYY" (뉴질랜드 날짜 표기 순서)
+  if (!isoDate) return "";
+  const parts = isoDate.split("-");
+  if (parts.length !== 3) return isoDate;
+  const [y, m, d] = parts;
+  return `${d}/${m}/${y}`;
+}
+
+function formatDateTimeNZ(dateInput) {
+  // Date 객체 또는 ISO 문자열 -> "DD/MM HH:MM" (짧은 표기, 연도 생략)
+  const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatDateTimeFullNZ(dateInput) {
+  // Date 객체 또는 ISO 문자열 -> "DD/MM/YYYY HH:MM"
+  const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function enableClickToOpenDatePicker(input) {
   input.addEventListener("click", () => {
     if (typeof input.showPicker === "function") {
@@ -2243,8 +2268,7 @@ async function showSupportRequestsAdminPage() {
     who.textContent = `${reqItem.company_name} — ${reqItem.sender_name} (${roleLabel(reqItem.sender_role)})`;
     const when = document.createElement("div");
     when.style.cssText = "font-size:11px; color:var(--text-muted); white-space:nowrap;";
-    const d = new Date(reqItem.created_at);
-    when.textContent = d.toLocaleString([], {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"});
+    when.textContent = formatDateTimeNZ(reqItem.created_at);
     topLine.appendChild(who);
     topLine.appendChild(when);
     item.appendChild(topLine);
@@ -2611,8 +2635,7 @@ async function showAuditLogPage() {
     desc.textContent = entry.description;
     const when = document.createElement("div");
     when.style.cssText = "font-size:11px; color:var(--text-muted); white-space:nowrap;";
-    const d = new Date(entry.at);
-    when.textContent = d.toLocaleString([], {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"});
+    when.textContent = formatDateTimeNZ(entry.at);
     topLine.appendChild(desc);
     topLine.appendChild(when);
     item.appendChild(topLine);
@@ -3137,7 +3160,7 @@ async function showPayrollPage(weekKey) {
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = tf("payroll_sub", {week: weekKey});
+  sub.textContent = tf("payroll_sub", {week: formatDateNZ(weekKey)});
   box.appendChild(sub);
 
   if (data.has_public_holiday) {
@@ -3431,7 +3454,7 @@ async function showTimeEntriesPage(weekKey) {
 
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = tf("time_entries_sub", {week: weekKey});
+  sub.textContent = tf("time_entries_sub", {week: formatDateNZ(weekKey)});
   box.appendChild(sub);
 
   const list = document.createElement("div");
@@ -3446,8 +3469,7 @@ async function showTimeEntriesPage(weekKey) {
 
   const fmtTime = (iso) => {
     if (!iso) return "—";
-    const d = new Date(iso);
-    return d.toLocaleString([], {month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"});
+    return formatDateTimeNZ(iso);
   };
 
   entries.forEach(entry => {
@@ -3456,7 +3478,7 @@ async function showTimeEntriesPage(weekKey) {
 
     const nameLine = document.createElement("div");
     nameLine.className = "modal-item-title";
-    nameLine.textContent = `${entry.employee_name} — ${entry.date}${entry.manually_created ? " " + t("time_entries_manual_tag") : ""}`;
+    nameLine.textContent = `${entry.employee_name} — ${formatDateNZ(entry.date)}${entry.manually_created ? " " + t("time_entries_manual_tag") : ""}`;
     item.appendChild(nameLine);
 
     const timeLine = document.createElement("div");
@@ -3749,7 +3771,7 @@ function showEditTimeEntryModal(entry, onSaved) {
   deleteBtn.onclick = async () => {
     const confirmed = await showConfirmModal(
       t("time_entries_delete_confirm_title"),
-      tf("time_entries_delete_confirm_msg", {name: entry.employee_name, date: entry.date}),
+      tf("time_entries_delete_confirm_msg", {name: entry.employee_name, date: formatDateNZ(entry.date)}),
       t("time_entries_delete_btn"), t("btn_cancel"),
     );
     if (!confirmed) return;
@@ -4305,8 +4327,8 @@ function buildRulesPanel(e) {
     const label = document.createElement("span");
     const typeLabel = t(`leave_type_${lr.leave_type || "unpaid"}`);
     label.textContent = lr.reason
-      ? `${lr.start_date} ${t("week_range_join")} ${lr.end_date} [${typeLabel}] — ${lr.reason}`
-      : `${lr.start_date} ${t("week_range_join")} ${lr.end_date} [${typeLabel}]`;
+      ? `${formatDateNZ(lr.start_date)} ${t("week_range_join")} ${formatDateNZ(lr.end_date)} [${typeLabel}] — ${lr.reason}`
+      : `${formatDateNZ(lr.start_date)} ${t("week_range_join")} ${formatDateNZ(lr.end_date)} [${typeLabel}]`;
     const removeBtn = document.createElement("button");
     removeBtn.className = "btn-danger btn-sm";
     removeBtn.textContent = t("btn_delete");
@@ -4412,7 +4434,7 @@ function buildRulesPanel(e) {
       const isSoon = !isExpired && daysLeft <= 30;
       label.style.cssText = isExpired ? "color:var(--danger, #ef4444); font-weight:600;" : (isSoon ? "color:#f59e0b; font-weight:600;" : "");
       const tag = isExpired ? ` ${t("docs_expired_tag")}` : (isSoon ? ` (${daysLeft}${t("day_suffix")})` : "");
-      label.textContent = `${typeLabel}${labelText} — ${doc.expiry_date}${tag}`;
+      label.textContent = `${typeLabel}${labelText} — ${formatDateNZ(doc.expiry_date)}${tag}`;
     }
     const removeBtn = document.createElement("button");
     removeBtn.className = "btn-danger btn-sm";
@@ -6900,7 +6922,7 @@ function showAlertsModal() {
       const row = document.createElement("div");
       row.className = "modal-item";
       const statusText = doc.expired ? t("docs_expired_tag") : tf("alerts_docs_days_left", {n: doc.days_remaining});
-      row.innerHTML = `<div class="modal-item-title">${doc.employee_name} — ${t(`doc_type_${doc.doc_type}`)}${doc.label ? ` (${doc.label})` : ""}</div><div class="modal-item-detail">${doc.expiry_date} · ${statusText}</div>`;
+      row.innerHTML = `<div class="modal-item-title">${doc.employee_name} — ${t(`doc_type_${doc.doc_type}`)}${doc.label ? ` (${doc.label})` : ""}</div><div class="modal-item-detail">${formatDateNZ(doc.expiry_date)} · ${statusText}</div>`;
       box.appendChild(row);
     });
   }
