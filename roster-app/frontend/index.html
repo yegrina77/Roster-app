@@ -1039,6 +1039,8 @@ const I18N = {
     final_payment_s23_gross: "입사일부터 총소득: {v}", final_payment_s23_eight_percent: "그 8%: {v}",
     final_payment_s23_advance_paid: "이미 당겨써서 지급됨: {v}",
     final_payment_s23_owes_back: "⚠️ 마이너스입니다 — 직원이 사장님께 차액을 반환해야 하는 상황입니다. 실제 회수는 회계사/노무사와 상의하세요.",
+    final_payment_post_anniv_title: "마지막 기념일 이후 추가분 (8%)",
+    final_payment_post_anniv_since: "기준일: {v} (마지막 근속 기념일)",
     final_payment_applied_rate: "적용 시급: {v}",
     final_payment_data_incomplete: "⚠️ 52주 미만 데이터 기준 — 이력이 쌓일수록 정확해집니다.",
     final_payment_salary_note: "연봉제는 급여가 고정되어 있어 OWP/AWE 비교가 적용되지 않습니다 — 환산 시급 {v}이 그대로 적용됩니다.",
@@ -1374,6 +1376,8 @@ const I18N = {
     final_payment_s23_gross: "Gross earnings since hire: {v}", final_payment_s23_eight_percent: "8% of that: {v}",
     final_payment_s23_advance_paid: "Already paid for advance leave: {v}",
     final_payment_s23_owes_back: "⚠️ Negative — the employee owes this difference back to the employer. Discuss recovery with an accountant/payroll professional.",
+    final_payment_post_anniv_title: "Additional Accrual Since Last Anniversary (8%)",
+    final_payment_post_anniv_since: "Since: {v} (last work anniversary)",
     final_payment_applied_rate: "Applied hourly rate: {v}",
     final_payment_data_incomplete: "⚠️ Based on less than 52 weeks of data — accuracy improves as history builds up.",
     final_payment_salary_note: "Salaried employees have fixed pay, so OWP/AWE comparison doesn't apply — the converted hourly rate {v} is used directly.",
@@ -2826,31 +2830,47 @@ async function showFinalPaymentEstimate(employeeId) {
       s23Box.appendChild(note);
     }
     box.appendChild(s23Box);
-  } else if (data.rate_breakdown) {
-    const rb = data.rate_breakdown;
-    const rateBox = document.createElement("div");
-    rateBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
-    const aweLabel = rb.prorated ? "final_payment_awe_prorated" : "final_payment_awe";
-    const owpText = rb.owp != null ? `$${rb.owp.toFixed(2)}${rb.owp_weeks_used ? ` (${rb.owp_weeks_used}${t("week_suffix")})` : ""}` : "—";
-    const aweText = rb.awe != null ? `$${rb.awe.toFixed(2)} (${rb.awe_weeks_used}${t("week_suffix")})` : "—";
-    rateBox.innerHTML = `${tf("final_payment_owp", {v: owpText})}<br>${tf(aweLabel, {v: aweText})}<br>${tf("final_payment_applied_rate", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"})}`;
-    if (rb.prorated) {
-      const note = document.createElement("div");
-      note.style.cssText = "margin-top:4px; color:#f59e0b;";
-      note.textContent = t("final_payment_advance_note");
-      rateBox.appendChild(note);
-    } else if (rb.awe_weeks_used != null && rb.awe_weeks_used < 52) {
-      const note = document.createElement("div");
-      note.style.cssText = "margin-top:4px; color:#f59e0b;";
-      note.textContent = t("final_payment_data_incomplete");
-      rateBox.appendChild(note);
+  } else {
+    if (data.rate_breakdown) {
+      const rb = data.rate_breakdown;
+      const rateBox = document.createElement("div");
+      rateBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+      const aweLabel = rb.prorated ? "final_payment_awe_prorated" : "final_payment_awe";
+      const owpText = rb.owp != null ? `$${rb.owp.toFixed(2)}${rb.owp_weeks_used ? ` (${rb.owp_weeks_used}${t("week_suffix")})` : ""}` : "—";
+      const aweText = rb.awe != null ? `$${rb.awe.toFixed(2)} (${rb.awe_weeks_used}${t("week_suffix")})` : "—";
+      rateBox.innerHTML = `${tf("final_payment_owp", {v: owpText})}<br>${tf(aweLabel, {v: aweText})}<br>${tf("final_payment_applied_rate", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"})}`;
+      if (rb.prorated) {
+        const note = document.createElement("div");
+        note.style.cssText = "margin-top:4px; color:#f59e0b;";
+        note.textContent = t("final_payment_advance_note");
+        rateBox.appendChild(note);
+      } else if (rb.awe_weeks_used != null && rb.awe_weeks_used < 52) {
+        const note = document.createElement("div");
+        note.style.cssText = "margin-top:4px; color:#f59e0b;";
+        note.textContent = t("final_payment_data_incomplete");
+        rateBox.appendChild(note);
+      }
+      box.appendChild(rateBox);
+    } else if (data.pay_type === "salary") {
+      const salaryNote = document.createElement("div");
+      salaryNote.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+      salaryNote.textContent = tf("final_payment_salary_note", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"});
+      box.appendChild(salaryNote);
     }
-    box.appendChild(rateBox);
-  } else if (data.pay_type === "salary") {
-    const salaryNote = document.createElement("div");
-    salaryNote.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
-    salaryNote.textContent = tf("final_payment_salary_note", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"});
-    box.appendChild(salaryNote);
+
+    if (data.post_anniversary_eight_percent) {
+      const pa = data.post_anniversary_eight_percent;
+      const paBox = document.createElement("div");
+      paBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:8px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+      paBox.innerHTML = `
+        <div style="font-weight:600; margin-bottom:4px; color:var(--text);">${t("final_payment_post_anniv_title")}</div>
+        ${tf("final_payment_post_anniv_since", {v: formatDateNZ(pa.since_date)})}<br>
+        ${tf("final_payment_s23_gross", {v: `$${pa.gross_earnings.toFixed(2)} (${pa.weeks_used}${t("week_suffix")})`})}<br>
+        ${tf("final_payment_s23_eight_percent", {v: `$${pa.eight_percent.toFixed(2)}`})}<br>
+        ${tf("final_payment_s23_advance_paid", {v: `$${pa.advance_leave_paid.toFixed(2)}`})}
+      `;
+      box.appendChild(paBox);
+    }
   }
 
   const totalLine = document.createElement("div");
