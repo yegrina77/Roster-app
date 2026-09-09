@@ -1427,6 +1427,46 @@ function formatDateTimeFullNZ(dateInput) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function createNZDateField(initialISO) {
+  // 네이티브 <input type="date">는 화면에 보이는 형식을 브라우저/OS가 결정해서,
+  // 뉴질랜드 사용자에게 YYYY-MM-DD로 보일 수 있습니다(HTML 표준상 사이트 쪽에서
+  // 강제로 바꿀 방법이 없습니다). 그래서 실제 날짜 선택은 네이티브 달력으로 그대로
+  // 하되(투명하게 숨겨서 클릭만 그쪽으로 가게 함), 사용자에게 보이는 텍스트는
+  // 항상 직접 DD/MM/YYYY로 표시하는 방식으로 우회합니다.
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "position:relative; flex:1; min-width:0;";
+
+  const hiddenInput = document.createElement("input");
+  hiddenInput.type = "date";
+  hiddenInput.style.cssText = "position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0;";
+  if (initialISO) hiddenInput.value = initialISO;
+
+  const display = document.createElement("input");
+  display.type = "text";
+  display.readOnly = true;
+  display.style.cssText = "width:100%; cursor:pointer; box-sizing:border-box;";
+  display.placeholder = "dd/mm/yyyy";
+
+  const sync = () => { display.value = hiddenInput.value ? formatDateNZ(hiddenInput.value) : ""; };
+  sync();
+  hiddenInput.addEventListener("change", sync);
+  hiddenInput.addEventListener("input", sync);
+  const openPicker = () => {
+    if (typeof hiddenInput.showPicker === "function") {
+      try { hiddenInput.showPicker(); } catch (e) { hiddenInput.focus(); }
+    } else {
+      hiddenInput.focus();
+    }
+  };
+  display.addEventListener("click", openPicker);
+
+  wrap.appendChild(display);
+  wrap.appendChild(hiddenInput);
+  wrap.getValue = () => hiddenInput.value;
+  wrap.setValue = (iso) => { hiddenInput.value = iso || ""; sync(); };
+  return wrap;
+}
+
 function enableClickToOpenDatePicker(input) {
   input.addEventListener("click", () => {
     if (typeof input.showPicker === "function") {
@@ -3586,16 +3626,12 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
   inLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
   const inRow = document.createElement("div");
   inRow.style.cssText = "display:flex; gap:8px;";
-  const inDateInput = document.createElement("input");
-  inDateInput.type = "date";
-  inDateInput.style.flex = "1";
-  inDateInput.value = todayLocalStr;
-  enableClickToOpenDatePicker(inDateInput);
+  const inDateField = createNZDateField(todayLocalStr);
   const inTimeInput = document.createElement("input");
   inTimeInput.type = "time";
   inTimeInput.style.flex = "1";
   inTimeInput.value = "09:00";
-  inRow.appendChild(inDateInput);
+  inRow.appendChild(inDateField);
   inRow.appendChild(inTimeInput);
 
   const outLabel = document.createElement("label");
@@ -3603,16 +3639,12 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
   outLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
   const outRow = document.createElement("div");
   outRow.style.cssText = "display:flex; gap:8px;";
-  const outDateInput = document.createElement("input");
-  outDateInput.type = "date";
-  outDateInput.style.flex = "1";
-  outDateInput.value = todayLocalStr;
-  enableClickToOpenDatePicker(outDateInput);
+  const outDateField = createNZDateField(todayLocalStr);
   const outTimeInput = document.createElement("input");
   outTimeInput.type = "time";
   outTimeInput.style.flex = "1";
   outTimeInput.value = "17:00";
-  outRow.appendChild(outDateInput);
+  outRow.appendChild(outDateField);
   outRow.appendChild(outTimeInput);
 
   const reasonLabel = document.createElement("label");
@@ -3651,7 +3683,7 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
       errLine.style.display = "block";
       return;
     }
-    if (!inDateInput.value || !inTimeInput.value) {
+    if (!inDateField.getValue() || !inTimeInput.value) {
       errLine.textContent = t("time_entries_clock_in_required");
       errLine.style.display = "block";
       return;
@@ -3665,11 +3697,11 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
     saveBtn.disabled = true;
     const body = {
       employee_id: empSelect.value,
-      clock_in: new Date(`${inDateInput.value}T${inTimeInput.value}`).toISOString(),
+      clock_in: new Date(`${inDateField.getValue()}T${inTimeInput.value}`).toISOString(),
       reason,
     };
-    if (outDateInput.value && outTimeInput.value) {
-      body.clock_out = new Date(`${outDateInput.value}T${outTimeInput.value}`).toISOString();
+    if (outDateField.getValue() && outTimeInput.value) {
+      body.clock_out = new Date(`${outDateField.getValue()}T${outTimeInput.value}`).toISOString();
     }
     try {
       await api("/api/time-entries", {
@@ -3721,16 +3753,12 @@ function showEditTimeEntryModal(entry, onSaved) {
   inLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
   const inRow = document.createElement("div");
   inRow.style.cssText = "display:flex; gap:8px;";
-  const inDateInput = document.createElement("input");
-  inDateInput.type = "date";
-  inDateInput.style.flex = "1";
-  inDateInput.value = toDatePart(entry.clock_in);
-  enableClickToOpenDatePicker(inDateInput);
+  const inDateField = createNZDateField(toDatePart(entry.clock_in));
   const inTimeInput = document.createElement("input");
   inTimeInput.type = "time";
   inTimeInput.style.flex = "1";
   inTimeInput.value = toTimePart(entry.clock_in);
-  inRow.appendChild(inDateInput);
+  inRow.appendChild(inDateField);
   inRow.appendChild(inTimeInput);
 
   const outLabel = document.createElement("label");
@@ -3738,16 +3766,12 @@ function showEditTimeEntryModal(entry, onSaved) {
   outLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
   const outRow = document.createElement("div");
   outRow.style.cssText = "display:flex; gap:8px;";
-  const outDateInput = document.createElement("input");
-  outDateInput.type = "date";
-  outDateInput.style.flex = "1";
-  outDateInput.value = toDatePart(entry.clock_out);
-  enableClickToOpenDatePicker(outDateInput);
+  const outDateField = createNZDateField(toDatePart(entry.clock_out));
   const outTimeInput = document.createElement("input");
   outTimeInput.type = "time";
   outTimeInput.style.flex = "1";
   outTimeInput.value = toTimePart(entry.clock_out);
-  outRow.appendChild(outDateInput);
+  outRow.appendChild(outDateField);
   outRow.appendChild(outTimeInput);
 
   const reasonLabel = document.createElement("label");
@@ -3810,11 +3834,11 @@ function showEditTimeEntryModal(entry, onSaved) {
     }
     saveBtn.disabled = true;
     const body = {reason};
-    if (inDateInput.value && inTimeInput.value) {
-      body.clock_in = new Date(`${inDateInput.value}T${inTimeInput.value}`).toISOString();
+    if (inDateField.getValue() && inTimeInput.value) {
+      body.clock_in = new Date(`${inDateField.getValue()}T${inTimeInput.value}`).toISOString();
     }
-    body.clock_out = (outDateInput.value && outTimeInput.value)
-      ? new Date(`${outDateInput.value}T${outTimeInput.value}`).toISOString()
+    body.clock_out = (outDateField.getValue() && outTimeInput.value)
+      ? new Date(`${outDateField.getValue()}T${outTimeInput.value}`).toISOString()
       : null;
     try {
       await api(`/api/time-entries/${entry.id}`, {
