@@ -3572,7 +3572,14 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
     empSelect.appendChild(opt);
   });
 
-  const weekDates = weekKey ? Array.from({length: 7}, (_, i) => addDaysToKey(weekKey, i)) : [];
+  // 기본 날짜는 "오늘"로 잡습니다 — 이 기능을 쓰는 가장 흔한 상황이 "오늘 깜빡한
+  // 직원 기록을 지금 채워 넣는 것"이라서, 지금 보고 있는 주의 월요일보다 오늘 날짜가
+  // 훨씬 실용적인 기본값입니다. 사장님이 다른 날짜를 원하시면 직접 바꾸시면 됩니다.
+  const todayLocalStr = (() => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  })();
 
   const inLabel = document.createElement("label");
   inLabel.textContent = t("time_entries_clock_in_label");
@@ -3582,7 +3589,7 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
   const inDateInput = document.createElement("input");
   inDateInput.type = "date";
   inDateInput.style.flex = "1";
-  if (weekDates.length) inDateInput.value = weekDates[0];
+  inDateInput.value = todayLocalStr;
   enableClickToOpenDatePicker(inDateInput);
   const inTimeInput = document.createElement("input");
   inTimeInput.type = "time";
@@ -3599,7 +3606,7 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
   const outDateInput = document.createElement("input");
   outDateInput.type = "date";
   outDateInput.style.flex = "1";
-  if (weekDates.length) outDateInput.value = weekDates[0];
+  outDateInput.value = todayLocalStr;
   enableClickToOpenDatePicker(outDateInput);
   const outTimeInput = document.createElement("input");
   outTimeInput.type = "time";
