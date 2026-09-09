@@ -1439,21 +1439,29 @@ function createNZDateField(initialISO) {
   // 네이티브 <input type="date">는 화면에 보이는 형식을 브라우저/OS가 결정해서,
   // 뉴질랜드 사용자에게 YYYY-MM-DD로 보일 수 있습니다(HTML 표준상 사이트 쪽에서
   // 강제로 바꿀 방법이 없습니다). 그래서 실제 날짜 선택은 네이티브 달력으로 그대로
-  // 하되(투명하게 숨겨서 클릭만 그쪽으로 가게 함), 사용자에게 보이는 텍스트는
-  // 항상 직접 DD/MM/YYYY로 표시하는 방식으로 우회합니다.
+  // 하되(화면 밖에 숨겨두고 클릭 시 showPicker()로 열리게 함), 사용자에게 보이는
+  // 텍스트는 항상 직접 DD/MM/YYYY로 표시하는 방식으로 우회합니다.
   const wrap = document.createElement("div");
   wrap.style.cssText = "position:relative; flex:1; min-width:0;";
 
   const hiddenInput = document.createElement("input");
   hiddenInput.type = "date";
-  hiddenInput.style.cssText = "position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0;";
+  // 겹침 문제를 피하려고 화면 전체를 덮는 대신, 아예 화면 밖으로 빼둡니다 — 클릭은
+  // display/아이콘에서 showPicker()로 열어주고, 값 저장 용도로만 씁니다.
+  hiddenInput.style.cssText = "position:absolute; left:-9999px; top:0; width:1px; height:1px; opacity:0; border:0; padding:0;";
   if (initialISO) hiddenInput.value = initialISO;
 
   const display = document.createElement("input");
   display.type = "text";
   display.readOnly = true;
-  display.style.cssText = "width:100%; cursor:pointer; box-sizing:border-box;";
+  display.style.cssText = "width:100%; cursor:pointer; box-sizing:border-box; padding-right:32px;";
   display.placeholder = "dd/mm/yyyy";
+
+  // 시계 아이콘과 같은 톤으로 달력 아이콘을 눈에 보이게 넣어서, 어디를 눌러야
+  // 달력이 열리는지 명확히 알 수 있게 합니다.
+  const icon = document.createElement("span");
+  icon.textContent = "📅";
+  icon.style.cssText = "position:absolute; right:6px; top:50%; transform:translateY(-50%); font-size:13px; line-height:1; padding:4px 5px; border-radius:4px; background-color:rgba(79,216,224,0.15); pointer-events:none;";
 
   const sync = () => { display.value = hiddenInput.value ? formatDateNZ(hiddenInput.value) : ""; };
   sync();
@@ -1469,6 +1477,7 @@ function createNZDateField(initialISO) {
   display.addEventListener("click", openPicker);
 
   wrap.appendChild(display);
+  wrap.appendChild(icon);
   wrap.appendChild(hiddenInput);
   wrap.getValue = () => hiddenInput.value;
   wrap.setValue = (iso) => { hiddenInput.value = iso || ""; sync(); };
