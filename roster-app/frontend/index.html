@@ -1463,10 +1463,18 @@ function createNZDateField(initialISO) {
 
   const hiddenInput = document.createElement("input");
   hiddenInput.type = "date";
-  // 이 칸 전체를 덮되, 진짜로 클릭 가능한(가장 위 레이어) 상태를 유지합니다 —
-  // 이래야 브라우저가 클릭을 실제 날짜 입력칸의 클릭으로 인식해서 달력을 엽니다.
+  // 이 칸 전체를 덮되, 진짜로 클릭 가능한(가장 위 레이어) 상태를 유지합니다. 다만
+  // 네이티브 날짜칸은 "아이콘 부분만 클릭해야 달력이 열리고, 글자 부분은 그냥
+  // 커서만 깜빡이는" 브라우저 기본 동작이 있어서, 어디를 눌러도 무조건 달력이
+  // 열리도록 클릭 시 showPicker()를 직접 호출합니다(off-screen이 아니라 제자리에
+  // 정상적으로 배치되어 있어야 showPicker()가 안정적으로 동작합니다).
   hiddenInput.style.cssText = "position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0; margin:0;";
   if (initialISO) hiddenInput.value = initialISO;
+  hiddenInput.addEventListener("click", () => {
+    if (typeof hiddenInput.showPicker === "function") {
+      try { hiddenInput.showPicker(); } catch (e) { /* 일부 브라우저는 미지원 - 기본 클릭 동작에 맡김 */ }
+    }
+  });
 
   const sync = () => { display.value = hiddenInput.value ? formatDateNZ(hiddenInput.value) : ""; };
   sync();
