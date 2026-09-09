@@ -1438,43 +1438,40 @@ function formatDateTimeFullNZ(dateInput) {
 function createNZDateField(initialISO) {
   // 네이티브 <input type="date">는 화면에 보이는 형식을 브라우저/OS가 결정해서,
   // 뉴질랜드 사용자에게 YYYY-MM-DD로 보일 수 있습니다(HTML 표준상 사이트 쪽에서
-  // 강제로 바꿀 방법이 없습니다). 그래서 실제 날짜 선택은 네이티브 달력으로 그대로
-  // 하되(화면 밖에 숨겨두고 클릭 시 showPicker()로 열리게 함), 사용자에게 보이는
-  // 텍스트는 항상 직접 DD/MM/YYYY로 표시하는 방식으로 우회합니다.
+  // 강제로 바꿀 방법이 없습니다). 그래서 실제 날짜 선택은 네이티브 달력 입력칸을
+  // 투명하게 만들어 이 칸 전체에 그대로 겹쳐두고(진짜 클릭을 그대로 받아야
+  // showPicker() 없이도 브라우저가 자체적으로 달력을 열어줘서 가장 안정적입니다),
+  // 사용자에게 보이는 텍스트만 항상 DD/MM/YYYY로 표시하는 방식으로 우회합니다.
+  // wrap에 overflow:hidden을 둬서, 혹시 안에서 크기가 어긋나더라도 옆 요소를
+  // 침범하며 겹쳐 보이는 일이 없게 방어합니다.
   const wrap = document.createElement("div");
-  wrap.style.cssText = "position:relative; flex:1; min-width:0;";
-
-  const hiddenInput = document.createElement("input");
-  hiddenInput.type = "date";
-  // 겹침 문제를 피하려고 화면 전체를 덮는 대신, 아예 화면 밖으로 빼둡니다 — 클릭은
-  // display/아이콘에서 showPicker()로 열어주고, 값 저장 용도로만 씁니다.
-  hiddenInput.style.cssText = "position:absolute; left:-9999px; top:0; width:1px; height:1px; opacity:0; border:0; padding:0;";
-  if (initialISO) hiddenInput.value = initialISO;
+  wrap.style.cssText = "position:relative; flex:1; min-width:0; overflow:hidden; border-radius:6px;";
 
   const display = document.createElement("input");
   display.type = "text";
   display.readOnly = true;
-  display.style.cssText = "width:100%; cursor:pointer; box-sizing:border-box; padding-right:32px;";
+  display.tabIndex = -1;
+  display.style.cssText = "width:100%; cursor:pointer; box-sizing:border-box; padding-right:32px; pointer-events:none;";
   display.placeholder = "dd/mm/yyyy";
 
   // 시계 아이콘과 같은 톤으로 달력 아이콘을 눈에 보이게 넣어서, 어디를 눌러야
-  // 달력이 열리는지 명확히 알 수 있게 합니다.
+  // 달력이 열리는지 명확히 알 수 있게 합니다(클릭은 그대로 아래 hiddenInput이
+  // 받도록 pointer-events:none으로 뚫어둡니다).
   const icon = document.createElement("span");
   icon.textContent = "📅";
   icon.style.cssText = "position:absolute; right:6px; top:50%; transform:translateY(-50%); font-size:13px; line-height:1; padding:4px 5px; border-radius:4px; background-color:rgba(79,216,224,0.15); pointer-events:none;";
+
+  const hiddenInput = document.createElement("input");
+  hiddenInput.type = "date";
+  // 이 칸 전체를 덮되, 진짜로 클릭 가능한(가장 위 레이어) 상태를 유지합니다 —
+  // 이래야 브라우저가 클릭을 실제 날짜 입력칸의 클릭으로 인식해서 달력을 엽니다.
+  hiddenInput.style.cssText = "position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:0; padding:0; margin:0;";
+  if (initialISO) hiddenInput.value = initialISO;
 
   const sync = () => { display.value = hiddenInput.value ? formatDateNZ(hiddenInput.value) : ""; };
   sync();
   hiddenInput.addEventListener("change", sync);
   hiddenInput.addEventListener("input", sync);
-  const openPicker = () => {
-    if (typeof hiddenInput.showPicker === "function") {
-      try { hiddenInput.showPicker(); } catch (e) { hiddenInput.focus(); }
-    } else {
-      hiddenInput.focus();
-    }
-  };
-  display.addEventListener("click", openPicker);
 
   wrap.appendChild(display);
   wrap.appendChild(icon);
