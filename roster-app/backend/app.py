@@ -636,6 +636,36 @@ def _actual_break_hours(entry):
     return total_minutes / 60
 
 
+def _sanitize_breaks(breaks, clock_in=None, clock_out=None):
+    """관리자가 직접 입력한 휴게 시작/종료 목록을 검증합니다. 각 휴게는 시작<종료여야
+    하고, 가능하면(클락인/아웃 시각이 주어졌으면) 그 근무 시간 범위 안에 있어야
+    합니다. 잘못된 항목이 있으면 (None, 에러메시지)를 돌려주고, 성공하면
+    (정리된 목록, None)을 돌려줍니다. 최대 20개까지만 허용합니다(방어적 상한)."""
+    out = []
+    try:
+        clock_in_dt = datetime.fromisoformat(clock_in) if clock_in else None
+        clock_out_dt = datetime.fromisoformat(clock_out) if clock_out else None
+    except (TypeError, ValueError):
+        clock_in_dt = clock_out_dt = None
+    for br in (breaks or [])[:20]:
+        br_start, br_end = br.get("start"), br.get("end")
+        try:
+            start_dt = datetime.fromisoformat(br_start) if br_start else None
+            end_dt = datetime.fromisoformat(br_end) if br_end else None
+        except (TypeError, ValueError):
+            return None, "휴게 시간 형식이 올바르지 않습니다."
+        if not start_dt or not end_dt:
+            return None, "휴게 시작·종료 시각을 모두 입력해주세요."
+        if end_dt <= start_dt:
+            return None, "휴게 종료 시각이 시작 시각보다 빠르거나 같을 수 없습니다."
+        if clock_in_dt and start_dt < clock_in_dt:
+            return None, "휴게 시작 시각이 클락인 시각보다 빠를 수 없습니다."
+        if clock_out_dt and end_dt > clock_out_dt:
+            return None, "휴게 종료 시각이 클락아웃 시각보다 늦을 수 없습니다."
+        out.append({"id": br.get("id") or secrets.token_hex(6), "start": br_start, "end": br_end})
+    return out, None
+
+
 def _actual_hours_for_entry(entry, rounding_minutes):
     """이 클락인/아웃 기록의 실제 근무시간을 계산합니다. 클락인은 올림(늦게 인정),
     클락아웃은 내림(일찍 인정)해서 — 어느 쪽으로도 직원에게 유리하게 반올림되지 않는,
@@ -3019,13 +3049,16 @@ def create_time_entry(company_id):
 
     entry_date = clock_in_dt.astimezone(NZ_TZ).date().isoformat()
     now_iso = datetime.now(timezone.utc).isoformat()
+    new_breaks, breaks_error = _sanitize_breaks(payload.get("breaks"), clock_in, clock_out)
+    if breaks_error:
+        return jsonify({"error": breaks_error}), 400
     entry = {
         "id": secrets.token_hex(8),
         "employee_id": employee_id,
         "date": entry_date,
         "clock_in": clock_in,
         "clock_out": clock_out or None,
-        "breaks": [],
+        "breaks": new_breaks or [],
         "clock_in_location": None, "clock_out_location": None,
         # 실제 클락인이 아니라 관리자가 수기로 채워 넣은 기록임을 표시합니다 — 화면에서
         # "수정됨"과는 별도로 "수동 등록"이라고 구분해서 보여줄 수 있게 하기 위함입니다.
@@ -3071,6 +3104,17 @@ def edit_time_entry(company_id, entry_id):
     except ValueError:
         return jsonify({"error": "날짜/시간 형식이 올바르지 않습니다."}), 400
 
+    # 휴게 시작/종료도 여기서 같이 수정할 수 있습니다 — 직원이 깜빡하고 휴게 버튼을
+    # 안 누른 경우, 관리자가 나중에 채워 넣을 수 있도록. 휴게 시간이 반영되면
+    # 실제 근무시간(_actual_hours_for_entry)이 자동으로 그만큼 줄어듭니다.
+    new_breaks = None
+    if "breaks" in payload:
+        effective_clock_in = new_clock_in or entry.get("clock_in")
+        effective_clock_out = new_clock_out if new_clock_out is not None else entry.get("clock_out")
+        new_breaks, breaks_error = _sanitize_breaks(payload["breaks"], effective_clock_in, effective_clock_out)
+        if breaks_error:
+            return jsonify({"error": breaks_error}), 400
+
     entry.setdefault("edit_history", []).append({
         "edited_by": g.user_name, "edited_by_role": g.role,
         "edited_at": datetime.now(timezone.utc).isoformat(), "reason": reason[:300],
@@ -3080,6 +3124,8 @@ def edit_time_entry(company_id, entry_id):
         entry["clock_in"] = new_clock_in
     if new_clock_out is not None:
         entry["clock_out"] = new_clock_out or None
+    if new_breaks is not None:
+        entry["breaks"] = new_breaks
     entry["edited"] = True
     save_state(company_id, state)
     return jsonify(entry)
