@@ -964,6 +964,8 @@ const I18N = {
     time_entries_hours: "{h}시간", time_entries_edited_by: "{name}님이 {date}에 수정함 — 사유: {reason}",
     time_entries_breaks_label: "휴게 시작/종료", time_entries_breaks_empty: "등록된 휴게 기록이 없습니다.",
     time_entries_break_add_btn: "휴게 추가", modal_break_range_invalid: "휴게 종료 시각이 시작 시각보다 늦어야 합니다.",
+    modal_break_before_clockin: "휴게 시작 시각이 클락인 시각보다 빠를 수 없습니다.",
+    modal_break_after_clockout: "휴게 종료 시각이 클락아웃 시각보다 늦을 수 없습니다.",
     time_entries_break_start_label: "휴게 시작", time_entries_break_end_label: "휴게 종료",
     time_entries_break_fields_required: "날짜와 시각을 모두 입력해주세요.",
     time_entries_break_line: "휴게 {h}시간 ({list})",
@@ -1301,6 +1303,8 @@ const I18N = {
     time_entries_hours: "{h}h", time_entries_edited_by: "Edited by {name} on {date} — reason: {reason}",
     time_entries_breaks_label: "Break Start/End", time_entries_breaks_empty: "No breaks recorded.",
     time_entries_break_add_btn: "Add Break", modal_break_range_invalid: "Break end time must be after the start time.",
+    modal_break_before_clockin: "Break start time cannot be earlier than the clock-in time.",
+    modal_break_after_clockout: "Break end time cannot be later than the clock-out time.",
     time_entries_break_start_label: "Break Start", time_entries_break_end_label: "Break End",
     time_entries_break_fields_required: "Please fill in both the date and time.",
     time_entries_break_line: "Break {h}h ({list})",
@@ -3624,10 +3628,13 @@ async function showTimeEntriesPage(weekKey) {
   document.body.appendChild(overlay);
 }
 
-function buildBreaksEditor(breaksDraft) {
+function buildBreaksEditor(breaksDraft, getClockBounds) {
   // 휴게 시작/종료 목록을 편집하는 컴포넌트입니다. breaksDraft(배열)를 그대로
   // 참조로 넘겨받아서 직접 수정하고, 추가/삭제할 때마다 목록만 다시 그립니다
-  // (모달 전체를 다시 만들 필요 없이).
+  // (모달 전체를 다시 만들 필요 없이). getClockBounds()는 현재 클락인/아웃 입력칸
+  // 값을 읽어서 [clockInIso, clockOutIso]를 돌려주는 함수입니다 — "휴게 추가"를
+  // 누른 그 순간 기준으로 범위를 확인해서, 클락인보다 이르거나 클락아웃보다 늦은
+  // 휴게는 목록에 아예 추가되지 않도록(저장 시점까지 기다리지 않고 바로) 막습니다.
   const wrap = document.createElement("div");
   wrap.style.cssText = "margin-top:10px;";
   const label = document.createElement("label");
@@ -3710,6 +3717,19 @@ function buildBreaksEditor(breaksDraft) {
       breakErrLine.textContent = t("modal_break_range_invalid");
       breakErrLine.style.display = "block";
       return;
+    }
+    if (typeof getClockBounds === "function") {
+      const [clockInIso, clockOutIso] = getClockBounds();
+      if (clockInIso && startIso < clockInIso) {
+        breakErrLine.textContent = t("modal_break_before_clockin");
+        breakErrLine.style.display = "block";
+        return;
+      }
+      if (clockOutIso && endIso > clockOutIso) {
+        breakErrLine.textContent = t("modal_break_after_clockout");
+        breakErrLine.style.display = "block";
+        return;
+      }
     }
     breaksDraft.push({id: "br_" + Math.random().toString(36).slice(2, 10), start: startIso, end: endIso});
     startField.setValue("");
@@ -3796,7 +3816,13 @@ function showCreateTimeEntryModal(weekKey, onSaved) {
   outRow.appendChild(outTimeInput);
 
   const breaksDraft = [];
-  const breaksEditor = buildBreaksEditor(breaksDraft);
+  const breaksEditor = buildBreaksEditor(breaksDraft, () => {
+    const clockInIso = (inDateField.getValue() && inTimeInput.value)
+      ? new Date(`${inDateField.getValue()}T${inTimeInput.value}`).toISOString() : null;
+    const clockOutIso = (outDateField.getValue() && outTimeInput.value)
+      ? new Date(`${outDateField.getValue()}T${outTimeInput.value}`).toISOString() : null;
+    return [clockInIso, clockOutIso];
+  });
 
   const reasonLabel = document.createElement("label");
   reasonLabel.textContent = t("time_entries_reason_label");
@@ -3930,7 +3956,13 @@ function showEditTimeEntryModal(entry, onSaved) {
   // 기존 휴게 기록을 그대로 초기값으로 넣어서 편집할 수 있게 합니다(직접 찍은
   // 휴게든, 관리자가 예전에 채워 넣은 휴게든 상관없이 여기서 추가/삭제 가능).
   const breaksDraft = (entry.breaks || []).map(br => ({...br}));
-  const breaksEditor = buildBreaksEditor(breaksDraft);
+  const breaksEditor = buildBreaksEditor(breaksDraft, () => {
+    const clockInIso = (inDateField.getValue() && inTimeInput.value)
+      ? new Date(`${inDateField.getValue()}T${inTimeInput.value}`).toISOString() : null;
+    const clockOutIso = (outDateField.getValue() && outTimeInput.value)
+      ? new Date(`${outDateField.getValue()}T${outTimeInput.value}`).toISOString() : null;
+    return [clockInIso, clockOutIso];
+  });
 
   const reasonLabel = document.createElement("label");
   reasonLabel.textContent = t("time_entries_reason_label");
