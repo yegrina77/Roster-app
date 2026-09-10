@@ -686,6 +686,9 @@
     <div id="emp-view-week-label" style="font-weight:600; font-size:14px; flex:1; text-align:center;"></div>
     <button class="btn-ghost btn-sm" onclick="navigateEmployeeWeek(7)">▶</button>
   </div>
+  <div style="margin-bottom:16px;">
+    <button class="btn-ghost" style="width:100%;" onclick="showLeaveRequestModal()" data-i18n="emp_leave_request_btn">📋 리브 신청</button>
+  </div>
   <div id="emp-view-content"></div>
 </div>
 
@@ -917,6 +920,25 @@ const I18N = {
     audit_log_sub: "직원·스케줄·근무요건·설정 변경 등 관리 작업 이력을 최신순으로 보여줍니다.",
     audit_log_empty: "아직 기록이 없습니다.",
     audit_log_role_owner: "사장", audit_log_role_manager: "매니저",
+    pending_leave_nav_btn: "📋 리브 승인 대기", pending_leave_title: "리브 승인 대기 목록",
+    pending_leave_sub: "직원이 직접 신청한 리브 중, 아직 승인/거절되지 않은 건들입니다.",
+    pending_leave_empty: "대기 중인 신청이 없습니다.",
+    pending_leave_approve_btn: "승인", pending_leave_reject_btn: "거절",
+    pending_leave_reject_prompt: "거절 사유(선택, 비워두셔도 됩니다):",
+    pending_leave_submitted_by: "{name}님이 {date}에 신청",
+    pending_leave_reason_line: "사유: {reason}",
+    pending_leave_daily_hours_note: "날짜별 시간: {v}",
+    emp_leave_request_btn: "📋 리브 신청",
+    leave_request_modal_title: "리브 신청", leave_request_modal_sub: "신청하면 사장님/매니저의 승인을 거쳐 확정됩니다.",
+    label_leave_type: "리브 종류", leave_request_range_label: "신청 기간",
+    leave_request_daily_hours_toggle: "날짜별로 시간을 다르게 입력하기",
+    leave_request_pick_dates_first: "먼저 시작일과 종료일을 선택해주세요.",
+    leave_request_hours_placeholder: "시간", leave_request_submit_btn: "신청하기",
+    leave_request_dates_required: "시작일과 종료일을 입력해주세요.",
+    leave_request_missing_hours_for: "{date}의 시간을 입력해주세요.",
+    leave_request_history_title: "내 신청 이력", leave_request_history_empty: "아직 신청한 리브가 없습니다.",
+    leave_request_reject_reason_line: "거절 사유: {reason}",
+    leave_status_pending: "대기중", leave_status_approved: "승인됨", leave_status_rejected: "거절됨",
     support_request_nav_btn: "🛟 지원 요청 보내기",
     support_request_title: "지원 요청 / 버그 제보", support_request_sub: "개발자에게 문의하실 내용을 자유롭게 적어주세요.",
     support_request_placeholder: "예: 급여 페이지에서 O기능이 이렇게 안 됩니다...",
@@ -1256,6 +1278,25 @@ const I18N = {
     audit_log_sub: "Recent changes to employees, schedules, requirements, and settings, newest first.",
     audit_log_empty: "No activity yet.",
     audit_log_role_owner: "Owner", audit_log_role_manager: "Manager",
+    pending_leave_nav_btn: "📋 Leave Requests Pending", pending_leave_title: "Pending Leave Requests",
+    pending_leave_sub: "Leave requests employees have submitted themselves that haven't been approved or rejected yet.",
+    pending_leave_empty: "No pending requests.",
+    pending_leave_approve_btn: "Approve", pending_leave_reject_btn: "Reject",
+    pending_leave_reject_prompt: "Reason for rejection (optional, can leave blank):",
+    pending_leave_submitted_by: "Submitted by {name} on {date}",
+    pending_leave_reason_line: "Reason: {reason}",
+    pending_leave_daily_hours_note: "Daily hours: {v}",
+    emp_leave_request_btn: "📋 Request Leave",
+    leave_request_modal_title: "Leave Request", leave_request_modal_sub: "Once submitted, this needs approval from your owner/manager to be confirmed.",
+    label_leave_type: "Leave Type", leave_request_range_label: "Requested Period",
+    leave_request_daily_hours_toggle: "Enter different hours for each day",
+    leave_request_pick_dates_first: "Please select a start and end date first.",
+    leave_request_hours_placeholder: "Hours", leave_request_submit_btn: "Submit Request",
+    leave_request_dates_required: "Please enter a start and end date.",
+    leave_request_missing_hours_for: "Please enter hours for {date}.",
+    leave_request_history_title: "My Request History", leave_request_history_empty: "No leave requests yet.",
+    leave_request_reject_reason_line: "Rejection reason: {reason}",
+    leave_status_pending: "Pending", leave_status_approved: "Approved", leave_status_rejected: "Rejected",
     support_request_nav_btn: "🛟 Contact Support",
     support_request_title: "Support Request / Bug Report", support_request_sub: "Let the developer know what's going on.",
     support_request_placeholder: "e.g. On the payroll page, X isn't working like this...",
@@ -1810,6 +1851,241 @@ async function showEmployeeView(empMe) {
   if (!empViewWeekKey) empViewWeekKey = mondayKeyFromDate(new Date());
   await refreshClockStatus();
   await loadEmployeeWeek();
+}
+
+function _leaveStatusLabel(status) {
+  if (status === "pending") return t("leave_status_pending");
+  if (status === "rejected") return t("leave_status_rejected");
+  return t("leave_status_approved");
+}
+
+function _leaveStatusColor(status) {
+  if (status === "pending") return "#f59e0b";
+  if (status === "rejected") return "var(--danger, #ef4444)";
+  return "var(--opening, #22c55e)";
+}
+
+async function showLeaveRequestModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "460px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("leave_request_modal_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("leave_request_modal_sub");
+  box.appendChild(sub);
+
+  // ---- 신청 폼 ----
+  const formBox = document.createElement("div");
+  formBox.style.cssText = "margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:8px;";
+
+  const typeLabel = document.createElement("label");
+  typeLabel.textContent = t("label_leave_type");
+  typeLabel.style.cssText = "display:block; font-size:12px; margin-bottom:4px;";
+  const typeSelect = document.createElement("select");
+  typeSelect.style.width = "100%";
+  ["annual_leave", "sick", "lieu_day", "paid", "unpaid"].forEach(lt => {
+    const opt = document.createElement("option");
+    opt.value = lt;
+    opt.textContent = t(`leave_type_${lt}`);
+    typeSelect.appendChild(opt);
+  });
+
+  const rangeLabel = document.createElement("label");
+  rangeLabel.textContent = t("leave_request_range_label");
+  rangeLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const rangeRow = document.createElement("div");
+  rangeRow.style.cssText = "display:flex; align-items:center; gap:6px;";
+  const startField = createNZDateField("");
+  const dash = document.createElement("span");
+  dash.textContent = t("week_range_join");
+  dash.style.color = "var(--text-muted)";
+  const endField = createNZDateField("");
+  rangeRow.appendChild(startField);
+  rangeRow.appendChild(dash);
+  rangeRow.appendChild(endField);
+
+  const reasonLabel = document.createElement("label");
+  reasonLabel.textContent = t("leave_reason_placeholder");
+  reasonLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const reasonInput = document.createElement("input");
+  reasonInput.type = "text";
+  reasonInput.maxLength = 200;
+  reasonInput.style.width = "100%";
+
+  // ---- 날짜별 시간 직접 입력(선택) ----
+  const dailyToggleLabel = document.createElement("label");
+  dailyToggleLabel.style.cssText = "display:flex; align-items:center; gap:6px; font-size:12px; margin-top:10px; cursor:pointer;";
+  const dailyToggle = document.createElement("input");
+  dailyToggle.type = "checkbox";
+  dailyToggleLabel.appendChild(dailyToggle);
+  dailyToggleLabel.appendChild(document.createTextNode(t("leave_request_daily_hours_toggle")));
+
+  const dailyHoursBox = document.createElement("div");
+  dailyHoursBox.style.cssText = "display:none; margin-top:8px; padding:8px; background:var(--panel-solid); border-radius:6px;";
+  const dailyHoursInputs = {};  // {dateIso: inputElement}
+
+  const rebuildDailyHoursInputs = () => {
+    dailyHoursBox.innerHTML = "";
+    Object.keys(dailyHoursInputs).forEach(k => delete dailyHoursInputs[k]);
+    const startIso = startField.getValue();
+    const endIso = endField.getValue();
+    if (!startIso || !endIso || startIso > endIso) {
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:11px; color:var(--text-muted);";
+      note.textContent = t("leave_request_pick_dates_first");
+      dailyHoursBox.appendChild(note);
+      return;
+    }
+    let cur = new Date(startIso + "T00:00:00");
+    const end = new Date(endIso + "T00:00:00");
+    while (cur <= end) {
+      const iso = cur.toISOString().slice(0, 10);
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; font-size:12px;";
+      const lbl = document.createElement("span");
+      lbl.textContent = formatDateNZ(iso);
+      const hoursInput = document.createElement("input");
+      hoursInput.type = "number";
+      hoursInput.min = "0.5";
+      hoursInput.max = "24";
+      hoursInput.step = "0.5";
+      hoursInput.style.width = "80px";
+      hoursInput.placeholder = t("leave_request_hours_placeholder");
+      dailyHoursInputs[iso] = hoursInput;
+      row.appendChild(lbl);
+      row.appendChild(hoursInput);
+      dailyHoursBox.appendChild(row);
+      cur.setDate(cur.getDate() + 1);
+    }
+  };
+
+  dailyToggle.addEventListener("change", () => {
+    dailyHoursBox.style.display = dailyToggle.checked ? "block" : "none";
+    if (dailyToggle.checked) rebuildDailyHoursInputs();
+  });
+  // 날짜를 나중에 바꿔도(체크박스가 이미 켜진 상태에서) 입력칸이 다시 맞춰지도록,
+  // 두 날짜 필드 모두 자체 hidden input의 change 이벤트를 그대로 활용합니다.
+  startField.querySelector('input[type="date"]').addEventListener("change", () => { if (dailyToggle.checked) rebuildDailyHoursInputs(); });
+  endField.querySelector('input[type="date"]').addEventListener("change", () => { if (dailyToggle.checked) rebuildDailyHoursInputs(); });
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+
+  const submitBtn = document.createElement("button");
+  submitBtn.className = "btn-primary";
+  submitBtn.style.cssText = "width:100%; margin-top:12px;";
+  submitBtn.textContent = t("leave_request_submit_btn");
+  submitBtn.onclick = async () => {
+    errLine.style.display = "none";
+    const startIso = startField.getValue();
+    const endIso = endField.getValue();
+    if (!startIso || !endIso) {
+      errLine.textContent = t("leave_request_dates_required");
+      errLine.style.display = "block";
+      return;
+    }
+    if (startIso > endIso) {
+      errLine.textContent = t("modal_leave_range_invalid");
+      errLine.style.display = "block";
+      return;
+    }
+    const body = {start_date: startIso, end_date: endIso, leave_type: typeSelect.value, reason: reasonInput.value.trim()};
+    if (dailyToggle.checked) {
+      const dh = {};
+      for (const [iso, input] of Object.entries(dailyHoursInputs)) {
+        const v = parseFloat(input.value);
+        if (!v || v <= 0) {
+          errLine.textContent = tf("leave_request_missing_hours_for", {date: formatDateNZ(iso)});
+          errLine.style.display = "block";
+          return;
+        }
+        dh[iso] = v;
+      }
+      body.daily_hours = dh;
+    }
+    submitBtn.disabled = true;
+    try {
+      await api("/api/employee-auth/leave-requests", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body),
+      });
+      overlay.remove();
+      showLeaveRequestModal();  // 목록 갱신을 위해 다시 열기
+    } catch (e) {
+      submitBtn.disabled = false;
+    }
+  };
+
+  formBox.appendChild(typeLabel);
+  formBox.appendChild(typeSelect);
+  formBox.appendChild(rangeLabel);
+  formBox.appendChild(rangeRow);
+  formBox.appendChild(reasonLabel);
+  formBox.appendChild(reasonInput);
+  formBox.appendChild(dailyToggleLabel);
+  formBox.appendChild(dailyHoursBox);
+  formBox.appendChild(errLine);
+  formBox.appendChild(submitBtn);
+  box.appendChild(formBox);
+
+  // ---- 본인 신청 이력 ----
+  const historyTitle = document.createElement("div");
+  historyTitle.style.cssText = "font-weight:600; font-size:13px; margin-top:16px; margin-bottom:6px;";
+  historyTitle.textContent = t("leave_request_history_title");
+  box.appendChild(historyTitle);
+
+  const historyList = document.createElement("div");
+  historyList.style.cssText = "max-height:220px; overflow-y:auto;";
+  box.appendChild(historyList);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  try {
+    const list = await api("/api/employee-auth/leave-requests");
+    historyList.innerHTML = "";
+    if (!list.length) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "font-size:12px; color:var(--text-muted);";
+      empty.textContent = t("leave_request_history_empty");
+      historyList.appendChild(empty);
+    } else {
+      list.slice().reverse().forEach(lr => {
+        const row = document.createElement("div");
+        row.style.cssText = "padding:8px 0; border-bottom:1px solid var(--line); font-size:12px;";
+        const typeLbl = t(`leave_type_${lr.leave_type || "unpaid"}`);
+        const dateRange = lr.start_date === lr.end_date ? formatDateNZ(lr.start_date) : `${formatDateNZ(lr.start_date)} ${t("week_range_join")} ${formatDateNZ(lr.end_date)}`;
+        row.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span>${dateRange} [${typeLbl}]</span>
+            <span style="color:${_leaveStatusColor(lr.status)}; font-weight:600;">${_leaveStatusLabel(lr.status)}</span>
+          </div>
+          ${lr.reject_reason ? `<div style="color:var(--text-muted); margin-top:2px;">${tf("leave_request_reject_reason_line", {reason: lr.reject_reason})}</div>` : ""}
+        `;
+        historyList.appendChild(row);
+      });
+    }
+  } catch (e) {
+    // api()가 이미 에러 모달을 보여줬으므로 여기서는 조용히 무시
+  }
 }
 
 async function refreshClockStatus() {
@@ -2484,6 +2760,7 @@ function showAdminMenuModal() {
   const items = [
     {key: "manager_nav_btn", fn: showManagerPage, ownerOnly: true},
     {key: "payroll_nav_btn", fn: showPayrollPage, ownerOnly: false},
+    {key: "pending_leave_nav_btn", fn: showPendingLeaveRequestsPage, ownerOnly: false},
     {key: "pins_nav_btn", fn: showEmployeePinsPage, ownerOnly: false},
     {key: "geofence_nav_btn", fn: showGeofenceModal, ownerOnly: true},
     {key: "audit_log_nav_btn", fn: showAuditLogPage, ownerOnly: false},
@@ -2714,6 +2991,122 @@ async function showAuditLogPage() {
     byLine.className = "modal-item-detail";
     byLine.textContent = `${entry.actor_name || "?"} (${roleLabel(entry.actor_role)})`;
     item.appendChild(byLine);
+
+    list.appendChild(item);
+  });
+  box.appendChild(list);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+async function showPendingLeaveRequestsPage() {
+  let pending;
+  try {
+    pending = await api("/api/leave-requests/pending");
+  } catch (e) {
+    return;
+  }
+  if (!pending) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "560px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("pending_leave_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("pending_leave_sub");
+  box.appendChild(sub);
+
+  const list = document.createElement("div");
+  list.style.cssText = "display:flex; flex-direction:column; gap:10px; margin-top:12px; max-height:480px; overflow-y:auto;";
+
+  if (!pending.length) {
+    const empty = document.createElement("div");
+    empty.className = "modal-item-detail";
+    empty.textContent = t("pending_leave_empty");
+    list.appendChild(empty);
+  }
+
+  pending.forEach(lr => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+
+    const topLine = document.createElement("div");
+    topLine.className = "modal-item-title";
+    const typeLbl = t(`leave_type_${lr.leave_type || "unpaid"}`);
+    const dateRange = lr.start_date === lr.end_date ? formatDateNZ(lr.start_date) : `${formatDateNZ(lr.start_date)} ${t("week_range_join")} ${formatDateNZ(lr.end_date)}`;
+    topLine.textContent = `${lr.employee_name} — ${dateRange} [${typeLbl}]`;
+    item.appendChild(topLine);
+
+    const detailLine = document.createElement("div");
+    detailLine.className = "modal-item-detail";
+    const hoursNote = lr.daily_hours
+      ? tf("pending_leave_daily_hours_note", {v: Object.entries(lr.daily_hours).map(([d, h]) => `${formatDateNZ(d)}: ${h}h`).join(", ")})
+      : "";
+    detailLine.innerHTML = `
+      ${tf("pending_leave_submitted_by", {name: lr.submitted_by_name || "?", date: formatDateTimeNZ(lr.submitted_at)})}
+      ${lr.reason ? `<br>${tf("pending_leave_reason_line", {reason: lr.reason})}` : ""}
+      ${hoursNote ? `<br>${hoursNote}` : ""}
+    `;
+    item.appendChild(detailLine);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex; gap:8px; margin-top:8px;";
+    const approveBtn = document.createElement("button");
+    approveBtn.className = "btn-primary btn-sm";
+    approveBtn.textContent = t("pending_leave_approve_btn");
+    approveBtn.onclick = async () => {
+      approveBtn.disabled = true;
+      rejectBtn.disabled = true;
+      try {
+        await api(`/api/employees/${lr.employee_id}/leave-requests/${lr.id}/approve`, {method: "POST"});
+        overlay.remove();
+        showPendingLeaveRequestsPage();
+      } catch (e) {
+        approveBtn.disabled = false;
+        rejectBtn.disabled = false;
+      }
+    };
+    const rejectBtn = document.createElement("button");
+    rejectBtn.className = "btn-danger btn-sm";
+    rejectBtn.textContent = t("pending_leave_reject_btn");
+    rejectBtn.onclick = async () => {
+      const reason = prompt(t("pending_leave_reject_prompt")) || "";
+      approveBtn.disabled = true;
+      rejectBtn.disabled = true;
+      try {
+        await api(`/api/employees/${lr.employee_id}/leave-requests/${lr.id}/reject`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({reject_reason: reason}),
+        });
+        overlay.remove();
+        showPendingLeaveRequestsPage();
+      } catch (e) {
+        approveBtn.disabled = false;
+        rejectBtn.disabled = false;
+      }
+    };
+    btnRow.appendChild(approveBtn);
+    btnRow.appendChild(rejectBtn);
+    item.appendChild(btnRow);
 
     list.appendChild(item);
   });
