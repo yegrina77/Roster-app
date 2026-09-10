@@ -48,6 +48,7 @@ app.config.update(
 from helpers import (
     LEGACY_STATE_KEY, TOGGLABLE_FEATURES, _last_active, ONLINE_THRESHOLD_SECONDS,
     FREQUENCY_WINDOW_WEEKS, DEFAULT_EMPLOYEE_LIMIT_BUFFER, PIN_LOCKOUT_MINUTES, PIN_MAX_FAILED_ATTEMPTS,
+    LEAVE_TYPES, _stamp_new_leave_requests, _prune_expired_leave_requests, _apply_leave_balance_diff,
     _consume_reset_token, _create_reset_token, _default_features, _effective_shift_times,
     _email_in_use, _ensure_employee_limit, _hash_password, _log_audit, _password_error,
     _raw_delete, _raw_get, _raw_set, _send_account_deleted_email, _send_email,
@@ -786,6 +787,76 @@ def employee_agree_week(company_id, employee, week_key):
     }
     save_state(company_id, state)
     return jsonify({"agreed": True})
+
+@app.route("/api/employee-auth/leave-requests", methods=["GET"])
+@require_employee_login
+def employee_list_leave_requests(company_id, employee):
+    """직원 본인이 지금까지 신청한 리브 목록을 전부(대기중/승인됨/거절됨 다) 보여줍니다.
+    본인이 언제 뭘 신청했고 어떻게 처리됐는지 확인하는 용도라, 만료된 것도 굳이
+    걸러내지 않고 다 보여줍니다(관리 화면과 달리, 본인 이력 조회니까요)."""
+    state = load_state(company_id)
+    emp = next((e for e in state["employees"] if e["id"] == employee["id"]), None)
+    if not emp:
+        return jsonify([])
+    return jsonify(emp.get("leave_requests") or [])
+
+@app.route("/api/employee-auth/leave-requests", methods=["POST"])
+@require_employee_login
+def employee_submit_leave_request(company_id, employee):
+    """직원 본인이 리브를 신청합니다 — 상사에게 말로/문자로 얘기하는 대신, 시스템에
+    직접 신청을 남깁니다. 신청은 곧바로 확정되지 않고 "대기중(pending)" 상태로
+    들어가고, 사장/매니저가 승인해야 그제서야 잔액에 반영됩니다(이렇게 하면 "누가
+    언제 신청했고 누가 언제 승인했는지"가 전부 기록으로 남아서, 나중에 분쟁이 생겨도
+    근거가 됩니다).
+
+    날짜별로 몇 시간씩 쓸지(daily_hours) 직접 입력할 수도 있습니다 — 예를 들어
+    "9/15일 8시간, 9/16일 6시간, 9/17일 4시간"처럼요. 안 넣으면 평균 하루시간으로
+    자동 계산됩니다."""
+    state = load_state(company_id)
+    payload = request.get_json(silent=True) or {}
+    start_date = payload.get("start_date")
+    end_date = payload.get("end_date")
+    leave_type = payload.get("leave_type")
+    reason = str(payload.get("reason") or "").strip()[:200]
+    daily_hours = payload.get("daily_hours")
+
+    if not start_date or not end_date:
+        return jsonify({"error": "시작일과 종료일을 입력해주세요."}), 400
+    try:
+        if date.fromisoformat(start_date) > date.fromisoformat(end_date):
+            return jsonify({"error": "종료일이 시작일보다 빠를 수 없습니다."}), 400
+    except ValueError:
+        return jsonify({"error": "날짜 형식이 올바르지 않습니다."}), 400
+    if leave_type not in LEAVE_TYPES:
+        return jsonify({"error": "리브 종류가 올바르지 않습니다."}), 400
+
+    emp = next((e for e in state["employees"] if e["id"] == employee["id"]), None)
+    if not emp:
+        return jsonify({"error": "Employee not found."}), 404
+
+    new_request = {
+        "id": secrets.token_hex(8),
+        "start_date": start_date, "end_date": end_date, "leave_type": leave_type, "reason": reason,
+    }
+    if daily_hours:
+        new_request["daily_hours"] = daily_hours
+
+    updated_requests, stamp_error = _stamp_new_leave_requests(
+        emp.get("leave_requests"), (emp.get("leave_requests") or []) + [new_request],
+        "employee", employee["name"], "pending",
+    )
+    if stamp_error:
+        return jsonify({"error": stamp_error}), 400
+    updated_requests = _prune_expired_leave_requests(updated_requests)
+    # "대기중" 상태라 잔액엔 아직 영향이 없지만, _apply_leave_balance_diff를 그대로
+    # 통과시켜서 만약 이 신청이 형식적으로 잘못됐거나(예: 이상한 날짜) 하는 문제를
+    # 미리 걸러냅니다 — 실제로는 approved 신청만 걸러서 계산하므로, pending은 항상
+    # 잔액 변화 없음(에러도 안 남)으로 통과합니다.
+    emp["leave_requests"] = updated_requests
+    _log_audit(state, "leave_request_submitted", f"{employee['name']}님이 리브 신청 ({start_date}~{end_date}, {leave_type})",
+               {"employee_id": employee["id"], "request_id": new_request["id"]})
+    save_state(company_id, state)
+    return jsonify(new_request), 201
 
 @app.route("/api/company/request-employee-limit-increase", methods=["POST"])
 @require_login

@@ -13,7 +13,7 @@ from helpers import (
     NZ_TZ, load_state, save_state, require_login, require_owner, _log_audit, HOLIDAY_OWD_THRESHOLD,
     FREQUENCY_WINDOW_WEEKS, DEFAULT_PAYROLL_ROUNDING_MINUTES, ALLOWED_ROUNDING_MINUTES,
     _effective_shift_times, _actual_hours_for_entry, _assignment_duration_hours,
-    _week_dates, _week_key_for_date, _is_paid_leave, _leave_info_by_day, _worked_that_weekday,
+    _week_dates, _week_key_for_date, _is_paid_leave, _leave_info_by_day, _leave_hours_by_day, _worked_that_weekday,
     _average_day_hours, _weekly_salary, _effective_hourly_rate_for_salary,
 )
 
@@ -100,6 +100,7 @@ def _compute_week_payroll(state, week_key):
         per_day = {}
         avg_day_hours = _average_day_hours(e)
         leave_info = _leave_info_by_day(e, week_key)
+        leave_hours_info = _leave_hours_by_day(e, week_key)
         # 애뉴얼 리브(annual_leave) 급여는 시급제일 때 OWP/AWE 중 더 큰 쪽으로 계산합니다
         # (Holidays Act 2003 21조) — 그 외 유급/병가/Lieu Day는 그대로 현재 시급을 씁니다.
         # 주당 한 번만 계산해서 요일 루프 안에서 재활용합니다(매일 다시 계산할 필요 없음).
@@ -145,15 +146,18 @@ def _compute_week_payroll(state, week_key):
                     pay = 0.0 if has_wage else None
                     actual_pay = 0.0 if has_wage else None
             elif leave_type and _is_paid_leave(leave_type) and not worked:
-                # 유급/병가/애뉴얼 리브/Lieu Day — 시급제는 하루치 평균급여를 지급하지만,
+                # 유급/병가/애뉴얼 리브/Lieu Day — 시급제는 하루치 급여를 지급하지만,
                 # 연봉제는 이미 고정 주급에 포함되어 있으므로 추가 지급이 없습니다.
                 # 애뉴얼 리브만 예외로, OWP/AWE 중 더 큰 쪽으로 계산된 단가를 씁니다.
+                # 하루치 시간은, 신청할 때 그 날짜에 직접 입력한 시간이 있으면 그 값을,
+                # 없으면 평균 하루시간을 씁니다(leave_hours_info가 둘 다 처리해줍니다).
+                leave_day_hours = leave_hours_info.get(day, avg_day_hours)
                 if is_salary:
                     pay = 0.0 if has_wage else None
                 elif leave_type == "annual_leave" and annual_leave_hourly_rate is not None:
-                    pay = avg_day_hours * annual_leave_hourly_rate
+                    pay = leave_day_hours * annual_leave_hourly_rate
                 else:
-                    pay = avg_day_hours * wage if wage is not None else None
+                    pay = leave_day_hours * wage if wage is not None else None
                 actual_pay = pay
             else:
                 if is_salary:

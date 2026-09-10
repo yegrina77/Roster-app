@@ -819,27 +819,83 @@ def _leave_request_day_span(lr):
         return 0
     return max(0, (end - start).days + 1)
 
+
+def _sanitize_daily_hours(daily_hours, start_date, end_date):
+    """직원(또는 관리자)이 "이 날은 8시간, 저 날은 6시간" 식으로 날짜별 시간을 직접
+    입력한 경우, 그 값을 검증합니다 — 각 날짜가 신청 기간(start_date~end_date) 안에
+    있어야 하고, 시간은 0보다 크고 24 이하여야 합니다. 문제가 있으면 (None, 에러메시지)를,
+    비어있거나 없으면 (None, None)을(=평균 자동계산으로 폴백), 정상이면
+    (정리된 dict, None)을 돌려줍니다."""
+    if not daily_hours:
+        return None, None
+    try:
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+    except (TypeError, ValueError):
+        return None, "날짜 형식이 올바르지 않습니다."
+    out = {}
+    for day_str, hours in daily_hours.items():
+        try:
+            d = date.fromisoformat(day_str)
+            h = float(hours)
+        except (TypeError, ValueError):
+            return None, f"날짜별 시간 형식이 올바르지 않습니다 ({day_str})."
+        if not (start <= d <= end):
+            return None, f"{day_str}은(는) 신청 기간 밖의 날짜입니다."
+        if not (0 < h <= 24):
+            return None, f"{day_str}의 시간은 0시간 초과 24시간 이하여야 합니다."
+        out[day_str] = round(h, 2)
+    return (out or None), None
+
+
+def _leave_request_hours(lr, employee):
+    """이 Leave Request의 총 시간을 계산합니다 — 날짜별로 직접 입력한 시간
+    (daily_hours)이 있으면 그 합계를, 없으면 "평균 하루시간 × 일수"로 계산합니다.
+    잔액 차감, 급여 계산 양쪽에서 재사용합니다."""
+    daily_hours = lr.get("daily_hours")
+    if daily_hours:
+        return sum(float(h) for h in daily_hours.values())
+    return _leave_request_day_span(lr) * _average_day_hours(employee)
+
+
+def _leave_day_hours(lr, employee, the_date_iso):
+    """이 Leave Request 중, 특정 하루(the_date_iso)에 해당하는 시간을 돌려줍니다 —
+    daily_hours에 그 날짜가 있으면 그 값을, 없으면 평균 하루시간을 씁니다. 급여
+    계산에서 "이 요일은 리브로 몇 시간 쳐줄지" 판단할 때 씁니다."""
+    daily_hours = lr.get("daily_hours") or {}
+    if the_date_iso in daily_hours:
+        return float(daily_hours[the_date_iso])
+    return _average_day_hours(employee)
+
+
 def _apply_leave_balance_diff(employee, new_requests):
     """리브 신청 목록이 통째로 교체될 때(update_employee가 항상 이런 식으로 동작하므로),
     Lieu Day/애뉴얼 리브 잔액을 정확히 반영합니다. id가 있는 신청만 비교 대상으로
     삼습니다(id 없는 옛날 데이터는 잔액 계산에서 건너뜁니다 — 이 기능 이전에 만들어진
     신청까지 소급 적용하면 예상치 못하게 잔액이 깎일 수 있으므로).
 
-    새로 추가되거나 종류가 바뀐 Lieu Day/애뉴얼 리브 신청은 잔액에서 차감하고, 삭제되거나
-    종류가 바뀐 신청은 그만큼 잔액을 되돌립니다. 잔액이 모자라면 (None, 에러메시지)를
-    돌려주고, 성공하면 (갱신된 잔액 dict, None)을 돌려줍니다 — 호출한 쪽에서 이 결과를
-    보고 전체 수정을 거부하거나 반영해야 합니다.
+    ⚠️ status가 "approved"인 신청만 잔액에 반영됩니다("pending"으로 새로 신청된
+    건은 아직 잔액에 영향을 주지 않고, 관리자가 승인해서 approved로 바뀌는 순간
+    이 함수가 다시 호출되면서 그제서야 차감됩니다 — approve_leave_request가 이
+    방식을 그대로 재사용합니다). status 필드가 아예 없는 옛날 데이터는 이 기능
+    이전에 만들어진 것이므로 approved로 간주합니다(하위 호환).
+
+    새로 승인되거나 종류가 바뀐 Lieu Day/애뉴얼 리브 신청은 잔액에서 차감하고, 승인이
+    취소되거나 종류가 바뀐 신청은 그만큼 잔액을 되돌립니다. 애뉴얼 리브는 날짜별로
+    직접 입력한 시간(daily_hours)이 있으면 그 합계를, 없으면 평균 하루시간으로
+    계산합니다. 잔액이 모자라면 (None, 에러메시지)를 돌려주고, 성공하면
+    (갱신된 잔액 dict, None)을 돌려줍니다.
 
     애뉴얼 리브는 아직 정식 발생 전이라도(입사 12개월 전) 사장 동의하에 "당겨쓰기"가
-    가능합니다(Holidays Act 2003 21A조) — 새로 추가되는 신청에 allow_advance:true가
+    가능합니다(Holidays Act 2003 21A조) — 새로 승인되는 신청에 allow_advance:true가
     붙어있으면, 그 신청 때문에 잔액이 마이너스가 되는 것까지는 허용합니다(Lieu Day는
     당겨쓰기 개념이 없어서 이 예외가 적용되지 않습니다)."""
     old_requests = employee.get("leave_requests") or []
-    old_by_id = {r.get("id"): r for r in old_requests if r.get("id")}
-    new_by_id = {r.get("id"): r for r in (new_requests or []) if r.get("id")}
+    old_by_id = {r.get("id"): r for r in old_requests if r.get("id") and r.get("status", "approved") == "approved"}
+    new_by_id = {r.get("id"): r for r in (new_requests or []) if r.get("id") and r.get("status", "approved") == "approved"}
 
     lieu_delta_days = 0.0
-    annual_delta_days = 0.0
+    annual_delta_hours = 0.0
     today = date.today()
     advance_allowed = False
     for rid in set(old_by_id) | set(new_by_id):
@@ -848,11 +904,13 @@ def _apply_leave_balance_diff(employee, new_requests):
         new_type = new_r.get("leave_type") if new_r else None
         old_span = _leave_request_day_span(old_r) if old_r else 0
         new_span = _leave_request_day_span(new_r) if new_r else 0
-        changed = (old_type, old_span) != (new_type, new_span)
+        old_hours = _leave_request_hours(old_r, employee) if old_r else 0
+        new_hours = _leave_request_hours(new_r, employee) if new_r else 0
+        changed = (old_type, old_hours) != (new_type, new_hours)
         if old_r and (not new_r or changed):
             # 이미 기간이 지나서 자연스럽게 화면에서 사라진 신청(만료)은 "취소"가
             # 아니라 "이미 다 쓴 것"이므로, 잔액을 되돌리지 않습니다. 사용자가 실제로
-            # 삭제 버튼을 눌러서 없앤, 아직 기간이 지나지 않은 신청만 환불합니다.
+            # 삭제하거나 승인을 취소한, 아직 기간이 지나지 않은 신청만 환불합니다.
             try:
                 old_end = date.fromisoformat(old_r.get("end_date", ""))
             except (ValueError, TypeError):
@@ -862,18 +920,17 @@ def _apply_leave_balance_diff(employee, new_requests):
                 if old_type == "lieu_day":
                     lieu_delta_days += old_span
                 elif old_type == "annual_leave":
-                    annual_delta_days += old_span
+                    annual_delta_hours += old_hours
         if new_r and (not old_r or changed):
             if new_type == "lieu_day":
                 lieu_delta_days -= new_span
             elif new_type == "annual_leave":
-                annual_delta_days -= new_span
+                annual_delta_hours -= new_hours
                 if new_r.get("allow_advance"):
                     advance_allowed = True
 
-    avg_hours = _average_day_hours(employee)
     new_lieu_balance = employee.get("lieu_day_balance", 0.0) + lieu_delta_days
-    new_annual_balance = employee.get("annual_leave_balance_hours", 0.0) + annual_delta_days * avg_hours
+    new_annual_balance = employee.get("annual_leave_balance_hours", 0.0) + annual_delta_hours
 
     if new_lieu_balance < -0.01:
         return None, f"Lieu Day 잔액이 부족합니다 (보유: {employee.get('lieu_day_balance', 0):.1f}일)."
@@ -883,6 +940,34 @@ def _apply_leave_balance_diff(employee, new_requests):
         "lieu_day_balance": round(new_lieu_balance, 2),
         "annual_leave_balance_hours": round(new_annual_balance, 2),
     }, None
+
+def _stamp_new_leave_requests(old_requests, new_requests, role, name, default_status):
+    """새로 추가되는 Leave Request(기존 목록에 없던 id)에 메타데이터를 채웁니다 —
+    누가/언제 신청했는지(submitted_by_role, submitted_by_name, submitted_at), 그리고
+    status가 명시되어 있지 않으면 default_status를 붙입니다(관리자가 직접 등록하면
+    "approved", 직원이 스스로 신청하면 "pending"). 이미 있던(id가 old에도 있는) 항목은
+    건드리지 않습니다 — 수정 중에 신청 이력이 덮어써지면 안 되기 때문입니다.
+
+    날짜별 시간(daily_hours)이 있으면 검증하고, 잘못됐으면 (None, 에러메시지)를
+    돌려줍니다. 정상이면 (처리된 목록, None)을 돌려줍니다."""
+    old_ids = {r.get("id") for r in (old_requests or []) if r.get("id")}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    out = []
+    for lr in (new_requests or []):
+        lr = dict(lr)
+        if lr.get("daily_hours"):
+            cleaned, err = _sanitize_daily_hours(lr.get("daily_hours"), lr.get("start_date"), lr.get("end_date"))
+            if err:
+                return None, err
+            lr["daily_hours"] = cleaned
+        if lr.get("id") and lr["id"] not in old_ids:
+            lr.setdefault("status", default_status)
+            lr.setdefault("submitted_by_role", role)
+            lr.setdefault("submitted_by_name", name)
+            lr.setdefault("submitted_at", now_iso)
+        out.append(lr)
+    return out, None
+
 
 def _prune_expired_leave_requests(leave_requests):
     """이미 끝난(오늘보다 종료일이 이른) Leave Request는 걸러내고, 사유(reason) 글자수도
@@ -918,12 +1003,19 @@ def _week_key_for_date(d):
 def _leave_info_by_day(employee_dict, week_key):
     """이 직원의 Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들을
     {day: leave_type} 형태로 반환합니다. 하루에 여러 Leave Request가 겹치면 먼저
-    찾은 것을 씁니다(정상적인 사용에서는 겹칠 일이 없습니다)."""
+    찾은 것을 씁니다(정상적인 사용에서는 겹칠 일이 없습니다).
+
+    ⚠️ "승인(approved)"된 신청만 반영합니다 — 아직 관리자 승인 전인 "대기중" 신청이
+    스케줄 배정 제외나 급여 계산에 영향을 주면 안 되기 때문입니다(승인되기 전까지는
+    확정된 게 아니므로). status 필드가 없는 옛날 데이터는 이 기능 이전에 만들어진
+    것이므로 승인된 것으로 간주합니다(하위 호환)."""
     week_dates = _week_dates(week_key)
     info = {}
     for i, day in enumerate(DAYS):
         the_date = week_dates[i]
         for lr in employee_dict.get("leave_requests", []):
+            if lr.get("status", "approved") != "approved":
+                continue
             try:
                 start = date.fromisoformat(lr["start_date"])
                 end = date.fromisoformat(lr["end_date"])
@@ -933,6 +1025,31 @@ def _leave_info_by_day(employee_dict, week_key):
                 info[day] = lr.get("leave_type") if lr.get("leave_type") in LEAVE_TYPES else "unpaid"
                 break
     return info
+
+
+def _leave_hours_by_day(employee_dict, week_key):
+    """이 직원의 (승인된) Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들에
+    대해 "그날 몇 시간을 리브로 쳐줄지"를 {day: 시간} 형태로 반환합니다 — 날짜별로
+    직접 입력한 시간(daily_hours)이 있으면 그 값을, 없으면 평균 하루시간을 씁니다.
+    급여 계산에서 avg_day_hours 대신 이 값을 쓰면, 날짜별로 다르게 입력한 시간이
+    정확히 반영됩니다."""
+    week_dates = _week_dates(week_key)
+    out = {}
+    for i, day in enumerate(DAYS):
+        the_date = week_dates[i]
+        the_date_iso = the_date.isoformat()
+        for lr in employee_dict.get("leave_requests", []):
+            if lr.get("status", "approved") != "approved":
+                continue
+            try:
+                start = date.fromisoformat(lr["start_date"])
+                end = date.fromisoformat(lr["end_date"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if start <= the_date <= end:
+                out[day] = _leave_day_hours(lr, employee_dict, the_date_iso)
+                break
+    return out
 
 def _leave_forced_days(employee_dict, week_key):
     """이 직원의 Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들을 반환합니다."""

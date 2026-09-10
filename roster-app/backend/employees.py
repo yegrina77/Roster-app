@@ -11,6 +11,7 @@ from helpers import (
     NZ_TZ, load_state, save_state, load_auth, save_auth, require_login, _log_audit,
     _generate_pin, _employee_id_in_use_globally, _apply_leave_balance_diff,
     _prune_expired_leave_requests, _sanitize_wage, _sanitize_annual_salary,
+    _stamp_new_leave_requests,
     _sanitize_documents, _sanitize_date, _ensure_employee_limit,
 )
 from payroll import _process_annual_leave_anniversary
@@ -140,8 +141,6 @@ def update_employee(company_id, employee_id):
         "pay_type", "annual_salary", "documents", "hire_date", "hours_type",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
-    if "leave_requests" in updates:
-        updates["leave_requests"] = _prune_expired_leave_requests(updates["leave_requests"])
     if "hourly_wage" in updates:
         updates["hourly_wage"] = _sanitize_wage(updates["hourly_wage"])
     if "annual_salary" in updates:
@@ -157,6 +156,12 @@ def update_employee(company_id, employee_id):
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             if "leave_requests" in updates:
+                stamped, stamp_error = _stamp_new_leave_requests(
+                    e.get("leave_requests"), updates["leave_requests"], g.role, g.user_name, "approved"
+                )
+                if stamp_error:
+                    return jsonify({"error": stamp_error}), 400
+                updates["leave_requests"] = _prune_expired_leave_requests(stamped)
                 new_balances, balance_error = _apply_leave_balance_diff(e, updates["leave_requests"])
                 if balance_error:
                     return jsonify({"error": balance_error}), 400
@@ -240,3 +245,107 @@ def get_expiring_documents(company_id):
                 })
     results.sort(key=lambda r: r["expiry_date"])
     return jsonify(results)
+
+
+@employees_bp.route("/api/leave-requests/pending", methods=["GET"])
+@require_login
+def list_pending_leave_requests(company_id):
+    """사장/매니저 전용: 아직 승인/거절되지 않은("대기중") 리브 신청을 전 직원
+    기준으로 모아서 보여줍니다 — 직원들이 직접 신청한 걸 한곳에서 검토하는 화면용."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    out = []
+    for e in state["employees"]:
+        for lr in (e.get("leave_requests") or []):
+            if lr.get("status") == "pending":
+                row = dict(lr)
+                row["employee_id"] = e["id"]
+                row["employee_name"] = e["name"]
+                out.append(row)
+    out.sort(key=lambda r: r.get("submitted_at") or "")
+    return jsonify(out)
+
+
+@employees_bp.route("/api/employees/<employee_id>/leave-requests/<request_id>/approve", methods=["POST"])
+@require_login
+def approve_leave_request(company_id, employee_id, request_id):
+    """사장/매니저 전용: 직원이 신청한 리브를 승인합니다. 승인되는 순간 status가
+    "approved"로 바뀌고, 그제서야 잔액에서 실제로 차감됩니다(_apply_leave_balance_diff가
+    old를 "지금 상태 그대로", new를 "이 신청만 approved로 바뀐 상태"로 비교해서
+    처리합니다). 잔액이 부족하면(애뉴얼 리브가 아니거나, 당겨쓰기 동의가 없으면)
+    거부됩니다 — 애뉴얼 리브는 승인 자체가 사장의 동의 행위이므로, 승인 시에는
+    잔액이 마이너스가 되는 것도 자동으로 허용합니다(당겨쓰기)."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    state = load_state(company_id)
+    emp = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not emp:
+        return jsonify({"error": "Employee not found."}), 404
+    old_requests = emp.get("leave_requests") or []
+    target = next((r for r in old_requests if r.get("id") == request_id), None)
+    if not target:
+        return jsonify({"error": "Leave request not found."}), 404
+    if target.get("status") != "pending":
+        return jsonify({"error": "이미 처리된 신청입니다."}), 400
+
+    new_requests = []
+    for r in old_requests:
+        if r.get("id") == request_id:
+            r = dict(r)
+            r["status"] = "approved"
+            r["allow_advance"] = True  # 승인 자체가 사장의 동의 행위이므로, 당겨쓰기도 자동 허용
+            r["reviewed_by_name"] = g.user_name
+            r["reviewed_by_role"] = g.role
+            r["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+        new_requests.append(r)
+
+    new_balances, balance_error = _apply_leave_balance_diff(emp, new_requests)
+    if balance_error:
+        return jsonify({"error": balance_error}), 400
+    emp["leave_requests"] = new_requests
+    emp.update(new_balances)
+    _log_audit(state, "leave_request_approved", f"{emp['name']}님의 리브 신청 승인",
+               {"employee_id": employee_id, "request_id": request_id})
+    save_state(company_id, state)
+    return jsonify(next(r for r in new_requests if r.get("id") == request_id))
+
+
+@employees_bp.route("/api/employees/<employee_id>/leave-requests/<request_id>/reject", methods=["POST"])
+@require_login
+def reject_leave_request(company_id, employee_id, request_id):
+    """사장/매니저 전용: 직원이 신청한 리브를 거절합니다. 거절은 잔액에 아무 영향도
+    주지 않습니다(애초에 승인 전이라 차감된 적이 없으므로). 거절 사유를 선택적으로
+    남길 수 있습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    state = load_state(company_id)
+    emp = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not emp:
+        return jsonify({"error": "Employee not found."}), 404
+    payload = request.get_json(silent=True) or {}
+    reject_reason = str(payload.get("reject_reason") or "").strip()[:200]
+
+    old_requests = emp.get("leave_requests") or []
+    target = next((r for r in old_requests if r.get("id") == request_id), None)
+    if not target:
+        return jsonify({"error": "Leave request not found."}), 404
+    if target.get("status") != "pending":
+        return jsonify({"error": "이미 처리된 신청입니다."}), 400
+
+    new_requests = []
+    for r in old_requests:
+        if r.get("id") == request_id:
+            r = dict(r)
+            r["status"] = "rejected"
+            r["reviewed_by_name"] = g.user_name
+            r["reviewed_by_role"] = g.role
+            r["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+            if reject_reason:
+                r["reject_reason"] = reject_reason
+        new_requests.append(r)
+    emp["leave_requests"] = new_requests
+    _log_audit(state, "leave_request_rejected", f"{emp['name']}님의 리브 신청 거절",
+               {"employee_id": employee_id, "request_id": request_id})
+    save_state(company_id, state)
+    return jsonify(next(r for r in new_requests if r.get("id") == request_id))
