@@ -1599,11 +1599,21 @@ function setLanguage(lang) {
   Object.assign(DAY_LABEL, DAY_LABEL_I18N[lang]);
   applyI18nStatic();
   updateAuthLangButtonsUI();
-  updateLockButtonUI();
-  renderShiftTimeSettingsUI();
-  loadEmployees();
-  renderRequirementGrid();
-  renderCalendarArea();
+  // 직원으로 로그인한 상태에서는 사장/매니저 전용 화면(직원목록, 근무요건, 캘린더)을
+  // 다시 그리면 안 됩니다 — 직원 권한으로는 그 API들에 접근이 안 되어서, 그대로
+  // 두면 "로그인 필요" 응답을 받고 로그인 화면으로 튕겨나가버립니다. 지금 어느
+  // 화면이 떠 있는지 보고 알맞은 쪽만 다시 그립니다.
+  const isEmployeeView = document.getElementById("employee-view").style.display === "block";
+  if (isEmployeeView) {
+    refreshClockStatus();
+    loadEmployeeWeek();
+  } else {
+    updateLockButtonUI();
+    renderShiftTimeSettingsUI();
+    loadEmployees();
+    renderRequirementGrid();
+    renderCalendarArea();
+  }
 }
 
 function updateAuthLangButtonsUI() {
