@@ -462,6 +462,47 @@ def _():
     assert len(rules) == 89, f"실제 라우트 개수: {len(rules)}"
 
 
+@test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
+def _():
+    # 파일을 여러 개로 나누면서 가장 위험한 실수는 "함수는 옮겼는데 그 함수가 쓰는
+    # 이름을 새 파일에 import하는 걸 깜빡하는 것"입니다 — 이 버그는 앱을 그냥
+    # import만 해서는 절대 안 걸리고(파이썬은 함수 "본문" 안의 이름을 실제로 그
+    # 함수가 "호출"되는 시점에만 확인하기 때문), 실제로 그 API를 요청했을 때만
+    # NameError로 터집니다. symtable로 각 함수가 쓰는 이름 중 "이 함수 자기 자신의
+    # 지역변수가 아닌 것"을 찾아서, 두 경우로 나눠 확인합니다:
+    #   - is_free (클로저): 자신을 감싸는 함수들의 지역변수 중에 있는지 확인
+    #   - is_global (그 외 대부분의 전역 참조): 모듈 최상위에 실제로 정의(할당/임포트)
+    #     되어 있는지 확인 — "is_free만" 확인하면 이 케이스를 놓칩니다(실제로 이
+    #     테스트를 처음 만들 때 이 부분을 놓쳐서, 배포 후에야 몇 개를 더 찾았습니다).
+    import symtable
+    import builtins
+    BUILTIN_NAMES = set(dir(builtins))
+    issues = []
+    for fname in ALL_MODULE_FILES:
+        source = open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read()
+        table = symtable.symtable(source, fname, "exec")
+        module_defined = {s.get_name() for s in table.get_symbols() if s.is_assigned() or s.is_imported()}
+
+        def walk(tbl, ancestor_locals_stack):
+            this_scope_names = {s.get_name() for s in tbl.get_symbols() if s.is_assigned() or s.is_parameter() or s.is_imported()}
+            new_stack = ancestor_locals_stack + [this_scope_names]
+            for child in tbl.get_children():
+                if child.get_type() in ("function", "class"):
+                    for sym in child.get_symbols():
+                        name = sym.get_name()
+                        if name in BUILTIN_NAMES:
+                            continue
+                        if sym.is_free():
+                            if not any(name in s for s in new_stack):
+                                issues.append(f"{fname}: {child.get_name()}() -> '{name}' (free)")
+                        elif sym.is_global() and not (sym.is_assigned() or sym.is_parameter() or sym.is_imported()):
+                            if name not in module_defined:
+                                issues.append(f"{fname}: {child.get_name()}() -> '{name}' (global)")
+                walk(child, new_stack)
+        walk(table, [])
+    assert not issues, "빠뜨린 import로 의심됨:\n    " + "\n    ".join(issues)
+
+
 @test("모듈 간 의존관계에 순환참조가 없다 (helpers는 다른 커스텀 모듈에 의존하면 안 됨)")
 def _():
     import ast
