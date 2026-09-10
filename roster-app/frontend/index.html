@@ -784,6 +784,13 @@ const I18N = {
     modal_saved_toast: "변경사항이 저장되었습니다.",
     modal_add_placed_title: "배치 완료",
     modal_add_title_off: "Off (휴무로 지정)", modal_add_off_detail: "자동 생성 시 이 날은 절대 배정되지 않습니다.",
+    off_type_modal_title: "휴무 종류 선택", off_type_modal_sub: "{name}님의 {day} — 어떤 방식으로 처리할까요?",
+    off_type_schedule_only: "그냥 휴무 (급여 영향 없음)", off_type_schedule_only_detail: "스케줄 배정에서만 제외됩니다. 잔액·급여에 영향 없음.",
+    off_type_paid_detail: "하루치 급여가 지급되고, 스케줄에서도 제외됩니다.",
+    off_type_unpaid_detail: "급여는 없지만, 스케줄에서 제외되고 목표 근무시간도 비례해서 줄어듭니다.",
+    off_type_sick_detail: "병가로 등록됩니다 — 하루치 급여가 지급됩니다.",
+    off_type_annual_detail: "애뉴얼 리브 잔액에서 차감되고, 하루치 급여가 지급됩니다.",
+    off_type_registered_msg: "{name}님의 {day}이(가) [{type}]로 등록됐습니다.",
     modal_add_own_dept: "(소속 부서)", modal_add_other_dept: "(타 부서 · 수동 배치)",
     modal_add_sub: "근무를 추가하거나 Off(휴무)로 지정하세요.",
     modal_edit_time_sub: "출퇴근 시간을 수동으로 변경할 수 있습니다.",
@@ -1142,6 +1149,13 @@ const I18N = {
     modal_saved_toast: "Your changes have been saved.",
     modal_add_placed_title: "Placement Complete",
     modal_add_title_off: "Off (mark day off)", modal_add_off_detail: "This day will never be scheduled during auto-generation.",
+    off_type_modal_title: "Choose Leave Type", off_type_modal_sub: "{name} — {day}. How should this be handled?",
+    off_type_schedule_only: "Just mark as off (no pay impact)", off_type_schedule_only_detail: "Only excluded from scheduling. No effect on balance or pay.",
+    off_type_paid_detail: "A day's pay is issued, and the day is excluded from scheduling.",
+    off_type_unpaid_detail: "No pay, but excluded from scheduling and the weekly hours target is reduced proportionally.",
+    off_type_sick_detail: "Registered as sick leave — a day's pay is issued.",
+    off_type_annual_detail: "Deducted from the annual leave balance, and a day's pay is issued.",
+    off_type_registered_msg: "{name}'s {day} has been registered as [{type}].",
     modal_add_own_dept: "(own department)", modal_add_other_dept: "(other department · manual only)",
     modal_add_sub: "Add a shift, or mark this day as Off.",
     modal_edit_time_sub: "You can manually adjust the start/end time.",
@@ -3741,7 +3755,7 @@ async function showPayrollPage(weekKey) {
       const sign = diff > 0 ? "+" : "";
       diffCell = `<span style="color:${color};">${sign}$${diff.toFixed(2)}</span>`;
     }
-    const paidLeaveDays = Object.values(row.per_day).filter(d => d.leave_type === "paid" || d.leave_type === "sick").length;
+    const paidLeaveDays = Object.values(row.per_day).filter(d => ["paid", "sick", "annual_leave", "lieu_day"].includes(d.leave_type)).length;
     const phPremiumDays = Object.values(row.per_day).filter(d => d.is_public_holiday && (d.category === 1 || d.category === 3)).length;
     const phAvgPayDays = Object.values(row.per_day).filter(d => d.is_public_holiday && d.category === 2).length;
     const notes = [];
@@ -7302,11 +7316,90 @@ function openAddAssignmentModal(employeeId, employeeName, day) {
   offItem.className = "modal-item";
   offItem.style.cursor = "pointer";
   offItem.innerHTML = `<div class="modal-item-title">${t("modal_add_title_off")}</div><div class="modal-item-detail">${t("modal_add_off_detail")}</div>`;
-  offItem.onclick = async () => {
+  offItem.onclick = () => {
     overlay.remove();
-    await toggleForcedOff(employeeId, day, true);
+    openOffTypeModal(employeeId, employeeName, day);
   };
   box.appendChild(offItem);
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_cancel");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function openOffTypeModal(employeeId, employeeName, day) {
+  // "Off"를 눌렀을 때, 단순히 스케줄에서만 빼는 것(급여 영향 없음)과, 유급/무급/병가로
+  // 등록하는 것(리브 신청과 완전히 같은 방식 — 잔액 차감, 급여 반영까지 전부 연동됨)을
+  // 여기서 바로 고를 수 있게 합니다. 규칙 패널에서 리브를 등록하는 건 "미리 날짜를
+  // 알고 있을 때"(까먹지 않기 위해) 쓰기 좋고, 이 화면은 "이번 주 갑자기" 또는
+  // "다음 주 미리" 같은 상황에서 빠르게 처리하기 좋습니다.
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const title = document.createElement("h3");
+  title.textContent = t("off_type_modal_title");
+  box.appendChild(title);
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = tf("off_type_modal_sub", {name: employeeName, day: DAY_LABEL[day]});
+  box.appendChild(sub);
+
+  const renderOption = (labelKey, detailKey, onClick) => {
+    const item = document.createElement("div");
+    item.className = "modal-item";
+    item.style.cursor = "pointer";
+    item.innerHTML = `<div class="modal-item-title">${t(labelKey)}</div><div class="modal-item-detail">${t(detailKey)}</div>`;
+    item.onclick = onClick;
+    box.appendChild(item);
+  };
+
+  renderOption("off_type_schedule_only", "off_type_schedule_only_detail", async () => {
+    overlay.remove();
+    await toggleForcedOff(employeeId, day, true);
+  });
+
+  const submitLeaveType = async (leaveType) => {
+    const dayIndex = DAYS.indexOf(day);
+    const mondayDate = keyToDate(currentWeekKey);
+    const targetDate = new Date(mondayDate);
+    targetDate.setDate(targetDate.getDate() + dayIndex);
+    const dateIso = targetDate.toISOString().slice(0, 10);
+    const emp = (window._employees || []).find(x => x.id === employeeId);
+    const existingRequests = (emp && emp.leave_requests) || [];
+    const newRequest = {
+      id: "lr_" + Math.random().toString(36).slice(2, 10),
+      start_date: dateIso, end_date: dateIso, leave_type: leaveType, reason: "",
+    };
+    overlay.remove();
+    try {
+      await api(`/api/employees/${employeeId}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({leave_requests: [...existingRequests, newRequest]}),
+      });
+      await loadEmployees();
+      renderCalendarArea();
+      showMessageModal(t("modal_add_placed_title"), tf("off_type_registered_msg", {name: employeeName, day: DAY_LABEL[day], type: t(`leave_type_${leaveType}`)}), false);
+    } catch (e) {
+      // api()가 이미 에러 모달을 보여줌
+    }
+  };
+
+  renderOption("leave_type_paid", "off_type_paid_detail", () => submitLeaveType("paid"));
+  renderOption("leave_type_unpaid", "off_type_unpaid_detail", () => submitLeaveType("unpaid"));
+  renderOption("leave_type_sick", "off_type_sick_detail", () => submitLeaveType("sick"));
+  renderOption("leave_type_annual_leave", "off_type_annual_detail", () => submitLeaveType("annual_leave"));
 
   const closeRow = document.createElement("div");
   closeRow.className = "modal-close-row";
