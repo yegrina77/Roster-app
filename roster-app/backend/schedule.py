@@ -5,6 +5,8 @@ RosterFlow 스케줄 관리 모듈.
 공휴일 등록, 근무 패턴 제안, 노쇼 알림 등을 담당합니다. helpers.py와
 payroll.py(퍼블리시 시 Lieu Day/애뉴얼 리브 자동 적립)에 의존합니다.
 """
+import random
+import time
 from datetime import date, timedelta, datetime, timezone
 from flask import request, jsonify, g, Blueprint
 
@@ -17,7 +19,7 @@ from helpers import (
     NZ_TZ, load_state, save_state, require_login, _log_audit, FREQUENCY_WINDOW_WEEKS,
     _effective_shift_times, _effective_shift_hours, _slugify_id, empty_week,
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
-    _credited_leave_hours, _default_departments, _default_shift_types,
+    _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
 )
 from payroll import _credit_lieu_days_for_week, _accrue_annual_leave_for_week
 

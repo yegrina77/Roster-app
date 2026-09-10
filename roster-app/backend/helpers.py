@@ -32,6 +32,7 @@ except Exception:
     NZ_TZ = timezone(timedelta(hours=13))
 from functools import wraps
 from flask import request, jsonify, session, g
+from scheduler import DAYS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "..", "data")
