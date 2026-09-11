@@ -20,6 +20,7 @@ from helpers import (
     _effective_shift_times, _effective_shift_hours, _slugify_id, empty_week,
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
+    REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
 from payroll import _credit_lieu_days_for_week, _accrue_annual_leave_for_week
 
@@ -908,6 +909,94 @@ def delete_public_holiday(company_id, h_date):
     state["public_holidays"] = [h for h in state["public_holidays"] if h["date"] != h_date]
     save_state(company_id, state)
     return "", 204
+
+
+@schedule_bp.route("/api/company/region", methods=["GET"])
+@require_login
+def get_company_region(company_id):
+    """이 회사(매장)가 어느 지역에 있는지 — 지역 기념일(Anniversary Day) 자동계산에
+    씁니다. 설정 안 했으면 "none"을 돌려줍니다."""
+    state = load_state(company_id)
+    return jsonify({"region": state.get("region") or "none", "regions": list(REGIONS)})
+
+
+@schedule_bp.route("/api/company/region", methods=["POST"])
+@require_login
+def set_company_region(company_id):
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    region = payload.get("region")
+    if region not in REGIONS:
+        return jsonify({"error": "올바르지 않은 지역입니다."}), 400
+    state = load_state(company_id)
+    state["region"] = region
+    save_state(company_id, state)
+    return jsonify({"region": region})
+
+
+@schedule_bp.route("/api/public-holidays/preview", methods=["GET"])
+@require_login
+def preview_public_holidays(company_id):
+    """사장/매니저 전용: 특정 연도의 공휴일을 계산해서 미리보기로 보여줍니다(아직
+    저장 안 함) — 전국 공휴일(법으로 확정, needs_confirmation:false)과, 회사에
+    지역이 설정되어 있으면 그 지역의 기념일(needs_confirmation:true, 사장님이 한 번
+    확인해야 함)을 같이 계산합니다. 이미 등록된 날짜는 already_registered:true로
+    표시해서, 확정 등록 화면에서 중복 추가를 피할 수 있게 합니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    try:
+        year = int(request.args.get("year"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "year 파라미터가 필요합니다."}), 400
+    if not (2022 <= year <= 2040):
+        return jsonify({"error": "2022~2040년만 자동계산을 지원합니다(그 이후는 Matariki 날짜표가 아직 없어서, 수동으로 등록해주세요)."}), 400
+
+    state = load_state(company_id)
+    existing_dates = {h["date"] for h in state["public_holidays"]}
+    items = _national_holidays_for_year(year)
+    region = state.get("region") or "none"
+    if region != "none":
+        regional = _regional_anniversary_for_year(region, year)
+        if regional:
+            items.append(regional)
+            items.sort(key=lambda x: x["date"])
+    for item in items:
+        item["already_registered"] = item["date"] in existing_dates
+    return jsonify({"year": year, "region": region, "items": items})
+
+
+@schedule_bp.route("/api/public-holidays/auto-populate", methods=["POST"])
+@require_login
+def auto_populate_public_holidays(company_id):
+    """사장/매니저 전용: preview에서 보여준 목록 중, 사장님이 실제로 선택한 것들만
+    한 번에 등록합니다. body: {holidays: [{date, name}, ...]} — 이미 같은 날짜가
+    등록되어 있으면 건너뜁니다(중복 방지)."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    holidays = payload.get("holidays") or []
+    if not isinstance(holidays, list):
+        return jsonify({"error": "holidays는 배열이어야 합니다."}), 400
+
+    state = load_state(company_id)
+    existing_dates = {h["date"] for h in state["public_holidays"]}
+    added = []
+    for h in holidays:
+        h_date = h.get("date")
+        name = h.get("name", "")
+        if not h_date or h_date in existing_dates:
+            continue
+        entry = {"date": h_date, "name": name}
+        state["public_holidays"].append(entry)
+        existing_dates.add(h_date)
+        added.append(entry)
+    if added:
+        _log_audit(state, "public_holidays_auto_populated",
+                   f"{len(added)}개 공휴일 자동 등록: " + ", ".join(f"{h['date']}({h['name']})" for h in added))
+        save_state(company_id, state)
+    return jsonify({"added": added})
+
 
 def _carry_in_streak(state, employee_id, week_key):
     """이 주(week_key)가 시작되기 바로 전날부터 거꾸로 하루씩 확인하며, 쉬지 않고

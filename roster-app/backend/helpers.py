@@ -1159,3 +1159,188 @@ def _default_public_holiday_policy():
         "window_weeks": FREQUENCY_WINDOW_WEEKS,
         "min_weeks_worked": HOLIDAY_OWD_THRESHOLD,
     }
+
+
+# ---------------------------------------------------------------------------
+# 공휴일 자동 계산 — 전국 공휴일(법으로 확정된 11개)과 지역 기념일(Anniversary Day)
+# ---------------------------------------------------------------------------
+
+# Matariki는 마오리 음력 기준이라 계산식이 없고, 정부가 2022년에 법(Te Pire mō te
+# Hararei Tūmatanui o te Kāhui o Matariki)으로 2052년까지의 날짜를 통째로 확정해서
+# 발표했습니다 — 그래서 이건 "예측"이 아니라 "법으로 정해진 값"이라 확인 없이 그대로
+# 써도 안전합니다. 출처: MBIE(Matariki Advisory Group), RNZ, NZ Herald 등 다수 확인.
+MATARIKI_DATES = {
+    2022: "2022-06-24", 2023: "2023-07-14", 2024: "2024-06-28", 2025: "2025-06-20",
+    2026: "2026-07-10", 2027: "2027-06-25", 2028: "2028-07-14", 2029: "2029-07-06",
+    2030: "2030-06-21", 2031: "2031-07-11", 2032: "2032-07-02", 2033: "2033-06-24",
+    2034: "2034-07-07", 2035: "2035-06-29", 2036: "2036-07-18", 2037: "2037-07-10",
+    2038: "2038-06-25", 2039: "2039-07-15", 2040: "2040-07-06",
+}
+
+# 뉴질랜드가 속한 지역(회사 설정에서 하나를 고릅니다) — 각 지역의 기념일 계산 규칙은
+# 아래 _regional_anniversary_for_year에 있습니다. "none"은 지역 기념일을 아예 안 쓰는
+# 선택지입니다(예: 여러 지역에 매장이 있어서 하나로 특정하기 애매한 경우).
+REGIONS = (
+    "auckland", "wellington", "canterbury", "otago", "southland", "hawkes_bay",
+    "taranaki", "nelson", "marlborough", "south_canterbury", "westland",
+    "chatham_islands", "none",
+)
+
+
+def _easter_sunday(year):
+    """그레고리력 기준 부활절(일요일) 날짜를 계산합니다 (Meeus/Jones/Butcher 알고리즘 —
+    가톨릭/개신교 서방 교회 기준, 뉴질랜드를 포함한 대부분의 서방 국가가 이 기준을 씁니다)."""
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    return date(year, month, day)
+
+
+def _closest_monday(target_date):
+    """target_date에 가장 가까운 월요일을 돌려줍니다(같은 주 안에서 며칠 앞뒤인지
+    비교) — 여러 지역 기념일이 이 규칙("~에 가장 가까운 월요일")을 씁니다."""
+    weekday = target_date.weekday()  # 0=월요일 ... 6=일요일
+    if weekday == 0:
+        return target_date
+    if weekday <= 3:  # 화~목요일이면 지난 월요일이 더 가까움
+        return target_date - timedelta(days=weekday)
+    return target_date + timedelta(days=(7 - weekday))  # 금~일요일이면 다음 월요일이 더 가까움
+
+
+def _nth_weekday_of_month(year, month, weekday, n):
+    """그 달의 n번째 특정 요일(weekday: 0=월요일)을 돌려줍니다. n=-1이면 마지막 주."""
+    if n > 0:
+        d = date(year, month, 1)
+        offset = (weekday - d.weekday()) % 7
+        d = d + timedelta(days=offset + 7 * (n - 1))
+        return d
+    # 마지막 주: 다음 달 1일에서 거슬러 올라가며 찾음
+    if month == 12:
+        d = date(year + 1, 1, 1)
+    else:
+        d = date(year, month + 1, 1)
+    d = d - timedelta(days=1)
+    offset = (d.weekday() - weekday) % 7
+    return d - timedelta(days=offset)
+
+
+def _apply_mondayisation(d, already_used_dates):
+    """공휴일이 토/일요일에 걸리면 다음 평일로 옮깁니다(Holidays Act 2003 5A~5D조,
+    2013년 개정 이후 신정/신정다음날/와이탕이데이/ANZAC데이/크리스마스/박싱데이
+    전부 적용 대상). already_used_dates는 "이미 옮겨진 다른 공휴일이 차지한 날짜들"
+    — 신정+신정다음날처럼 짝을 이루는 공휴일이 둘 다 주말에 걸리면, 하나는 월요일,
+    다른 하나는 화요일로 순서대로 밀려야 하므로 이 목록으로 겹침을 방지합니다."""
+    if d.weekday() < 5:  # 이미 평일
+        return d
+    shifted = d + timedelta(days=(7 - d.weekday()))  # 다음 월요일
+    while shifted.isoformat() in already_used_dates:
+        shifted += timedelta(days=1)
+    return shifted
+
+
+def _national_holidays_for_year(year):
+    """법으로 확정된 전국 공휴일 11개를 계산합니다(Mondayisation 적용 완료).
+    돌려주는 값: [{date, name, needs_confirmation}] 목록. needs_confirmation은
+    전국 공휴일에는 해당 없음(전부 False) — Matariki를 포함해 전부 법으로 확정된
+    값이라 사장님이 따로 확인할 필요가 없습니다(2040년 이후는 Matariki 표가 없어서
+    자동계산에서 제외됩니다 — 그 이후는 정부가 아직 발표 안 한 게 아니라 저희가
+    표를 그만큼만 넣어뒀을 뿐이니, 필요하면 수동으로 추가해주세요)."""
+    used = set()
+    easter = _easter_sunday(year)
+    good_friday = easter - timedelta(days=2)
+    easter_monday = easter + timedelta(days=1)
+
+    fixed = [
+        (date(year, 1, 1), "New Year's Day"),
+        (date(year, 1, 2), "Day after New Year's Day"),
+    ]
+    # 신정/신정다음날은 짝으로 순서대로 밀립니다(둘 다 월~화가 되도록).
+    fixed_shifted = []
+    for d, name in fixed:
+        s = _apply_mondayisation(d, used)
+        used.add(s.isoformat())
+        fixed_shifted.append((s, name))
+
+    waitangi = _apply_mondayisation(date(year, 2, 6), used)
+    used.add(waitangi.isoformat())
+    anzac = _apply_mondayisation(date(year, 4, 25), used)
+    used.add(anzac.isoformat())
+
+    christmas = date(year, 12, 25)
+    boxing = date(year, 12, 26)
+    used_xmas = set()
+    christmas_shifted = _apply_mondayisation(christmas, used_xmas)
+    used_xmas.add(christmas_shifted.isoformat())
+    boxing_shifted = _apply_mondayisation(boxing, used_xmas)
+
+    out = [
+        (fixed_shifted[0][0], fixed_shifted[0][1]),
+        (fixed_shifted[1][0], fixed_shifted[1][1]),
+        (waitangi, "Waitangi Day"),
+        (good_friday, "Good Friday"),
+        (easter_monday, "Easter Monday"),
+        (anzac, "ANZAC Day"),
+        (_nth_weekday_of_month(year, 6, 0, 1), "King's Birthday"),
+        (_nth_weekday_of_month(year, 10, 0, 4), "Labour Day"),
+        (christmas_shifted, "Christmas Day"),
+        (boxing_shifted, "Boxing Day"),
+    ]
+    if year in MATARIKI_DATES:
+        out.append((date.fromisoformat(MATARIKI_DATES[year]), "Matariki"))
+    out.sort(key=lambda x: x[0])
+    return [{"date": d.isoformat(), "name": name, "needs_confirmation": False} for d, name in out]
+
+
+def _regional_anniversary_for_year(region, year):
+    """이 지역의 기념일(Anniversary Day) 날짜를 계산합니다. 돌려주는 값:
+    {date, name, needs_confirmation} 또는 region이 "none"이거나 모르는 지역이면 None.
+
+    ⚠️ 뉴질랜드 정부(Employment NZ) 공식 자료 자체가 "이 표는 선의로 작성됐지만
+    정확성을 보장할 수 없다"고 명시하고 있고, 특히 오타고·웨스트랜드는 옛 주(province)
+    안에서도 지역마다 관례가 다를 수 있다고 알려져 있습니다 — 그래서 모든 지역
+    기념일에 needs_confirmation: True를 붙입니다. 전국 공휴일과 달리, 사장님이
+    한 번은 직접 "우리 지역 맞다"고 확인해주셔야 합니다."""
+    if region == "auckland":
+        return {"date": _closest_monday(date(year, 1, 29)).isoformat(), "name": "Auckland Anniversary Day", "needs_confirmation": True}
+    if region == "wellington":
+        return {"date": _closest_monday(date(year, 1, 22)).isoformat(), "name": "Wellington Anniversary Day", "needs_confirmation": True}
+    if region == "nelson":
+        return {"date": _closest_monday(date(year, 2, 1)).isoformat(), "name": "Nelson Anniversary Day", "needs_confirmation": True}
+    if region == "taranaki":
+        return {"date": _nth_weekday_of_month(year, 3, 0, 2).isoformat(), "name": "Taranaki Anniversary Day", "needs_confirmation": True}
+    if region == "otago":
+        return {"date": _closest_monday(date(year, 3, 23)).isoformat(), "name": "Otago Anniversary Day", "needs_confirmation": True}
+    if region == "southland":
+        easter = _easter_sunday(year)
+        return {"date": (easter + timedelta(days=2)).isoformat(), "name": "Southland Anniversary Day", "needs_confirmation": True}
+    if region == "hawkes_bay":
+        labour_day = _nth_weekday_of_month(year, 10, 0, 4)
+        return {"date": (labour_day - timedelta(days=3)).isoformat(), "name": "Hawke's Bay Anniversary Day", "needs_confirmation": True}
+    if region == "marlborough":
+        labour_day = _nth_weekday_of_month(year, 10, 0, 4)
+        return {"date": (labour_day + timedelta(days=7)).isoformat(), "name": "Marlborough Anniversary Day", "needs_confirmation": True}
+    if region == "canterbury":
+        first_tuesday_nov = _nth_weekday_of_month(year, 11, 1, 1)
+        # 그 화요일이 속한 주의 금요일(3일 뒤)이 "첫 금요일", 그 다음 주 금요일이 "둘째 금요일"
+        first_friday_after = first_tuesday_nov + timedelta(days=3)
+        second_friday_after = first_friday_after + timedelta(days=7)
+        return {"date": second_friday_after.isoformat(), "name": "Canterbury Anniversary Day (Christchurch Show Day)", "needs_confirmation": True}
+    if region == "south_canterbury":
+        return {"date": _nth_weekday_of_month(year, 9, 0, 4).isoformat(), "name": "South Canterbury Anniversary Day", "needs_confirmation": True}
+    if region == "westland":
+        return {"date": _closest_monday(date(year, 12, 1)).isoformat(), "name": "Westland Anniversary Day", "needs_confirmation": True}
+    if region == "chatham_islands":
+        return {"date": _closest_monday(date(year, 11, 30)).isoformat(), "name": "Chatham Islands Anniversary Day", "needs_confirmation": True}
+    return None
+
