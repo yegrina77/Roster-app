@@ -658,6 +658,10 @@ def empty_week():
         # last_published_assignments: 지난번 퍼블리시 시점의 배정 스냅샷 — 재퍼블리시할 때
         # "누구 스케줄이 실제로 바뀌었는지" 비교하는 기준입니다(publish_week 참고).
         "published": False, "agreements": {}, "last_published_assignments": [],
+        # shortfall_topups: {employee_id: {day: {hours, reason, recorded_by, recorded_at}}} —
+        # 계약 최소시간보다 실제 배정이 적었는데, 그게 "사업 사정"이라 판단해서 부족분만큼
+        # 급여를 보전해준 기록입니다(직원 본인 사정이면 대신 leave_requests로 등록합니다).
+        "shortfall_topups": {},
     }
 
 def _sanitize_wage(value):
@@ -870,7 +874,7 @@ def _leave_day_hours(lr, employee, the_date_iso):
 
 def _apply_leave_balance_diff(employee, new_requests):
     """리브 신청 목록이 통째로 교체될 때(update_employee가 항상 이런 식으로 동작하므로),
-    Lieu Day/애뉴얼 리브 잔액을 정확히 반영합니다. id가 있는 신청만 비교 대상으로
+    Lieu Day/애뉴얼 리브/병가 잔액을 정확히 반영합니다. id가 있는 신청만 비교 대상으로
     삼습니다(id 없는 옛날 데이터는 잔액 계산에서 건너뜁니다 — 이 기능 이전에 만들어진
     신청까지 소급 적용하면 예상치 못하게 잔액이 깎일 수 있으므로).
 
@@ -880,11 +884,18 @@ def _apply_leave_balance_diff(employee, new_requests):
     방식을 그대로 재사용합니다). status 필드가 아예 없는 옛날 데이터는 이 기능
     이전에 만들어진 것이므로 approved로 간주합니다(하위 호환).
 
-    새로 승인되거나 종류가 바뀐 Lieu Day/애뉴얼 리브 신청은 잔액에서 차감하고, 승인이
-    취소되거나 종류가 바뀐 신청은 그만큼 잔액을 되돌립니다. 애뉴얼 리브는 날짜별로
-    직접 입력한 시간(daily_hours)이 있으면 그 합계를, 없으면 평균 하루시간으로
-    계산합니다. 잔액이 모자라면 (None, 에러메시지)를 돌려주고, 성공하면
+    새로 승인되거나 종류가 바뀐 Lieu Day/애뉴얼 리브/병가 신청은 잔액에서 차감하고,
+    승인이 취소되거나 종류가 바뀐 신청은 그만큼 잔액을 되돌립니다. 애뉴얼 리브와
+    병가는 날짜별로 직접 입력한 시간(daily_hours)이 있으면 그 합계를, 없으면 평균
+    하루시간으로 계산합니다. 잔액이 모자라면 (None, 에러메시지)를 돌려주고, 성공하면
     (갱신된 잔액 dict, None)을 돌려줍니다.
+
+    ⚠️ 병가는 애뉴얼 리브와 다르게 "일(day)" 단위로 관리됩니다(뉴질랜드 법상 병가
+    일수는 근무시간에 비례하지 않기 때문) — 그래서 "시간"을 "그 직원의 평균
+    하루시간"으로 나눠서 며칠치인지 환산합니다(예: 평균 8시간인 사람이 3시간만
+    병가를 쓰면 0.375일 차감). 병가는 법적으로 "당겨쓰기" 조항이 따로 없어서,
+    잔액이 부족하면 기본적으로 거부되고, allow_sick_override:true가 붙어있을 때만
+    (사장 재량으로 유급 인정) 마이너스를 허용합니다.
 
     애뉴얼 리브는 아직 정식 발생 전이라도(입사 12개월 전) 사장 동의하에 "당겨쓰기"가
     가능합니다(Holidays Act 2003 21A조) — 새로 승인되는 신청에 allow_advance:true가
@@ -896,8 +907,11 @@ def _apply_leave_balance_diff(employee, new_requests):
 
     lieu_delta_days = 0.0
     annual_delta_hours = 0.0
+    sick_delta_days = 0.0
     today = date.today()
     advance_allowed = False
+    sick_override_allowed = False
+    avg_hours = _average_day_hours(employee) or 0
     for rid in set(old_by_id) | set(new_by_id):
         old_r, new_r = old_by_id.get(rid), new_by_id.get(rid)
         old_type = old_r.get("leave_type") if old_r else None
@@ -906,6 +920,8 @@ def _apply_leave_balance_diff(employee, new_requests):
         new_span = _leave_request_day_span(new_r) if new_r else 0
         old_hours = _leave_request_hours(old_r, employee) if old_r else 0
         new_hours = _leave_request_hours(new_r, employee) if new_r else 0
+        old_sick_days = (old_hours / avg_hours) if (old_r and avg_hours > 0) else 0
+        new_sick_days = (new_hours / avg_hours) if (new_r and avg_hours > 0) else 0
         changed = (old_type, old_hours) != (new_type, new_hours)
         if old_r and (not new_r or changed):
             # 이미 기간이 지나서 자연스럽게 화면에서 사라진 신청(만료)은 "취소"가
@@ -921,6 +937,8 @@ def _apply_leave_balance_diff(employee, new_requests):
                     lieu_delta_days += old_span
                 elif old_type == "annual_leave":
                     annual_delta_hours += old_hours
+                elif old_type == "sick":
+                    sick_delta_days += old_sick_days
         if new_r and (not old_r or changed):
             if new_type == "lieu_day":
                 lieu_delta_days -= new_span
@@ -928,17 +946,25 @@ def _apply_leave_balance_diff(employee, new_requests):
                 annual_delta_hours -= new_hours
                 if new_r.get("allow_advance"):
                     advance_allowed = True
+            elif new_type == "sick":
+                sick_delta_days -= new_sick_days
+                if new_r.get("allow_sick_override"):
+                    sick_override_allowed = True
 
     new_lieu_balance = employee.get("lieu_day_balance", 0.0) + lieu_delta_days
     new_annual_balance = employee.get("annual_leave_balance_hours", 0.0) + annual_delta_hours
+    new_sick_balance = employee.get("sick_leave_balance_days", 0.0) + sick_delta_days
 
     if new_lieu_balance < -0.01:
         return None, f"Lieu Day 잔액이 부족합니다 (보유: {employee.get('lieu_day_balance', 0):.1f}일)."
     if new_annual_balance < -0.01 and not advance_allowed:
         return None, f"애뉴얼 리브 잔액이 부족합니다 (보유: {employee.get('annual_leave_balance_hours', 0):.1f}시간)."
+    if new_sick_balance < -0.01 and not sick_override_allowed:
+        return None, f"병가 잔액이 부족합니다 (보유: {employee.get('sick_leave_balance_days', 0):.1f}일)."
     return {
         "lieu_day_balance": round(new_lieu_balance, 2),
         "annual_leave_balance_hours": round(new_annual_balance, 2),
+        "sick_leave_balance_days": round(new_sick_balance, 2),
     }, None
 
 def _stamp_new_leave_requests(old_requests, new_requests, role, name, default_status):
@@ -1048,6 +1074,35 @@ def _leave_hours_by_day(employee_dict, week_key):
                 continue
             if start <= the_date <= end:
                 out[day] = _leave_day_hours(lr, employee_dict, the_date_iso)
+                break
+    return out
+
+
+def _leave_hours_explicit_by_day(employee_dict, week_key):
+    """이 직원의 (승인된) Leave Request 중, 이 주의 각 요일에 대해 "그 날짜에
+    직접 입력한 시간(daily_hours)이 있었는지"를 {day: 시간|None} 형태로 반환합니다.
+    None이면 평균 하루시간으로 폴백해야 한다는 뜻입니다. 부분 조퇴(예: 8시간 중
+    5시간만 일하고 3시간은 병가) 급여 계산에서, "직접 입력한 시간은 그대로 추가"하고
+    "평균 폴백일 때만 부족분만 추가"하는 걸 구분하는 데 씁니다 — 이 둘은 의미가
+    다릅니다: 직접 입력한 3시간은 "이만큼을 병가로 쳐달라"는 명시적 요청이고,
+    평균 폴백은 "이 날 하루치가 원래 몇 시간인지 모르니 평균으로 추정"하는
+    것이라, 실제로 일한 시간이 이미 평균을 넘었으면 추가할 게 없어야 합니다."""
+    week_dates = _week_dates(week_key)
+    out = {}
+    for i, day in enumerate(DAYS):
+        the_date = week_dates[i]
+        the_date_iso = the_date.isoformat()
+        for lr in employee_dict.get("leave_requests", []):
+            if lr.get("status", "approved") != "approved":
+                continue
+            try:
+                start = date.fromisoformat(lr["start_date"])
+                end = date.fromisoformat(lr["end_date"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if start <= the_date <= end:
+                daily_hours = lr.get("daily_hours") or {}
+                out[day] = float(daily_hours[the_date_iso]) if the_date_iso in daily_hours else None
                 break
     return out
 

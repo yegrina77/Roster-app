@@ -13,8 +13,9 @@ from helpers import (
     NZ_TZ, load_state, save_state, require_login, require_owner, _log_audit, HOLIDAY_OWD_THRESHOLD,
     FREQUENCY_WINDOW_WEEKS, DEFAULT_PAYROLL_ROUNDING_MINUTES, ALLOWED_ROUNDING_MINUTES,
     _effective_shift_times, _actual_hours_for_entry, _assignment_duration_hours,
-    _week_dates, _week_key_for_date, _is_paid_leave, _leave_info_by_day, _leave_hours_by_day, _worked_that_weekday,
-    _average_day_hours, _weekly_salary, _effective_hourly_rate_for_salary,
+    _week_dates, _week_key_for_date, _is_paid_leave, _leave_info_by_day, _leave_hours_by_day,
+    _leave_hours_explicit_by_day, _worked_that_weekday,
+    _average_day_hours, _weekly_salary, _effective_hourly_rate_for_salary, empty_week,
 )
 
 
@@ -101,6 +102,10 @@ def _compute_week_payroll(state, week_key):
         avg_day_hours = _average_day_hours(e)
         leave_info = _leave_info_by_day(e, week_key)
         leave_hours_info = _leave_hours_by_day(e, week_key)
+        leave_hours_explicit_info = _leave_hours_explicit_by_day(e, week_key)
+        # 계약 최소시간보다 실제 배정이 부족했는데, "사업 사정"이라 판단해서 부족분을
+        # 급여로 보전해주기로 한 기록 — {day: {hours, reason, ...}} 형태입니다.
+        emp_topups = ((state.get("weeks", {}).get(week_key) or {}).get("shortfall_topups") or {}).get(emp_id, {})
         # 애뉴얼 리브(annual_leave) 급여는 시급제일 때 OWP/AWE 중 더 큰 쪽으로 계산합니다
         # (Holidays Act 2003 21조) — 그 외 유급/병가/Lieu Day는 그대로 현재 시급을 씁니다.
         # 주당 한 번만 계산해서 요일 루프 안에서 재활용합니다(매일 다시 계산할 필요 없음).
@@ -168,6 +173,34 @@ def _compute_week_payroll(state, week_key):
                 else:
                     pay = hours * wage if wage is not None else None
                     actual_pay = actual_hours * wage if wage is not None else None
+                    # 스케줄은 있었지만(worked=True) 이날 유급/병가/애뉴얼 리브도 걸려있는
+                    # 경우 — 부분 조퇴(예: 8시간 근무 중 5시간만 일하고 3시간은 아파서
+                    # 조퇴)를 처리합니다. 날짜별로 직접 입력한 시간(daily_hours)이
+                    # 있으면 "그 시간만큼 그대로" 추가합니다(예: 3시간 입력했으면
+                    # 실제 일한 5시간에 3시간을 그냥 더해서 8시간분). 직접 입력이
+                    # 없으면(평균 폴백) "평균 하루시간에서 이미 일한 시간을 뺀
+                    # 부족분"만 추가합니다 — 이 경우는 얼마나 일했는지 모르니
+                    # 추정치라, 이미 평균만큼 일했으면 더 얹을 게 없어야 합니다.
+                    if leave_type and _is_paid_leave(leave_type):
+                        explicit_hours = leave_hours_explicit_info.get(day)
+                        if explicit_hours is not None:
+                            addon_hours = explicit_hours
+                        else:
+                            addon_hours = max(0.0, avg_day_hours - actual_hours)
+                        if addon_hours > 0:
+                            rate = annual_leave_hourly_rate if (leave_type == "annual_leave" and annual_leave_hourly_rate is not None) else wage
+                            if rate is not None and actual_pay is not None:
+                                actual_pay = round(actual_pay + addon_hours * rate, 2)
+
+            # 이 요일에 "사업 사정 부족분 보전(topup)" 기록이 있으면, 실제 지급액에
+            # 그만큼 추가로 더합니다 — 리브와는 별개 개념이라(직원 사정이 아니라
+            # 사업 사정), 위의 리브 관련 분기들과 상관없이 항상 마지막에 적용합니다.
+            topup = emp_topups.get(day)
+            topup_hours = 0.0
+            if topup and not is_salary and wage is not None:
+                topup_hours = float(topup.get("hours") or 0)
+                if topup_hours > 0 and actual_pay is not None:
+                    actual_pay = round(actual_pay + topup_hours * wage, 2)
 
             per_day[day] = {
                 "hours": round(hours, 2),
@@ -178,6 +211,7 @@ def _compute_week_payroll(state, week_key):
                 "is_public_holiday": day in holiday_by_day,
                 "category": category,
                 "leave_type": leave_type,
+                "topup_hours": round(topup_hours, 2) if topup_hours else 0.0,
             }
             weekly_hours += hours
             weekly_actual_hours += actual_hours
@@ -288,6 +322,81 @@ def get_week_payroll(company_id, week_key):
     _record_earnings_history(state, week_key, payroll)
     save_state(company_id, state)
     return jsonify(payroll)
+
+
+@payroll_bp.route("/api/weeks/<week_key>/hours-shortfall", methods=["GET"])
+@require_login
+def get_week_hours_shortfall(company_id, week_key):
+    """사장/매니저 전용: 이 주에 "계약상 주당 최소시간"보다 실제 배정된 시간이
+    부족한 직원들을 찾아서 보여줍니다 — 계약서에 최소시간이 명시되어 있는데 그보다
+    적게 로스터되면, 그게 사업 사정일 경우 그 차액을 지급해야 할 의무가 있을 수
+    있습니다(뉴질랜드 ERA 판례 기준 — 직원의 병가/리브 등 "직원 사정"일 때만
+    예외입니다). 연봉제는 애초에 시간 단위 최소시간 개념이 급여에 안 걸리므로
+    제외합니다. 이미 사업사정으로 보전(topup) 처리됐거나 리브로 등록된 만큼은
+    "실제 시간"에 이미 반영되어 있으므로, 여기서 다시 부족으로 잡히지 않습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    payroll = _compute_week_payroll(state, week_key)
+    employees_by_id = {e["id"]: e for e in state["employees"]}
+    results = []
+    for row in payroll["employees"]:
+        emp = employees_by_id.get(row["employee_id"])
+        if not emp or emp.get("pay_type") == "salary":
+            continue
+        min_hours = emp.get("min_hours_per_week") or 0
+        actual = row.get("weekly_actual_hours")
+        if actual is None or min_hours <= 0:
+            continue
+        if actual < min_hours - 0.01:
+            results.append({
+                "employee_id": row["employee_id"], "employee_name": row["employee_name"],
+                "min_hours_per_week": min_hours, "actual_hours": round(actual, 2),
+                "shortfall_hours": round(min_hours - actual, 2),
+            })
+    return jsonify(results)
+
+
+@payroll_bp.route("/api/weeks/<week_key>/shortfall-topup", methods=["POST"])
+@require_login
+def create_shortfall_topup(company_id, week_key):
+    """사장/매니저 전용: "계약 최소시간보다 부족한 게 사업 사정 때문"이라고 판단해서,
+    그 부족분만큼 급여를 그냥 보전해주는 걸 기록합니다. body: {employee_id, day,
+    hours, reason}. day는 DAYS(mon~sun) 중 하나여야 하고, 이미 그 요일에 등록된
+    보전 기록이 있으면 덮어씁니다(수정 용도)."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    employee_id = payload.get("employee_id")
+    day = payload.get("day")
+    try:
+        hours = float(payload.get("hours"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "시간을 올바르게 입력해주세요."}), 400
+    reason = str(payload.get("reason") or "").strip()[:200]
+    if day not in DAYS:
+        return jsonify({"error": "요일이 올바르지 않습니다."}), 400
+    if hours <= 0:
+        return jsonify({"error": "0보다 큰 시간을 입력해주세요."}), 400
+
+    state = load_state(company_id)
+    emp = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not emp:
+        return jsonify({"error": "Employee not found."}), 404
+    week = state["weeks"].setdefault(week_key, empty_week())
+    topups = week.setdefault("shortfall_topups", {})
+    emp_topups = topups.setdefault(employee_id, {})
+    emp_topups[day] = {
+        "hours": round(hours, 2), "reason": reason,
+        "recorded_by": g.user_name, "recorded_by_role": g.role,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _log_audit(state, "shortfall_topup_recorded",
+               f"{emp['name']}님의 {week_key} 주 {day} 부족분({hours}시간) 사업사정 보전 등록",
+               {"employee_id": employee_id, "week_key": week_key, "day": day, "hours": hours})
+    save_state(company_id, state)
+    return jsonify(emp_topups[day])
+
 
 def _owp_for_employee(state, employee):
     """OWP(평소 주급, Ordinary Weekly Pay)를 계산합니다 — Holidays Act 2003 기준.
@@ -495,6 +604,44 @@ def _process_annual_leave_anniversary(employee, state):
     employee["annual_leave_anniversaries_granted"] = list(granted)
     return changed
 
+
+def _process_sick_leave_anniversary(employee):
+    """입사일(hire_date)이 등록되어 있으면, 병가 자격 기념일마다(입사 6개월째, 그
+    후 12개월마다) 10일씩 자동으로 발생시킵니다 — Holidays Act상 병가는 근무시간에
+    비례하지 않고 "일수"로 고정되어 있어서(풀타임이든 파트타임이든 동일), 애뉴얼
+    리브처럼 주당 계약시간을 쓰지 않고 그냥 10일을 그대로 더합니다. 다만 미사용
+    잔액은 최대 20일까지만 누적되고, 그 이상은 쌓이지 않습니다(이미 20일이면 이번
+    기념일은 그냥 지나갑니다 — 다음 기념일에 잔액이 20일 밑으로 내려가 있으면 그때
+    다시 쌓입니다). 이미 처리된 기념일은 sick_leave_anniversaries_granted에
+    기록해서 중복 지급을 막습니다. 돌려주는 값: 잔액이 실제로 바뀌었으면 True."""
+    hire_date_str = employee.get("hire_date")
+    if not hire_date_str:
+        return False
+    try:
+        hire = date.fromisoformat(hire_date_str)
+    except ValueError:
+        return False
+    today = date.today()
+    granted = set(employee.get("sick_leave_anniversaries_granted") or [])
+    changed = False
+    anniversary_num = 1
+    while True:
+        # 1번째 기념일 = 입사 6개월째(약 182일), 그 후로는 거기서 12개월(365일)씩 더함.
+        anniversary_date = hire + timedelta(days=182 + 365 * (anniversary_num - 1))
+        if anniversary_date > today:
+            break
+        key = str(anniversary_num)
+        if key not in granted:
+            current = employee.get("sick_leave_balance_days") or 0.0
+            employee["sick_leave_balance_days"] = round(min(20.0, current + 10.0), 2)
+            granted.add(key)
+            changed = True
+        anniversary_num += 1
+        if anniversary_num > 60:  # 방어적 상한 — 무한루프 방지용
+            break
+    employee["sick_leave_anniversaries_granted"] = list(granted)
+    return changed
+
 @payroll_bp.route("/api/employees/<employee_id>/adjust-annual-leave", methods=["POST"])
 @require_login
 def adjust_annual_leave(company_id, employee_id):
@@ -531,6 +678,48 @@ def adjust_annual_leave(company_id, employee_id):
                {"employee_id": employee_id, "new_balance": employee["annual_leave_balance_hours"]})
     save_state(company_id, state)
     return jsonify({"annual_leave_balance_hours": employee["annual_leave_balance_hours"]})
+
+
+@payroll_bp.route("/api/employees/<employee_id>/adjust-sick-leave", methods=["POST"])
+@require_login
+def adjust_sick_leave(company_id, employee_id):
+    """사장/매니저 전용: 병가 잔액(일)을 직접 조정합니다 — 예를 들어 이 프로그램을
+    처음 쓰기 시작할 때, 기존에 다른 방식으로 관리하던 병가 잔액을 그대로 옮겨
+    입력하는 용도입니다. body에 delta_days(더하거나 뺄 일수, 음수 가능)를 주거나,
+    set_days(절대값으로 바로 설정)를 줄 수 있습니다. 병가는 20일 누적 상한이
+    있으므로, 그 이상으로는 설정할 수 없습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    state = load_state(company_id)
+    employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not employee:
+        return jsonify({"error": "Employee not found."}), 404
+
+    if "set_days" in payload:
+        try:
+            new_balance = float(payload["set_days"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "set_days must be a number."}), 400
+    else:
+        try:
+            delta = float(payload.get("delta_days", 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "delta_days must be a number."}), 400
+        new_balance = employee.get("sick_leave_balance_days", 0.0) + delta
+
+    if new_balance < 0:
+        return jsonify({"error": "병가 잔액은 0보다 작을 수 없습니다."}), 400
+    if new_balance > 20:
+        return jsonify({"error": "병가 잔액은 최대 20일까지만 누적할 수 있습니다."}), 400
+
+    employee["sick_leave_balance_days"] = round(new_balance, 2)
+    _log_audit(state, "sick_leave_adjusted",
+               f"{employee['name']}의 병가 잔액을 {employee['sick_leave_balance_days']}일로 조정",
+               {"employee_id": employee_id, "new_balance": employee["sick_leave_balance_days"]})
+    save_state(company_id, state)
+    return jsonify({"sick_leave_balance_days": employee["sick_leave_balance_days"]})
+
 
 @payroll_bp.route("/api/employees/<employee_id>/final-payment-estimate", methods=["GET"])
 @require_login

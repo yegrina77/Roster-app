@@ -14,7 +14,7 @@ from helpers import (
     _stamp_new_leave_requests,
     _sanitize_documents, _sanitize_date, _ensure_employee_limit,
 )
-from payroll import _process_annual_leave_anniversary
+from payroll import _process_annual_leave_anniversary, _process_sick_leave_anniversary
 
 employees_bp = Blueprint("employees", __name__)
 
@@ -22,12 +22,14 @@ employees_bp = Blueprint("employees", __name__)
 @require_login
 def list_employees(company_id):
     state = load_state(company_id)
-    # 조회할 때마다, 입사일이 지난 기념일(12개월 단위)이 있으면 애뉴얼 리브 4주를
-    # 자동으로 지급합니다 — 별도 예약 작업(cron) 없이도, 누군가 직원 목록을 볼 때마다
-    # 자연스럽게 체크되는 구조입니다.
+    # 조회할 때마다, 입사일이 지난 기념일이 있으면 애뉴얼 리브(12개월 단위 4주)와
+    # 병가(6개월 후 첫 부여, 이후 12개월마다 10일)를 자동으로 지급합니다 — 별도
+    # 예약 작업(cron) 없이도, 누군가 직원 목록을 볼 때마다 자연스럽게 체크되는 구조입니다.
     any_changed = False
     for e in state["employees"]:
         if _process_annual_leave_anniversary(e, state):
+            any_changed = True
+        if _process_sick_leave_anniversary(e):
             any_changed = True
     if any_changed:
         save_state(company_id, state)
@@ -115,6 +117,12 @@ def add_employee(company_id):
         # 자동으로 4주씩 발생하거나(입사일이 등록된 경우) 사장이 직접 조정합니다.
         "lieu_day_balance": 0.0,
         "annual_leave_balance_hours": 0.0,
+        # 병가 잔액(일 단위) — 애뉴얼 리브와 달리 근무시간에 비례하지 않고, 자격
+        # 충족(입사 6개월) 시 10일, 그 후 12개월마다 10일씩 자동 발생합니다(최대 20일
+        # 누적). "하루"의 가치(시간/급여)는 그날 실제 근무 패턴에 따라 달라집니다.
+        "sick_leave_balance_days": 0.0,
+        # 이미 지급된 병가 기념일 목록(6개월째, 18개월째, 30개월째...) — 중복 지급 방지용.
+        "sick_leave_anniversaries_granted": [],
         # 이미 지급된(정산된) 애뉴얼 리브 기념일 목록 — 같은 기념일에 중복으로 4주가
         # 또 발생하지 않도록 기록해둡니다.
         "annual_leave_anniversaries_granted": [],
