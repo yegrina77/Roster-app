@@ -6358,7 +6358,7 @@ async function showAutoFillHolidaysModal() {
       await api("/api/public-holidays/auto-populate", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({holidays: selected.map(h => ({date: h.date, name: h.name}))}),
+        body: JSON.stringify({holidays: selected.map(h => ({date: h.date, name: h.name, pair_date: h.pair_date}))}),
       });
       overlay.remove();
       loadPublicHolidays();
