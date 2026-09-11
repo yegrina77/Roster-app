@@ -829,6 +829,8 @@ const I18N = {
     leave_type_annual_leave: "애뉴얼 리브", leave_type_lieu_day: "Lieu Day",
     balance_lieu_day: "Lieu Day 잔액: {n}일", balance_annual_leave: "애뉴얼 리브 잔액: {h}시간",
     balance_sick_leave: "병가 잔액: {n}일",
+    tenure_days_display: "입사 {n}일째", tenure_no_hire_date: "입사일이 등록되어 있지 않습니다.",
+    export_payroll_csv_btn: "📄 급여 기록 CSV", export_leave_history_csv_btn: "📄 리브 이력 CSV",
     balance_adjust_sick_btn: "병가 조정", balance_adjust_sick_title: "{name}님의 병가 잔액 조정",
     balance_adjust_sick_sub: "새 잔액(일)을 직접 입력해주세요. 최대 20일까지 누적 가능합니다.",
     balance_adjust_sick_input_label: "새 잔액(일)", balance_adjust_sick_invalid: "0~20 사이의 숫자를 입력해주세요.",
@@ -1217,6 +1219,8 @@ const I18N = {
     leave_type_annual_leave: "Annual Leave", leave_type_lieu_day: "Lieu Day",
     balance_lieu_day: "Lieu Day balance: {n}", balance_annual_leave: "Annual Leave balance: {h}h",
     balance_sick_leave: "Sick Leave balance: {n} day(s)",
+    tenure_days_display: "Day {n} since hire", tenure_no_hire_date: "Hire date not set.",
+    export_payroll_csv_btn: "📄 Payroll CSV", export_leave_history_csv_btn: "📄 Leave History CSV",
     balance_adjust_sick_btn: "Adjust Sick", balance_adjust_sick_title: "Adjust {name}'s Sick Leave Balance",
     balance_adjust_sick_sub: "Enter the new balance (days). Max 20 days can be accumulated.",
     balance_adjust_sick_input_label: "New balance (days)", balance_adjust_sick_invalid: "Please enter a number between 0 and 20.",
@@ -5260,6 +5264,40 @@ function showShortfallResolveModal(weekKey, shortfall, onDone) {
 function buildRulesPanel(e) {
   const wrap = document.createElement("div");
   wrap.className = "rules-panel";
+
+  // ---- 입사일수 + 기록 내보내기 ----
+  const tenureBlock = document.createElement("div");
+  tenureBlock.className = "rules-block";
+  const tenureRow = document.createElement("div");
+  tenureRow.style.cssText = "display:flex; align-items:center; gap:14px; margin-bottom:10px; font-size:12px; padding:8px 10px; background:var(--panel-solid); border-radius:6px; flex-wrap:wrap;";
+  if (e.hire_date) {
+    const hireDate = new Date(e.hire_date + "T00:00:00");
+    const daysSince = Math.floor((new Date().setHours(0,0,0,0) - hireDate.getTime()) / 86400000);
+    const tenureSpan = document.createElement("span");
+    tenureSpan.textContent = tf("tenure_days_display", {n: daysSince});
+    tenureRow.appendChild(tenureSpan);
+  } else {
+    const noHireSpan = document.createElement("span");
+    noHireSpan.style.color = "var(--text-muted)";
+    noHireSpan.textContent = t("tenure_no_hire_date");
+    tenureRow.appendChild(noHireSpan);
+  }
+  const exportPayrollBtn = document.createElement("a");
+  exportPayrollBtn.className = "btn-ghost btn-sm";
+  exportPayrollBtn.textContent = t("export_payroll_csv_btn");
+  exportPayrollBtn.href = `/api/employees/${e.id}/payroll-export`;
+  exportPayrollBtn.target = "_blank";
+  exportPayrollBtn.style.textDecoration = "none";
+  const exportLeaveBtn = document.createElement("a");
+  exportLeaveBtn.className = "btn-ghost btn-sm";
+  exportLeaveBtn.textContent = t("export_leave_history_csv_btn");
+  exportLeaveBtn.href = `/api/employees/${e.id}/leave-history-export`;
+  exportLeaveBtn.target = "_blank";
+  exportLeaveBtn.style.textDecoration = "none";
+  tenureRow.appendChild(exportPayrollBtn);
+  tenureRow.appendChild(exportLeaveBtn);
+  tenureBlock.appendChild(tenureRow);
+  wrap.appendChild(tenureBlock);
 
   const leaveBlock = document.createElement("div");
   leaveBlock.className = "rules-block";
