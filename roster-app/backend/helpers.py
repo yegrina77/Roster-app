@@ -1320,9 +1320,12 @@ def _national_holidays_for_year(year):
             out.append({"date": shifted.isoformat(), "name": name, "needs_confirmation": False,
                         "mondayised": False, "pair_date": None})
         else:
-            out.append({"date": orig.isoformat(), "name": f"{name} (actual date)", "needs_confirmation": False,
+            # 원래 날짜는 순수 이름 그대로 두고(이게 "진짜" 그 공휴일이니까), 옮겨진
+            # 날짜에만 "(Mondayisation)" 표시를 붙입니다 — 그래야 어느 쪽이 원래
+            # 날짜인지 한눈에 구분됩니다.
+            out.append({"date": orig.isoformat(), "name": name, "needs_confirmation": False,
                         "mondayised": True, "pair_date": shifted.isoformat()})
-            out.append({"date": shifted.isoformat(), "name": f"{name} (Mondayised)", "needs_confirmation": False,
+            out.append({"date": shifted.isoformat(), "name": f"{name} (Mondayisation)", "needs_confirmation": False,
                         "mondayised": True, "pair_date": orig.isoformat()})
     out.sort(key=lambda x: x["date"])
     return out
