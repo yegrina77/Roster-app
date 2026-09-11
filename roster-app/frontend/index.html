@@ -827,6 +827,17 @@ const I18N = {
     leave_type_paid: "유급", leave_type_unpaid: "무급", leave_type_sick: "병가(유급)",
     leave_type_annual_leave: "애뉴얼 리브", leave_type_lieu_day: "Lieu Day",
     balance_lieu_day: "Lieu Day 잔액: {n}일", balance_annual_leave: "애뉴얼 리브 잔액: {h}시간",
+    balance_sick_leave: "병가 잔액: {n}일",
+    balance_adjust_sick_btn: "병가 조정", balance_adjust_sick_title: "{name}님의 병가 잔액 조정",
+    balance_adjust_sick_sub: "새 잔액(일)을 직접 입력해주세요. 최대 20일까지 누적 가능합니다.",
+    balance_adjust_sick_input_label: "새 잔액(일)", balance_adjust_sick_invalid: "0~20 사이의 숫자를 입력해주세요.",
+    shortfall_modal_title: "계약 최소시간 부족분 처리",
+    shortfall_modal_sub: "{name}님 — 계약 최소시간 {min}시간 중 실제 {actual}시간만 배정됨 ({shortfall}시간 부족)",
+    shortfall_reason_business: "사업 사정 (급여 보전)", shortfall_reason_employee: "직원 사정 (리브 등록)",
+    shortfall_day_label: "어느 요일인가요?", shortfall_hours_label: "시간",
+    shortfall_submit_topup_btn: "부족분 보전 등록", shortfall_submit_leave_btn: "리브로 등록",
+    shortfall_hours_required: "0보다 큰 시간을 입력해주세요.",
+    payroll_shortfall_tooltip: "계약 최소시간보다 부족합니다 — 클릭해서 처리하기",
     balance_adjust_btn: "조정", balance_adjust_title: "{name}의 애뉴얼 리브 잔액 조정",
     balance_adjust_sub: "정확한 법정 적립 계산 대신, 참고용으로 직접 관리하는 잔액입니다.",
     balance_adjust_input_label: "새 잔액 (시간)", balance_adjust_invalid: "0 이상의 숫자를 입력해주세요.",
@@ -1192,6 +1203,17 @@ const I18N = {
     leave_type_paid: "Paid", leave_type_unpaid: "Unpaid", leave_type_sick: "Sick (Paid)",
     leave_type_annual_leave: "Annual Leave", leave_type_lieu_day: "Lieu Day",
     balance_lieu_day: "Lieu Day balance: {n}", balance_annual_leave: "Annual Leave balance: {h}h",
+    balance_sick_leave: "Sick Leave balance: {n} day(s)",
+    balance_adjust_sick_btn: "Adjust Sick", balance_adjust_sick_title: "Adjust {name}'s Sick Leave Balance",
+    balance_adjust_sick_sub: "Enter the new balance (days). Max 20 days can be accumulated.",
+    balance_adjust_sick_input_label: "New balance (days)", balance_adjust_sick_invalid: "Please enter a number between 0 and 20.",
+    shortfall_modal_title: "Resolve Contracted Hours Shortfall",
+    shortfall_modal_sub: "{name} — only {actual}h of {min}h contracted hours were rostered ({shortfall}h short)",
+    shortfall_reason_business: "Business reason (top up pay)", shortfall_reason_employee: "Employee's own choice (register leave)",
+    shortfall_day_label: "Which day?", shortfall_hours_label: "Hours",
+    shortfall_submit_topup_btn: "Record shortfall top-up", shortfall_submit_leave_btn: "Register as leave",
+    shortfall_hours_required: "Please enter an hours value greater than 0.",
+    payroll_shortfall_tooltip: "Below contracted minimum hours — click to resolve",
     balance_adjust_btn: "Adjust", balance_adjust_title: "Adjust {name}'s Annual Leave Balance",
     balance_adjust_sub: "A reference balance you manage directly, not a certified legal accrual calculation.",
     balance_adjust_input_label: "New balance (hours)", balance_adjust_invalid: "Please enter a number 0 or greater.",
@@ -3607,13 +3629,18 @@ async function showEmployeePinsPage() {
 
 async function showPayrollPage(weekKey) {
   weekKey = weekKey || currentWeekKey;
-  let data;
+  let data, shortfalls;
   try {
     data = await api(`/api/weeks/${weekKey}/payroll`);
+    shortfalls = (currentCompany && currentCompany.role === "owner") || (currentCompany && currentCompany.role === "manager")
+      ? await api(`/api/weeks/${weekKey}/hours-shortfall`).catch(() => [])
+      : [];
   } catch (e) {
     return false;
   }
   if (!data) return false;
+  const shortfallByEmp = {};
+  (shortfalls || []).forEach(s => { shortfallByEmp[s.employee_id] = s; });
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -3777,15 +3804,23 @@ async function showPayrollPage(weekKey) {
     const nameCell = notes.length > 0
       ? `${row.employee_name}<br><span style="font-size:10px; color:var(--text-muted);">${notes.join(" · ")}</span>`
       : row.employee_name;
+    const shortfall = shortfallByEmp[row.employee_id];
+    const actualHoursCell = shortfall
+      ? `${row.weekly_actual_hours.toFixed(1)}h <span class="shortfall-warn-icon" style="cursor:pointer; color:#f59e0b;" title="${t('payroll_shortfall_tooltip')}">⚠️</span>`
+      : `${row.weekly_actual_hours.toFixed(1)}h`;
     tr.innerHTML = `
       <td style="padding:5px 6px;">${nameCell}</td>
       <td style="padding:5px 6px; text-align:right;">${wageCell}</td>
       <td style="padding:5px 6px; text-align:right;">${row.weekly_hours.toFixed(1)}h</td>
       <td style="padding:5px 6px; text-align:right; font-weight:600;">${schedPayCell}</td>
-      <td style="padding:5px 6px; text-align:right;">${row.weekly_actual_hours.toFixed(1)}h</td>
+      <td style="padding:5px 6px; text-align:right;">${actualHoursCell}</td>
       <td style="padding:5px 6px; text-align:right; font-weight:600;">${actualPayCell}</td>
       <td style="padding:5px 6px; text-align:right;">${diffCell}</td>
     `;
+    if (shortfall) {
+      const icon = tr.querySelector(".shortfall-warn-icon");
+      if (icon) icon.onclick = () => showShortfallResolveModal(weekKey, shortfall, () => { overlay.remove(); showPayrollPage(weekKey); });
+    }
     empTbody.appendChild(tr);
   });
   empTable.appendChild(empTbody);
@@ -4939,6 +4974,248 @@ function showAdjustAnnualLeaveModal(employee) {
   document.body.appendChild(overlay);
 }
 
+function showAdjustSickLeaveModal(employee) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "380px";
+
+  const title = document.createElement("h3");
+  title.textContent = tf("balance_adjust_sick_title", {name: employee.name});
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("balance_adjust_sick_sub");
+  box.appendChild(sub);
+
+  const label = document.createElement("label");
+  label.textContent = t("balance_adjust_sick_input_label");
+  label.style.cssText = "display:block; font-size:12px; margin-top:12px; margin-bottom:4px;";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.step = "0.5";
+  input.max = "20";
+  input.style.width = "100%";
+  input.value = employee.sick_leave_balance_days || 0;
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+
+  box.appendChild(label);
+  box.appendChild(input);
+  box.appendChild(errLine);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    const val = Number(input.value);
+    if (isNaN(val) || val < 0 || val > 20) {
+      errLine.textContent = t("balance_adjust_sick_invalid");
+      errLine.style.display = "block";
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      await api(`/api/employees/${employee.id}/adjust-sick-leave`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({set_days: val}),
+      });
+      overlay.remove();
+      loadEmployees();
+    } catch (e) {
+      saveBtn.disabled = false;
+    }
+  };
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  box.appendChild(btnRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showShortfallResolveModal(weekKey, shortfall, onDone) {
+  // 계약 최소시간보다 부족한 걸 어떻게 처리할지 고르는 화면입니다. 두 갈래로
+  // 나뉩니다 — "사업 사정"(장사가 한산해서 등, 사장님 쪽 판단)이면 그 부족분만큼
+  // 급여를 그냥 보전해주고, "직원 사정"(스스로 조퇴/조기퇴근 등)이면 리브로
+  // 등록합니다(부분 조퇴처럼 시간을 정확히 입력할 수 있게).
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "440px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("shortfall_modal_title");
+  box.appendChild(title);
+
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = tf("shortfall_modal_sub", {
+    name: shortfall.employee_name, min: shortfall.min_hours_per_week,
+    actual: shortfall.actual_hours, shortfall: shortfall.shortfall_hours,
+  });
+  box.appendChild(sub);
+
+  const choiceRow = document.createElement("div");
+  choiceRow.style.cssText = "display:flex; gap:8px; margin-top:12px;";
+  const bizBtn = document.createElement("button");
+  bizBtn.className = "btn-ghost";
+  bizBtn.style.flex = "1";
+  bizBtn.textContent = t("shortfall_reason_business");
+  const empBtn = document.createElement("button");
+  empBtn.className = "btn-ghost";
+  empBtn.style.flex = "1";
+  empBtn.textContent = t("shortfall_reason_employee");
+  choiceRow.appendChild(bizBtn);
+  choiceRow.appendChild(empBtn);
+  box.appendChild(choiceRow);
+
+  const formBox = document.createElement("div");
+  formBox.style.cssText = "display:none; margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:8px;";
+  box.appendChild(formBox);
+
+  const dayLabel = document.createElement("label");
+  dayLabel.textContent = t("shortfall_day_label");
+  dayLabel.style.cssText = "display:block; font-size:12px; margin-bottom:4px;";
+  const daySelect = document.createElement("select");
+  daySelect.style.width = "100%";
+  DAYS.forEach(d => {
+    const opt = document.createElement("option");
+    opt.value = d;
+    opt.textContent = DAY_LABEL[d];
+    daySelect.appendChild(opt);
+  });
+
+  const hoursLabel = document.createElement("label");
+  hoursLabel.textContent = t("shortfall_hours_label");
+  hoursLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const hoursInput = document.createElement("input");
+  hoursInput.type = "number";
+  hoursInput.min = "0.5";
+  hoursInput.step = "0.5";
+  hoursInput.style.width = "100%";
+  hoursInput.value = shortfall.shortfall_hours;
+
+  const reasonLabel = document.createElement("label");
+  reasonLabel.textContent = t("leave_reason_placeholder");
+  reasonLabel.style.cssText = "display:block; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const reasonInput = document.createElement("input");
+  reasonInput.type = "text";
+  reasonInput.maxLength = 200;
+  reasonInput.style.width = "100%";
+
+  const leaveTypeLabel = document.createElement("label");
+  leaveTypeLabel.textContent = t("label_leave_type");
+  leaveTypeLabel.style.cssText = "display:none; font-size:12px; margin-top:10px; margin-bottom:4px;";
+  const leaveTypeSelect = document.createElement("select");
+  leaveTypeSelect.style.cssText = "display:none; width:100%;";
+  ["sick", "unpaid", "annual_leave"].forEach(lt => {
+    const opt = document.createElement("option");
+    opt.value = lt;
+    opt.textContent = t(`leave_type_${lt}`);
+    leaveTypeSelect.appendChild(opt);
+  });
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+
+  const submitBtn = document.createElement("button");
+  submitBtn.className = "btn-primary";
+  submitBtn.style.cssText = "width:100%; margin-top:12px;";
+
+  let mode = null;  // "business" | "employee"
+
+  const showForm = (chosenMode) => {
+    mode = chosenMode;
+    formBox.style.display = "block";
+    leaveTypeLabel.style.display = chosenMode === "employee" ? "block" : "none";
+    leaveTypeSelect.style.display = chosenMode === "employee" ? "block" : "none";
+    submitBtn.textContent = chosenMode === "business" ? t("shortfall_submit_topup_btn") : t("shortfall_submit_leave_btn");
+    bizBtn.style.opacity = chosenMode === "business" ? "1" : "0.5";
+    empBtn.style.opacity = chosenMode === "employee" ? "1" : "0.5";
+  };
+  bizBtn.onclick = () => showForm("business");
+  empBtn.onclick = () => showForm("employee");
+
+  formBox.appendChild(dayLabel);
+  formBox.appendChild(daySelect);
+  formBox.appendChild(hoursLabel);
+  formBox.appendChild(hoursInput);
+  formBox.appendChild(leaveTypeLabel);
+  formBox.appendChild(leaveTypeSelect);
+  formBox.appendChild(reasonLabel);
+  formBox.appendChild(reasonInput);
+  formBox.appendChild(errLine);
+  formBox.appendChild(submitBtn);
+
+  submitBtn.onclick = async () => {
+    errLine.style.display = "none";
+    const hours = parseFloat(hoursInput.value);
+    if (!hours || hours <= 0) {
+      errLine.textContent = t("shortfall_hours_required");
+      errLine.style.display = "block";
+      return;
+    }
+    submitBtn.disabled = true;
+    try {
+      if (mode === "business") {
+        await api(`/api/weeks/${weekKey}/shortfall-topup`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            employee_id: shortfall.employee_id, day: daySelect.value,
+            hours, reason: reasonInput.value.trim(),
+          }),
+        });
+      } else {
+        const dayIndex = DAYS.indexOf(daySelect.value);
+        const dateIso = addDaysToKey(weekKey, dayIndex);
+        const emp = (window._employees || []).find(x => x.id === shortfall.employee_id);
+        const existingRequests = (emp && emp.leave_requests) || [];
+        const newRequest = {
+          id: "lr_" + Math.random().toString(36).slice(2, 10),
+          start_date: dateIso, end_date: dateIso, leave_type: leaveTypeSelect.value,
+          reason: reasonInput.value.trim(), daily_hours: {[dateIso]: hours},
+        };
+        await api(`/api/employees/${shortfall.employee_id}`, {
+          method: "PUT",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({leave_requests: [...existingRequests, newRequest]}),
+        });
+      }
+      overlay.remove();
+      if (onDone) onDone();
+    } catch (e) {
+      submitBtn.disabled = false;
+    }
+  };
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
 function buildRulesPanel(e) {
   const wrap = document.createElement("div");
   wrap.className = "rules-panel";
@@ -4947,18 +5224,26 @@ function buildRulesPanel(e) {
   leaveBlock.className = "rules-block";
   leaveBlock.innerHTML = `<h4>${t("rules_leave_title")}</h4><div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">${t("rules_leave_desc")}</div>`;
   const balanceRow = document.createElement("div");
-  balanceRow.style.cssText = "display:flex; align-items:center; gap:14px; margin-bottom:10px; font-size:12px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+  balanceRow.style.cssText = "display:flex; align-items:center; gap:14px; margin-bottom:10px; font-size:12px; padding:8px 10px; background:var(--panel-solid); border-radius:6px; flex-wrap:wrap;";
   const lieuSpan = document.createElement("span");
   lieuSpan.textContent = tf("balance_lieu_day", {n: (e.lieu_day_balance || 0).toFixed(1)});
   const annualSpan = document.createElement("span");
   annualSpan.textContent = tf("balance_annual_leave", {h: (e.annual_leave_balance_hours || 0).toFixed(1)});
+  const sickSpan = document.createElement("span");
+  sickSpan.textContent = tf("balance_sick_leave", {n: (e.sick_leave_balance_days || 0).toFixed(2)});
   const adjustBtn = document.createElement("button");
   adjustBtn.className = "btn-ghost btn-sm";
   adjustBtn.textContent = t("balance_adjust_btn");
   adjustBtn.onclick = () => showAdjustAnnualLeaveModal(e);
+  const adjustSickBtn = document.createElement("button");
+  adjustSickBtn.className = "btn-ghost btn-sm";
+  adjustSickBtn.textContent = t("balance_adjust_sick_btn");
+  adjustSickBtn.onclick = () => showAdjustSickLeaveModal(e);
   balanceRow.appendChild(lieuSpan);
   balanceRow.appendChild(annualSpan);
   balanceRow.appendChild(adjustBtn);
+  balanceRow.appendChild(sickSpan);
+  balanceRow.appendChild(adjustSickBtn);
   leaveBlock.appendChild(balanceRow);
   const leaveList = document.createElement("div");
   rulesDraft.leave_requests.forEach((lr, idx) => {
