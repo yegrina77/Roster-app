@@ -504,6 +504,44 @@ def _():
 
 
 # ---------------------------------------------------------------------------
+# 4-4. 공휴일 자동 계산 — 전국 공휴일(Mondayisation 포함) + 지역 기념일
+# ---------------------------------------------------------------------------
+
+@test("공휴일 자동계산 - 2026년 전국 공휴일이 실제 공식 발표 날짜와 정확히 일치한다 (ANZAC/Boxing Day Mondayisation 포함)")
+def _():
+    items = H._national_holidays_for_year(2026)
+    by_name = {h["name"]: h["date"] for h in items}
+    # 실제 확인된 값: ANZAC Day는 원래 4/25(토)라 월요일(4/27)로, Boxing Day는
+    # 원래 12/26(토)라 월요일(12/28)로 밀림 — Employment NZ 2026년 공식 표 기준.
+    assert by_name["ANZAC Day"] == "2026-04-27", f"실제: {by_name}"
+    assert by_name["Boxing Day"] == "2026-12-28", f"실제: {by_name}"
+    assert by_name["Matariki"] == "2026-07-10", f"실제: {by_name}"
+    assert len(items) == 11, f"11개가 아님: {len(items)}"
+    assert all(not h["needs_confirmation"] for h in items), "전국 공휴일에 확인 필요 표시가 붙어있음"
+
+
+@test("공휴일 자동계산 - 지역 기념일이 실제 공식 발표 날짜와 정확히 일치한다 (2026/2027년)")
+def _():
+    cases = [
+        ("auckland", 2026, "2026-01-26"), ("auckland", 2027, "2027-02-01"),
+        ("wellington", 2026, "2026-01-19"), ("wellington", 2027, "2027-01-25"),
+        ("nelson", 2026, "2026-02-02"), ("taranaki", 2026, "2026-03-09"),
+        ("otago", 2026, "2026-03-23"), ("otago", 2027, "2027-03-22"),
+        ("southland", 2026, "2026-04-07"), ("south_canterbury", 2026, "2026-09-28"),
+    ]
+    for region, year, expected in cases:
+        result = H._regional_anniversary_for_year(region, year)
+        assert result["date"] == expected, f"{region} {year}: 실제 {result['date']}, 기대 {expected}"
+        assert result["needs_confirmation"] is True, f"{region}: 지역 기념일엔 확인 필요 표시가 있어야 함"
+
+
+@test("공휴일 자동계산 - region이 'none'이거나 모르는 값이면 None을 돌려준다")
+def _():
+    assert H._regional_anniversary_for_year("none", 2026) is None
+    assert H._regional_anniversary_for_year("mars", 2026) is None
+
+
+# ---------------------------------------------------------------------------
 # 5. 애뉴얼 리브 기념일 자동 발생 + 8% 자동 적립 중복 방지
 # ---------------------------------------------------------------------------
 
@@ -686,10 +724,10 @@ def _():
         ast.parse(open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read())
 
 
-@test("전체 앱 임포트 성공 + 등록된 라우트가 97개(=96개 + 병가 잔액 직접조정 1개)")
+@test("전체 앱 임포트 성공 + 등록된 라우트가 101개(=97개 + 공휴일 자동입력 기능 4개)")
 def _():
     rules = list(A.app.url_map.iter_rules())
-    assert len(rules) == 97, f"실제 라우트 개수: {len(rules)}"
+    assert len(rules) == 101, f"실제 라우트 개수: {len(rules)}"
 
 
 @test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
