@@ -6,8 +6,10 @@ RosterFlow 급여/리브/공휴일 정책 모듈.
 담당합니다. helpers.py에만 의존합니다.
 """
 from datetime import date, timedelta, datetime, timezone
-from flask import request, jsonify, g
+from flask import request, jsonify, g, Response
 from scheduler import DAYS
+import csv
+import io
 
 from helpers import (
     NZ_TZ, load_state, save_state, require_login, require_owner, _log_audit, HOLIDAY_OWD_THRESHOLD,
@@ -325,6 +327,127 @@ def get_week_payroll(company_id, week_key):
     _record_earnings_history(state, week_key, payroll)
     save_state(company_id, state)
     return jsonify(payroll)
+
+
+def _build_payroll_export_rows(state, employee_id, start, end):
+    """이 직원의 start~end 기간 급여 기록을 요일별 행으로 만듭니다(CSV 변환 전
+    순수 데이터) — 라우트 함수와 분리해서, HTTP 요청 없이도 이 로직만 바로
+    테스트할 수 있게 합니다."""
+    rows = []
+    cur_monday = start - timedelta(days=start.weekday())
+    while cur_monday <= end:
+        week_key = cur_monday.isoformat()
+        payroll = _compute_week_payroll(state, week_key)
+        emp_row = next((r for r in payroll["employees"] if r["employee_id"] == employee_id), None)
+        if emp_row:
+            for i, day in enumerate(DAYS):
+                the_date = cur_monday + timedelta(days=i)
+                if not (start <= the_date <= end):
+                    continue
+                d = emp_row["per_day"].get(day, {})
+                rows.append((
+                    the_date.isoformat(), day,
+                    d.get("hours", 0), d.get("pay"),
+                    d.get("actual_hours", 0), d.get("actual_pay"),
+                    d.get("leave_type") or "", "Yes" if d.get("is_public_holiday") else "",
+                    d.get("topup_hours") or "",
+                ))
+        cur_monday += timedelta(days=7)
+    return rows
+
+
+@payroll_bp.route("/api/employees/<employee_id>/payroll-export", methods=["GET"])
+@require_login
+def export_employee_payroll_csv(company_id, employee_id):
+    """사장/매니저 전용: 이 직원의 급여·근무 기록을 CSV로 내보냅니다. 뉴질랜드
+    Holidays Act/Employment Relations Act상, 임금·시간·리브 기록은 최소 7년간
+    보관해야 하고 노동청(Labour Inspector)이 요청하면 즉시 제출할 수 있어야 합니다
+    — 이 파일을 받아서 따로 보관해두시면 그 대비가 됩니다. 실제 급여 지급은 사장님이
+    쓰시는 정식 페이롤 시스템(PAYE·KiwiSaver 계산 포함)에서 이뤄지는 게 맞고, 이
+    CSV는 어디까지나 "그 지급이 어떤 근거로 계산됐는지"를 보여주는 참고 자료입니다.
+
+    쿼리 파라미터: start_date, end_date (YYYY-MM-DD, 생략하면 입사일~오늘 전체.
+    입사일도 없으면 2020-01-01부터로 간주합니다)."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not employee:
+        return jsonify({"error": "Employee not found."}), 404
+
+    start_str = request.args.get("start_date")
+    end_str = request.args.get("end_date")
+    try:
+        if start_str:
+            start = date.fromisoformat(start_str)
+        elif employee.get("hire_date"):
+            start = date.fromisoformat(employee["hire_date"])
+        else:
+            start = date(2020, 1, 1)
+        end = date.fromisoformat(end_str) if end_str else date.today()
+    except ValueError:
+        return jsonify({"error": "날짜 형식이 올바르지 않습니다."}), 400
+    if start > end:
+        return jsonify({"error": "시작일이 종료일보다 늦을 수 없습니다."}), 400
+    if (end - start).days > 366 * 8:
+        return jsonify({"error": "한 번에 최대 8년치까지만 내보낼 수 있습니다. 기간을 나눠서 요청해주세요."}), 400
+
+    rows = _build_payroll_export_rows(state, employee_id, start, end)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Employee Name", "Employee ID", "Date", "Day",
+        "Scheduled Hours", "Scheduled Pay ($)", "Actual Hours", "Actual Pay ($)",
+        "Leave Type", "Public Holiday", "Business Shortfall Top-up Hours",
+    ])
+    for r in rows:
+        writer.writerow([employee["name"], employee_id, *r])
+    csv_text = output.getvalue()
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in employee["name"])
+    filename = f"{safe_name}_payroll_{start.isoformat()}_to_{end.isoformat()}.csv"
+    return Response(
+        csv_text, mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@payroll_bp.route("/api/employees/<employee_id>/leave-history-export", methods=["GET"])
+@require_login
+def export_employee_leave_history_csv(company_id, employee_id):
+    """사장/매니저 전용: 이 직원의 리브 신청 이력 전체(대기중/승인됨/거절됨 다
+    포함)를 CSV로 내보냅니다 — 누가 언제 신청했고, 누가 언제 승인/거절했는지까지
+    전부 기록되어 있어서, 나중에 "그때 승인 안 했다/신청 안 했다" 같은 분쟁이
+    생겼을 때 근거 자료로 쓸 수 있습니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
+    state = load_state(company_id)
+    employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
+    if not employee:
+        return jsonify({"error": "Employee not found."}), 404
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Employee Name", "Start Date", "End Date", "Leave Type", "Status", "Reason",
+        "Submitted By", "Submitted At", "Reviewed By", "Reviewed At", "Reject Reason",
+    ])
+    for lr in sorted(employee.get("leave_requests") or [], key=lambda r: r.get("start_date", "")):
+        writer.writerow([
+            employee["name"], lr.get("start_date", ""), lr.get("end_date", ""),
+            lr.get("leave_type", ""), lr.get("status", "approved"), lr.get("reason", ""),
+            lr.get("submitted_by_name", ""), lr.get("submitted_at", ""),
+            lr.get("reviewed_by_name", ""), lr.get("reviewed_at", ""), lr.get("reject_reason", ""),
+        ])
+    csv_text = output.getvalue()
+
+    safe_name = "".join(c if c.isalnum() else "_" for c in employee["name"])
+    filename = f"{safe_name}_leave_history.csv"
+    return Response(
+        csv_text, mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @payroll_bp.route("/api/weeks/<week_key>/hours-shortfall", methods=["GET"])
