@@ -1928,6 +1928,22 @@ async function showLeaveRequestModal() {
   sub.textContent = t("leave_request_modal_sub");
   box.appendChild(sub);
 
+  // 잔액을 매번 새로 불러와서 보여줍니다(캐시된 값 대신) — 그래야 방금 승인된
+  // 리브가 있어도 최신 잔액이 정확히 보입니다.
+  let balances = {lieu_day_balance: 0, annual_leave_balance_hours: 0, sick_leave_balance_days: 0};
+  try {
+    const me = await api("/api/employee-auth/me");
+    if (me) balances = me;
+  } catch (e) { /* 실패해도 신청 폼 자체는 계속 보여줍니다 */ }
+  const balanceRow = document.createElement("div");
+  balanceRow.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px; font-size:12px;";
+  balanceRow.innerHTML = `
+    <span>${tf("balance_lieu_day", {n: (balances.lieu_day_balance || 0).toFixed(1)})}</span>
+    <span>${tf("balance_annual_leave", {h: (balances.annual_leave_balance_hours || 0).toFixed(1)})}</span>
+    <span>${tf("balance_sick_leave", {n: (balances.sick_leave_balance_days || 0).toFixed(2)})}</span>
+  `;
+  box.appendChild(balanceRow);
+
   // ---- 신청 폼 ----
   const formBox = document.createElement("div");
   formBox.style.cssText = "margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:8px;";
