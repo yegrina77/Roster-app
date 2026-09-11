@@ -593,6 +593,42 @@ def _():
 
 
 # ---------------------------------------------------------------------------
+# 4-5. 급여 CSV 내보내기
+# ---------------------------------------------------------------------------
+
+@test("급여 CSV 내보내기 - 여러 주에 걸친 요일별 데이터가 정확히 뽑힌다")
+def _():
+    state = {
+        "employees": [{
+            "id": "e1", "name": "Test", "department": "kitchen", "pay_type": "hourly", "hourly_wage": 25.0,
+            "hours_type": "fixed", "min_hours_per_week": 30, "target_days_per_week": 5, "hire_date": None,
+            "leave_requests": [], "annual_leave_balance_hours": 0.0, "lieu_day_balance": 0.0, "sick_leave_balance_days": 10.0,
+            "blocked_shift_types": [], "preferred": [], "preferred_off_days": [],
+        }],
+        "weeks": {
+            "2026-09-07": {"schedule": {"assignments": [
+                {"employee_id": "e1", "day": "mon", "shift_type": "opening", "custom_start": "09:00", "custom_end": "17:00"},
+            ]}},
+            "2026-09-14": {"schedule": {"assignments": [
+                {"employee_id": "e1", "day": "tue", "shift_type": "opening", "custom_start": "09:00", "custom_end": "17:00"},
+            ]}},
+        },
+        "public_holidays": [], "shift_time_overrides": {},
+        "departments": [{"id": "kitchen", "name": "Kitchen"}],
+        "shift_types": [{"id": "opening", "name": "Opening", "department_id": "kitchen", "start": "09:00", "end": "17:00", "is_closing": False, "blocked_after_closing": False}],
+        "public_holiday_policy": H._default_public_holiday_policy(),
+        "time_entries": [], "payroll_rounding_minutes": 1, "earnings_history": {}, "lieu_day_credits": [],
+        "annual_leave_auto_accrual_enabled": False, "annual_leave_accrual_credits": [],
+    }
+    rows = P._build_payroll_export_rows(state, "e1", date(2026, 9, 7), date(2026, 9, 20))
+    assert len(rows) == 14, f"2주치 14일이어야 함: {len(rows)}"
+    mon_row = next(r for r in rows if r[0] == "2026-09-07")
+    assert mon_row[2] == 7.0, f"9/7 스케줄 시간이 7이어야 함: {mon_row}"
+    tue_row = next(r for r in rows if r[0] == "2026-09-15")
+    assert tue_row[2] == 7.0, f"9/15 스케줄 시간이 7이어야 함: {tue_row}"
+
+
+# ---------------------------------------------------------------------------
 # 5. 애뉴얼 리브 기념일 자동 발생 + 8% 자동 적립 중복 방지
 # ---------------------------------------------------------------------------
 
@@ -775,10 +811,10 @@ def _():
         ast.parse(open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read())
 
 
-@test("전체 앱 임포트 성공 + 등록된 라우트가 101개(=97개 + 공휴일 자동입력 기능 4개)")
+@test("전체 앱 임포트 성공 + 등록된 라우트가 103개(=101개 + 급여/리브 CSV 내보내기 2개)")
 def _():
     rules = list(A.app.url_map.iter_rules())
-    assert len(rules) == 101, f"실제 라우트 개수: {len(rules)}"
+    assert len(rules) == 103, f"실제 라우트 개수: {len(rules)}"
 
 
 @test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
