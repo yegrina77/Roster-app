@@ -988,6 +988,11 @@ def auto_populate_public_holidays(company_id):
         if not h_date or h_date in existing_dates:
             continue
         entry = {"date": h_date, "name": name}
+        # Mondayisation 짝 정보(원래날짜/옮겨진날짜)가 있으면 같이 저장합니다 — 급여
+        # 계산에서 "이 직원한텐 어느 쪽이 진짜 공휴일인지" 판단하는 데 씁니다.
+        if h.get("pair_date"):
+            entry["pair_date"] = h["pair_date"]
+            entry["mondayised"] = True
         state["public_holidays"].append(entry)
         existing_dates.add(h_date)
         added.append(entry)

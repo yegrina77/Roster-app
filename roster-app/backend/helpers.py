@@ -1251,11 +1251,22 @@ def _apply_mondayisation(d, already_used_dates):
 
 def _national_holidays_for_year(year):
     """법으로 확정된 전국 공휴일 11개를 계산합니다(Mondayisation 적용 완료).
-    돌려주는 값: [{date, name, needs_confirmation}] 목록. needs_confirmation은
-    전국 공휴일에는 해당 없음(전부 False) — Matariki를 포함해 전부 법으로 확정된
-    값이라 사장님이 따로 확인할 필요가 없습니다(2040년 이후는 Matariki 표가 없어서
-    자동계산에서 제외됩니다 — 그 이후는 정부가 아직 발표 안 한 게 아니라 저희가
-    표를 그만큼만 넣어뒀을 뿐이니, 필요하면 수동으로 추가해주세요)."""
+
+    돌려주는 값: [{date, name, needs_confirmation, mondayised, pair_date}] 목록.
+    needs_confirmation은 전국 공휴일에는 해당 없음(전부 False) — Matariki를 포함해
+    전부 법으로 확정된 값이라 사장님이 따로 확인할 필요가 없습니다.
+
+    ⚠️ 공휴일이 실제로 주말에 걸려서 Mondayisation이 발생한 경우(mondayised: True),
+    "원래 날짜(주말)"와 "옮겨진 날짜(평일)" 둘 다 각각 하나의 항목으로 반환하고,
+    서로를 pair_date로 가리킵니다 — 뉴질랜드 법상 이 둘 중 어느 쪽이 실제로 그
+    직원의 공휴일인지는 "그 직원이 평소 그 요일에 일하는지"에 따라 직원별로 다르기
+    때문입니다(Holidays Act 2003 45A조). 두 날짜를 둘 다 등록해둬야, 급여 계산
+    쪽에서 직원별로 정확한 날짜를 골라 적용할 수 있습니다(_public_holiday_category
+    참고). 평일에 바로 걸린 공휴일(mondayised: False)은 pair_date가 없습니다.
+
+    (2040년 이후는 Matariki 표가 없어서 자동계산에서 제외됩니다 — 그 이후는 정부가
+    아직 발표 안 한 게 아니라 저희가 표를 그만큼만 넣어뒀을 뿐이니, 필요하면 수동으로
+    추가해주세요.)"""
     used = set()
     easter = _easter_sunday(year)
     good_friday = easter - timedelta(days=2)
@@ -1270,36 +1281,51 @@ def _national_holidays_for_year(year):
     for d, name in fixed:
         s = _apply_mondayisation(d, used)
         used.add(s.isoformat())
-        fixed_shifted.append((s, name))
+        fixed_shifted.append((d, s, name))
 
-    waitangi = _apply_mondayisation(date(year, 2, 6), used)
+    waitangi_orig = date(year, 2, 6)
+    waitangi = _apply_mondayisation(waitangi_orig, used)
     used.add(waitangi.isoformat())
-    anzac = _apply_mondayisation(date(year, 4, 25), used)
+    anzac_orig = date(year, 4, 25)
+    anzac = _apply_mondayisation(anzac_orig, used)
     used.add(anzac.isoformat())
 
-    christmas = date(year, 12, 25)
-    boxing = date(year, 12, 26)
+    christmas_orig = date(year, 12, 25)
+    boxing_orig = date(year, 12, 26)
     used_xmas = set()
-    christmas_shifted = _apply_mondayisation(christmas, used_xmas)
+    christmas_shifted = _apply_mondayisation(christmas_orig, used_xmas)
     used_xmas.add(christmas_shifted.isoformat())
-    boxing_shifted = _apply_mondayisation(boxing, used_xmas)
+    boxing_shifted = _apply_mondayisation(boxing_orig, used_xmas)
 
-    out = [
-        (fixed_shifted[0][0], fixed_shifted[0][1]),
-        (fixed_shifted[1][0], fixed_shifted[1][1]),
-        (waitangi, "Waitangi Day"),
-        (good_friday, "Good Friday"),
-        (easter_monday, "Easter Monday"),
-        (anzac, "ANZAC Day"),
-        (_nth_weekday_of_month(year, 6, 0, 1), "King's Birthday"),
-        (_nth_weekday_of_month(year, 10, 0, 4), "Labour Day"),
-        (christmas_shifted, "Christmas Day"),
-        (boxing_shifted, "Boxing Day"),
+    # (원래날짜, 옮겨진날짜, 이름) 목록 — 옮겨진 날짜가 원래날짜와 같으면(평일에 바로
+    # 걸린 경우) Mondayisation이 없었다는 뜻입니다.
+    pairs = [
+        (fixed_shifted[0][0], fixed_shifted[0][1], fixed_shifted[0][2]),
+        (fixed_shifted[1][0], fixed_shifted[1][1], fixed_shifted[1][2]),
+        (waitangi_orig, waitangi, "Waitangi Day"),
+        (good_friday, good_friday, "Good Friday"),
+        (easter_monday, easter_monday, "Easter Monday"),
+        (anzac_orig, anzac, "ANZAC Day"),
+        (None, _nth_weekday_of_month(year, 6, 0, 1), "King's Birthday"),
+        (None, _nth_weekday_of_month(year, 10, 0, 4), "Labour Day"),
+        (christmas_orig, christmas_shifted, "Christmas Day"),
+        (boxing_orig, boxing_shifted, "Boxing Day"),
     ]
     if year in MATARIKI_DATES:
-        out.append((date.fromisoformat(MATARIKI_DATES[year]), "Matariki"))
-    out.sort(key=lambda x: x[0])
-    return [{"date": d.isoformat(), "name": name, "needs_confirmation": False} for d, name in out]
+        pairs.append((None, date.fromisoformat(MATARIKI_DATES[year]), "Matariki"))
+
+    out = []
+    for orig, shifted, name in pairs:
+        if orig is None or orig == shifted:
+            out.append({"date": shifted.isoformat(), "name": name, "needs_confirmation": False,
+                        "mondayised": False, "pair_date": None})
+        else:
+            out.append({"date": orig.isoformat(), "name": f"{name} (actual date)", "needs_confirmation": False,
+                        "mondayised": True, "pair_date": shifted.isoformat()})
+            out.append({"date": shifted.isoformat(), "name": f"{name} (Mondayised)", "needs_confirmation": False,
+                        "mondayised": True, "pair_date": orig.isoformat()})
+    out.sort(key=lambda x: x["date"])
+    return out
 
 
 def _regional_anniversary_for_year(region, year):

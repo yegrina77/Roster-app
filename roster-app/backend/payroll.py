@@ -131,7 +131,10 @@ def _compute_week_payroll(state, week_key):
             has_open_entry = has_open_entry or day_has_open_entry
 
             if day in holiday_by_day:
-                category, _count, _is_usual = _public_holiday_category(state, policy, emp_id, day, week_key, worked)
+                category, _count, _is_usual = _public_holiday_category(
+                    state, policy, emp_id, day, week_key, worked,
+                    pair_date=holiday_by_day[day].get("pair_date"),
+                )
                 if category in (1, 3):
                     if is_salary:
                         # 연봉제는 기본급이 이미 고정 주급에 포함되어 있으므로, 공휴일에
@@ -905,7 +908,7 @@ def _credit_lieu_days_for_week(state, week_key):
         except (KeyError, ValueError, TypeError):
             continue
         if hd in week_dates:
-            holiday_by_day[DAYS[week_dates.index(hd)]] = h["date"]
+            holiday_by_day[DAYS[week_dates.index(hd)]] = h
     if not holiday_by_day:
         return
 
@@ -915,9 +918,13 @@ def _credit_lieu_days_for_week(state, week_key):
     policy = state["public_holiday_policy"]
     credited = set(state.setdefault("lieu_day_credits", []))
     for e in state["employees"]:
-        for day, holiday_date in holiday_by_day.items():
+        for day, holiday_entry in holiday_by_day.items():
+            holiday_date = holiday_entry["date"]
             worked = (e["id"], day) in worked_by_emp_day
-            category, _count, _is_usual = _public_holiday_category(state, policy, e["id"], day, week_key, worked)
+            category, _count, _is_usual = _public_holiday_category(
+                state, policy, e["id"], day, week_key, worked,
+                pair_date=holiday_entry.get("pair_date"),
+            )
             if category == 1:
                 credit_key = f"{e['id']}|{holiday_date}"
                 if credit_key not in credited:
@@ -981,11 +988,19 @@ def _weekday_total_count(state, employee_id, day, week_key, window=FREQUENCY_WIN
             count += 1
     return count
 
-def _public_holiday_category(state, policy, emp_id, day, week_key, worked):
+def _public_holiday_category(state, policy, emp_id, day, week_key, worked, pair_date=None):
     """공휴일 요일(day)에 이 직원이 A/B/C/D 중 어느 카테고리에 해당하는지 계산합니다
     (1=A: 평소근무일+일함, 2=B: 평소근무일+안일함, 3=C: 평소근무일아님+일함, 4=D: 해당없음).
     get_public_holiday_info와 payroll 계산에서 공통으로 씁니다 — 두 군데서 서로 다른
-    기준으로 계산되면 안 되기 때문에 반드시 이 함수 하나만 씁니다."""
+    기준으로 계산되면 안 되기 때문에 반드시 이 함수 하나만 씁니다.
+
+    ⚠️ pair_date — 이 공휴일이 Mondayisation으로 원래날짜/옮겨진날짜 짝을 이루는
+    경우(예: 박싱데이가 토요일이라 월요일로 옮겨진 경우), 짝이 되는 다른 날짜의
+    ISO 문자열을 넘겨받습니다. 뉴질랜드 법상(Holidays Act 2003 45A조), 이 둘 중
+    "그 직원이 평소 일하는 쪽"에만 공휴일 혜택이 적용되고, 둘 다 평소 근무일이면
+    더 이른(=원래, 대개 주말) 날짜만 인정됩니다(이중 수령 방지) — 그래서 pair_date가
+    있으면, 짝 날짜도 이 직원에게 평소 근무일인지 추가로 확인해서 최종 category를
+    조정합니다."""
     if policy["method"] == "threshold":
         count = _weekday_total_count(state, emp_id, day, week_key, window=policy["window_weeks"])
         is_usual_day = count >= policy["min_weeks_worked"]
@@ -997,8 +1012,26 @@ def _public_holiday_category(state, policy, emp_id, day, week_key, worked):
             category = 3
         else:
             category = 4
+
+        if pair_date:
+            this_date = _week_dates(week_key)[DAYS.index(day)]
+            pair_dt = date.fromisoformat(pair_date)
+            pair_week_key = _week_key_for_date(pair_dt)
+            pair_day = DAYS[pair_dt.weekday()]
+            pair_count = _weekday_total_count(state, emp_id, pair_day, pair_week_key, window=policy["window_weeks"])
+            pair_is_usual = pair_count >= policy["min_weeks_worked"]
+            if not is_usual_day and pair_is_usual:
+                # 이 날짜는 평소 근무일이 아니고, 짝 날짜가 평소 근무일 -> 혜택은
+                # 짝 날짜 쪽에 적용되어야 하므로, 이 날짜는 해당없음으로 강제합니다.
+                category = 4
+            elif is_usual_day and pair_is_usual and this_date > pair_dt:
+                # 둘 다 평소 근무일인데 이 날짜가 더 늦은(옮겨진) 쪽이면, 혜택은
+                # 더 이른(원래) 날짜에만 적용되므로 여기는 해당없음으로 강제합니다.
+                category = 4
     else:  # actual_only — 과거 근무 기록을 보지 않고, 이 공휴일에 실제로 일했는지만 봅니다.
         # 일했으면 항상 1.5배+대체휴무(카테고리 1), 아니면 해당 없음(카테고리 4)으로 고정합니다.
+        # (actual_only 방식은 애초에 "평소 근무일"이라는 개념을 안 쓰므로, Mondayisation
+        # 짝 처리도 필요 없습니다 — 실제로 일한 그 날짜 그대로 적용됩니다.)
         count = None
         is_usual_day = None
         category = 1 if worked else 4
@@ -1027,7 +1060,10 @@ def get_public_holiday_info(company_id, week_key):
             continue
         if hd in week_dates:
             day_idx = week_dates.index(hd)
-            holidays_this_week.append({"date": h["date"], "name": h.get("name", ""), "day": DAYS[day_idx]})
+            holidays_this_week.append({
+                "date": h["date"], "name": h.get("name", ""), "day": DAYS[day_idx],
+                "pair_date": h.get("pair_date"), "mondayised": bool(h.get("mondayised")),
+            })
 
     if not holidays_this_week:
         return jsonify({"holidays": [], "categories": {}, "policy": policy})
@@ -1043,7 +1079,10 @@ def get_public_holiday_info(company_id, week_key):
         for e in state["employees"]:
             emp_id = e["id"]
             worked = (emp_id, day) in worked_today
-            category, count, is_usual_day = _public_holiday_category(state, policy, emp_id, day, week_key, worked)
+            category, count, is_usual_day = _public_holiday_category(
+                state, policy, emp_id, day, week_key, worked,
+                pair_date=holiday.get("pair_date"),
+            )
 
             rows.append({
                 "employee_id": emp_id, "employee_name": e["name"],
