@@ -623,6 +623,7 @@
       <div class="field"><label data-i18n="ph_name">이름</label><input id="ph-name" placeholder="Waitangi Day"></div>
       <button class="btn-primary" onclick="addPublicHoliday()" data-i18n="btn_add_generic">추가</button>
       <button class="btn-ghost" onclick="showPublicHolidayPolicyModal()" data-i18n="ph_policy_btn">⚙️ 판정 기준 설정</button>
+      <button class="btn-ghost" onclick="showAutoFillHolidaysModal()" data-i18n="ph_autofill_btn">📅 자동 채우기</button>
     </div>
     <table id="ph-table">
       <thead><tr><th data-i18n="ph_date">날짜</th><th data-i18n="ph_name">이름</th><th></th></tr></thead>
@@ -855,6 +856,18 @@ const I18N = {
     ph_title: "Public Holidays", btn_add_generic: "추가",
     ph_desc: "1년치 공휴일을 미리 등록해두면, 그 날짜가 포함된 주로 이동할 때 자동으로 알려드리고, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인할 수 있습니다.",
     ph_policy_btn: "⚙️ 판정 기준 설정",
+    ph_autofill_btn: "📅 자동 채우기", ph_autofill_title: "공휴일 자동 채우기",
+    ph_autofill_sub: "전국 공휴일은 법으로 확정된 날짜라 그대로 쓰셔도 되고, 지역 기념일은 확인 후 등록해주세요.",
+    ph_region_label: "우리 매장 지역", ph_year_label: "연도", ph_preview_btn: "미리보기",
+    ph_autofill_submit_btn: "선택한 항목 등록", loading_generic: "불러오는 중...",
+    ph_already_registered: "이미 등록됨", ph_needs_confirmation_badge: "⚠️ 확인 필요(지역 기념일)",
+    ph_no_region_note: "지역을 설정하시면 그 지역 기념일도 같이 채워드릴 수 있어요.",
+    ph_select_at_least_one: "하나 이상 선택해주세요.",
+    region_none: "설정 안 함", region_auckland: "오클랜드", region_wellington: "웰링턴",
+    region_canterbury: "캔터베리(크라이스트처치)", region_otago: "오타고", region_southland: "사우스랜드",
+    region_hawkes_bay: "혹스베이", region_taranaki: "타라나키", region_nelson: "넬슨",
+    region_marlborough: "말버러", region_south_canterbury: "사우스 캔터베리", region_westland: "웨스트랜드",
+    region_chatham_islands: "채텀아일랜드",
     ph_policy_title: "공휴일 판정 기준", ph_policy_sub: "직원이 공휴일에 '평소 근무일'이었는지를 판단하는 기준을 회사에 맞게 설정하세요.",
     ph_policy_method_threshold_title: "최근 근무 비율 기준",
     ph_policy_method_threshold_desc: "지난 N주 중 M주 이상 그 요일에 근무했으면 평소 근무일로 간주합니다.",
@@ -1231,6 +1244,18 @@ const I18N = {
     ph_title: "Public Holidays", btn_add_generic: "Add",
     ph_desc: "Register a year's worth of public holidays in advance. When you navigate to a week containing one, you'll be notified automatically and can check which NZ labour law entitlement applies to each employee.",
     ph_policy_btn: "⚙️ Set Determination Rule",
+    ph_autofill_btn: "📅 Auto-fill", ph_autofill_title: "Auto-fill Public Holidays",
+    ph_autofill_sub: "National holidays are set by law, so you can use them as-is. Please confirm regional anniversary days before adding.",
+    ph_region_label: "Our region", ph_year_label: "Year", ph_preview_btn: "Preview",
+    ph_autofill_submit_btn: "Register selected", loading_generic: "Loading...",
+    ph_already_registered: "Already registered", ph_needs_confirmation_badge: "⚠️ Needs confirmation (regional)",
+    ph_no_region_note: "Set your region to also auto-fill that region's anniversary day.",
+    ph_select_at_least_one: "Please select at least one.",
+    region_none: "Not set", region_auckland: "Auckland", region_wellington: "Wellington",
+    region_canterbury: "Canterbury (Christchurch)", region_otago: "Otago", region_southland: "Southland",
+    region_hawkes_bay: "Hawke's Bay", region_taranaki: "Taranaki", region_nelson: "Nelson",
+    region_marlborough: "Marlborough", region_south_canterbury: "South Canterbury", region_westland: "Westland",
+    region_chatham_islands: "Chatham Islands",
     ph_policy_title: "Public Holiday Determination Rule", ph_policy_sub: "Set how your company decides whether an employee's public holiday was a 'usual working day'.",
     ph_policy_method_threshold_title: "Recent Work Ratio",
     ph_policy_method_threshold_desc: "If an employee worked that weekday at least M out of the last N weeks, treat it as a usual working day.",
@@ -6184,6 +6209,176 @@ async function addPublicHoliday() {
 async function deletePublicHoliday(dateVal) {
   await api(`/api/public-holidays/${dateVal}`, {method: "DELETE"});
   loadPublicHolidays();
+}
+
+async function showAutoFillHolidaysModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "520px";
+
+  const title = document.createElement("h3");
+  title.textContent = t("ph_autofill_title");
+  box.appendChild(title);
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("ph_autofill_sub");
+  box.appendChild(sub);
+
+  // ---- 지역 설정 ----
+  const regionRow = document.createElement("div");
+  regionRow.style.cssText = "display:flex; align-items:center; gap:8px; margin-top:12px;";
+  const regionLabel = document.createElement("label");
+  regionLabel.textContent = t("ph_region_label");
+  regionLabel.style.fontSize = "12px";
+  const regionSelect = document.createElement("select");
+  regionSelect.style.flex = "1";
+  let regionData;
+  try {
+    regionData = await api("/api/company/region");
+  } catch (e) {
+    regionData = {region: "none", regions: ["none"]};
+  }
+  (regionData.regions || ["none"]).forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r;
+    opt.textContent = t(`region_${r}`);
+    if (r === regionData.region) opt.selected = true;
+    regionSelect.appendChild(opt);
+  });
+  const saveRegionBtn = document.createElement("button");
+  saveRegionBtn.className = "btn-ghost btn-sm";
+  saveRegionBtn.textContent = t("btn_save");
+  saveRegionBtn.onclick = async () => {
+    await api("/api/company/region", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({region: regionSelect.value}),
+    });
+    runPreview();
+  };
+  regionRow.appendChild(regionLabel);
+  regionRow.appendChild(regionSelect);
+  regionRow.appendChild(saveRegionBtn);
+  box.appendChild(regionRow);
+
+  // ---- 연도 선택 ----
+  const yearRow = document.createElement("div");
+  yearRow.style.cssText = "display:flex; align-items:center; gap:8px; margin-top:10px;";
+  const yearLabel = document.createElement("label");
+  yearLabel.textContent = t("ph_year_label");
+  yearLabel.style.fontSize = "12px";
+  const yearInput = document.createElement("input");
+  yearInput.type = "number";
+  yearInput.min = "2022";
+  yearInput.max = "2040";
+  yearInput.value = new Date().getFullYear();
+  yearInput.style.width = "100px";
+  const previewBtn = document.createElement("button");
+  previewBtn.className = "btn-ghost btn-sm";
+  previewBtn.textContent = t("ph_preview_btn");
+  yearRow.appendChild(yearLabel);
+  yearRow.appendChild(yearInput);
+  yearRow.appendChild(previewBtn);
+  box.appendChild(yearRow);
+
+  const listBox = document.createElement("div");
+  listBox.style.cssText = "margin-top:12px; max-height:360px; overflow-y:auto;";
+  box.appendChild(listBox);
+
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+  box.appendChild(errLine);
+
+  const submitBtn = document.createElement("button");
+  submitBtn.className = "btn-primary";
+  submitBtn.style.cssText = "width:100%; margin-top:12px; display:none;";
+  submitBtn.textContent = t("ph_autofill_submit_btn");
+  box.appendChild(submitBtn);
+
+  let currentItems = [];
+
+  const runPreview = async () => {
+    listBox.innerHTML = `<div class="modal-item-detail">${t("loading_generic")}</div>`;
+    submitBtn.style.display = "none";
+    errLine.style.display = "none";
+    try {
+      const result = await api(`/api/public-holidays/preview?year=${yearInput.value}`);
+      currentItems = result.items;
+      listBox.innerHTML = "";
+      result.items.forEach((item, idx) => {
+        const row = document.createElement("label");
+        row.style.cssText = "display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; border-bottom:1px solid var(--line); cursor:pointer;";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = !item.already_registered;
+        cb.disabled = item.already_registered;
+        cb.dataset.idx = idx;
+        const textSpan = document.createElement("span");
+        textSpan.style.flex = "1";
+        let label = `${formatDateNZ(item.date)} — ${item.name}`;
+        if (item.already_registered) label += ` (${t("ph_already_registered")})`;
+        textSpan.textContent = label;
+        row.appendChild(cb);
+        row.appendChild(textSpan);
+        if (item.needs_confirmation) {
+          const warnBadge = document.createElement("span");
+          warnBadge.style.cssText = "font-size:11px; color:#f59e0b; font-weight:600;";
+          warnBadge.textContent = t("ph_needs_confirmation_badge");
+          row.appendChild(warnBadge);
+        }
+        listBox.appendChild(row);
+      });
+      if (result.region === "none") {
+        const note = document.createElement("div");
+        note.className = "modal-item-detail";
+        note.style.marginTop = "8px";
+        note.textContent = t("ph_no_region_note");
+        listBox.appendChild(note);
+      }
+      submitBtn.style.display = "block";
+    } catch (e) {
+      listBox.innerHTML = "";
+    }
+  };
+  previewBtn.onclick = runPreview;
+
+  submitBtn.onclick = async () => {
+    const checkboxes = listBox.querySelectorAll('input[type="checkbox"]:checked');
+    const selected = Array.from(checkboxes).map(cb => currentItems[Number(cb.dataset.idx)]);
+    if (selected.length === 0) {
+      errLine.textContent = t("ph_select_at_least_one");
+      errLine.style.display = "block";
+      return;
+    }
+    submitBtn.disabled = true;
+    try {
+      await api("/api/public-holidays/auto-populate", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({holidays: selected.map(h => ({date: h.date, name: h.name}))}),
+      });
+      overlay.remove();
+      loadPublicHolidays();
+    } catch (e) {
+      submitBtn.disabled = false;
+    }
+  };
+
+  const closeRow = document.createElement("div");
+  closeRow.className = "modal-close-row";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  closeRow.appendChild(closeBtn);
+  box.appendChild(closeRow);
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  runPreview();
 }
 
 async function checkPublicHolidayForWeek() {
