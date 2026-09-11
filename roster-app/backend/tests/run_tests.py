@@ -510,13 +510,14 @@ def _():
 @test("공휴일 자동계산 - 2026년 전국 공휴일이 실제 공식 발표 날짜와 정확히 일치한다 (ANZAC/Boxing Day Mondayisation 포함)")
 def _():
     items = H._national_holidays_for_year(2026)
-    by_name = {h["name"]: h["date"] for h in items}
+    by_date = {h["date"]: h["name"] for h in items}
     # 실제 확인된 값: ANZAC Day는 원래 4/25(토)라 월요일(4/27)로, Boxing Day는
     # 원래 12/26(토)라 월요일(12/28)로 밀림 — Employment NZ 2026년 공식 표 기준.
-    assert by_name["ANZAC Day"] == "2026-04-27", f"실제: {by_name}"
-    assert by_name["Boxing Day"] == "2026-12-28", f"실제: {by_name}"
-    assert by_name["Matariki"] == "2026-07-10", f"실제: {by_name}"
-    assert len(items) == 11, f"11개가 아님: {len(items)}"
+    # Mondayisation이 발생한 공휴일은 원래날짜+옮겨진날짜가 각각 별도 항목으로 나옵니다.
+    assert "2026-04-25" in by_date and "2026-04-27" in by_date, f"ANZAC Day 짝 누락: {by_date}"
+    assert "2026-12-26" in by_date and "2026-12-28" in by_date, f"Boxing Day 짝 누락: {by_date}"
+    assert by_date["2026-07-10"] == "Matariki", f"실제: {by_date}"
+    assert len(items) == 13, f"11개 공휴일 중 2개(ANZAC/Boxing Day)가 짝으로 나뉘어 13개여야 함: {len(items)}"
     assert all(not h["needs_confirmation"] for h in items), "전국 공휴일에 확인 필요 표시가 붙어있음"
 
 
@@ -539,6 +540,56 @@ def _():
 def _():
     assert H._regional_anniversary_for_year("none", 2026) is None
     assert H._regional_anniversary_for_year("mars", 2026) is None
+
+
+@test("공휴일 자동계산 - Mondayisation 발생 시 원래날짜+옮겨진날짜가 서로 pair_date로 짝을 이룬다")
+def _():
+    items = H._national_holidays_for_year(2026)
+    boxing = [h for h in items if "Boxing Day" in h["name"]]
+    assert len(boxing) == 2, f"박싱데이가 2개(원래+옮겨진)여야 함: {boxing}"
+    by_date = {h["date"]: h for h in boxing}
+    assert by_date["2026-12-26"]["pair_date"] == "2026-12-28"
+    assert by_date["2026-12-28"]["pair_date"] == "2026-12-26"
+    assert all(h["mondayised"] for h in boxing)
+
+
+@test("Mondayisation 짝 처리 - 토요일만 평소 근무면 원래날짜(토)만 혜택, 옮겨진날짜(월)는 해당없음")
+def _():
+    policy = H._default_public_holiday_policy()
+
+    def make_state(sat_weeks, mon_weeks):
+        state = {"employees": [{"id": "e1", "name": "T"}], "weeks": {}}
+        base_monday = date(2026, 12, 21)
+        for i in range(8):
+            wk_monday = base_monday - timedelta(days=7 * i)
+            assignments = []
+            if i < sat_weeks:
+                assignments.append({"employee_id": "e1", "day": "sat"})
+            if i < mon_weeks:
+                assignments.append({"employee_id": "e1", "day": "mon"})
+            state["weeks"][wk_monday.isoformat()] = {"schedule": {"assignments": assignments}}
+        return state
+
+    # 토요일만 평소 근무
+    state = make_state(sat_weeks=8, mon_weeks=0)
+    cat_sat, _, _ = P._public_holiday_category(state, policy, "e1", "sat", "2026-12-21", worked=True, pair_date="2026-12-28")
+    cat_mon, _, _ = P._public_holiday_category(state, policy, "e1", "mon", "2026-12-28", worked=True, pair_date="2026-12-26")
+    assert cat_sat == 1, f"토요일(원래날짜)은 혜택 받아야 함: {cat_sat}"
+    assert cat_mon == 4, f"월요일(옮겨진날짜)은 해당없음이어야 함: {cat_mon}"
+
+    # 월요일만 평소 근무 -> 반대로 적용
+    state2 = make_state(sat_weeks=0, mon_weeks=8)
+    cat_sat2, _, _ = P._public_holiday_category(state2, policy, "e1", "sat", "2026-12-21", worked=True, pair_date="2026-12-28")
+    cat_mon2, _, _ = P._public_holiday_category(state2, policy, "e1", "mon", "2026-12-28", worked=True, pair_date="2026-12-26")
+    assert cat_sat2 == 4, f"토요일 평소 근무 아니면 해당없음: {cat_sat2}"
+    assert cat_mon2 == 1, f"월요일(평소 근무)이 혜택 받아야 함: {cat_mon2}"
+
+    # 둘 다 평소 근무 -> 더 이른(원래) 날짜만 인정, 이중수령 방지
+    state3 = make_state(sat_weeks=8, mon_weeks=8)
+    cat_sat3, _, _ = P._public_holiday_category(state3, policy, "e1", "sat", "2026-12-21", worked=True, pair_date="2026-12-28")
+    cat_mon3, _, _ = P._public_holiday_category(state3, policy, "e1", "mon", "2026-12-28", worked=True, pair_date="2026-12-26")
+    assert cat_sat3 == 1, f"둘 다 근무해도 원래날짜만 인정: {cat_sat3}"
+    assert cat_mon3 == 4, f"옮겨진날짜는 이중수령 방지로 해당없음이어야 함: {cat_mon3}"
 
 
 # ---------------------------------------------------------------------------
