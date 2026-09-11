@@ -729,6 +729,11 @@ def employee_me():
     return jsonify({
         "id": employee["id"], "name": employee["name"],
         "company_name": company["name"] if company else "",
+        # 직원 본인이 리브를 신청할 때, 자기가 지금 얼마나 남았는지 보고 신청할 수
+        # 있도록 세 가지 잔액을 같이 내려줍니다.
+        "lieu_day_balance": employee.get("lieu_day_balance", 0.0),
+        "annual_leave_balance_hours": employee.get("annual_leave_balance_hours", 0.0),
+        "sick_leave_balance_days": employee.get("sick_leave_balance_days", 0.0),
     })
 
 @app.route("/api/employee-auth/weeks/<week_key>", methods=["GET"])
