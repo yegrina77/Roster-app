@@ -516,6 +516,7 @@
         <button class="btn-ghost btn-sm" id="admin-pending-nav-btn" onclick="showPendingSignupsPage()" style="display:none;" data-i18n="admin_pending_nav_btn">📋 승인 대기</button>
         <button class="btn-ghost btn-sm" id="admin-support-nav-btn" onclick="showSupportRequestsAdminPage()" style="display:none;" data-i18n="admin_support_nav_btn">🛟 지원 요청</button>
         <button class="btn-ghost btn-sm" id="manager-menu-btn" onclick="showAdminMenuModal()" style="display:none;" data-i18n="manager_menu_btn">⚙️ 관리자 메뉴</button>
+        <button class="btn-ghost btn-sm" onclick="showLawChangeNotice()" data-i18n="law_notice_btn">📢 법 개정 안내</button>
         <button class="btn-ghost btn-sm" onclick="logoutUser()" data-i18n="auth_logout">로그아웃</button>
         <button class="btn-ghost btn-sm" id="delete-account-btn" onclick="startDeleteAccount()" style="color:#ef4444;" data-i18n="account_delete_btn">회원탈퇴</button>
       </div>
@@ -750,6 +751,10 @@ const I18N = {
     label_annual_salary: "연봉", label_min_hours_salary: "주당 계약시간",
     over_contract_publish_head: "⚠️ 계약 표준시간을 넘는 직원 (초과분은 추가 시간 → LCP 12.5%, 리브 미적립):",
     over_contract_publish_line: "• {name}: 스케줄 {s}h / 계약 {c}h (초과 {a}h, LCP 약 ${lcp})",
+    law_notice_btn: "📢 법 개정 안내", law_notice_title: "📢 2028년 휴가법 개정 안내",
+    law_notice_sub: "구법 Holidays Act 2003이 Employment Leave Act 2026으로 바뀝니다 (2028-08-06 시행). 이 앱은 신법 기준으로 계산합니다.",
+    law_notice_old: "구법:", law_notice_new: "신법:", law_notice_ok: "확인했습니다",
+    law_notice_caveat: "※ 영어 인용문은 MBIE 공식 비교표 원문입니다. 구법 설명은 요약이며 인용이 아닙니다. 시행규칙(regulations)이 아직 정해지지 않은 부분(기존 잔액 환산 등)이 있고, 이 앱의 일부 계산(예: OWD가 아닌 공휴일 근무 1.0배, 캐주얼의 OWD 미근무 시 지급 0)은 앱의 가정값입니다. 실제 급여는 회계사·노무사 확인이 필요합니다.",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1149,6 +1154,10 @@ const I18N = {
     label_annual_salary: "Annual Salary", label_min_hours_salary: "Contracted Hours/Week",
     over_contract_publish_head: "⚠️ Scheduled above contract hours (excess = additional hours → 12.5% LCP, no leave accrual):",
     over_contract_publish_line: "• {name}: scheduled {s}h / contract {c}h (+{a}h, LCP ≈ ${lcp})",
+    law_notice_btn: "📢 Law change guide", law_notice_title: "📢 2028 Leave Law Change Guide",
+    law_notice_sub: "The Holidays Act 2003 is being replaced by the Employment Leave Act 2026 (in force 6 Aug 2028). This app calculates under the new Act.",
+    law_notice_old: "Old law:", law_notice_new: "New law:", law_notice_ok: "Got it",
+    law_notice_caveat: "Note: the quoted English text is verbatim from the official MBIE comparison table. Old-law descriptions are summaries, not quotes. Some details are still to be set in regulations (e.g. conversion of existing balances), and some calculations here are the app's own assumptions (e.g. 1.0x pay for working a non-OWD public holiday, $0 for casuals on an OWD they did not work). Confirm with an accountant before paying.",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -8059,6 +8068,127 @@ function makeCalCell(text, cls) {
   return div;
 }
 
+// ---------------------------------------------------------------------------
+// 법 개정 안내 팝업 — 구법(Holidays Act 2003) → 신법(Employment Leave Act 2026, 2028-08-06 시행).
+// 신법 쪽 인용문은 MBIE 공식 비교표(https://www.mbie.govt.nz/dmsdocument/31196)의 원문 그대로이며,
+// 구법 쪽은 요약(비인용)입니다. 처음 접속 시 한 번만 자동으로 뜨고, 헤더의 "법 개정 안내"로 다시 열 수 있습니다.
+// ---------------------------------------------------------------------------
+const LAW_NOTICE_VERSION = "v1";
+const LAW_NOTICE_SOURCE_URL = "https://www.mbie.govt.nz/dmsdocument/31196";
+const LAW_NOTICE_ROWS = [
+  {
+    topic: {ko: "애뉴얼 리브 적립", en: "Annual leave accrual"},
+    old: {ko: "입사 12개월 후 4주 발생 (그 전엔 8% 방식 등으로 별도 처리)", en: "4 weeks entitlement after 12 months (earlier handled via 8%-type calculations)"},
+    now: {ko: "일한 표준시간 1시간당 0.0769시간씩, 입사 첫날부터 시간 단위로 적립", en: "Accrues in hours from the first day, 0.0769 per standard hour worked"},
+    quote: "Accrues in hours from day one at a minimum rate of 0.0769 per standard hour of work.",
+    section: "Earning and taking leave › Annual leave"
+  },
+  {
+    topic: {ko: "병가", en: "Sick leave"},
+    old: {ko: "6개월 후 연 10일, 최대 20일까지 누적 (일 단위)", en: "10 days per year after 6 months, up to 20 days banked (in days)"},
+    now: {ko: "표준시간 1시간당 0.0385시간 적립, 상한 160시간 (시간 단위)", en: "0.0385 per standard hour, capped at 160 hours (in hours)"},
+    quote: "at a minimum rate of 0.0385 per standard hour of work ... (up to a 160-hour cap)",
+    section: "Earning and taking leave › Sick leave"
+  },
+  {
+    topic: {ko: "LCP (Leave Compensation Payment)", en: "LCP (Leave Compensation Payment)"},
+    old: {ko: "캐주얼은 보통 시급에 8%를 얹어 지급(pay-as-you-go)", en: "Casuals typically paid 8% on top of pay (pay-as-you-go)"},
+    now: {ko: "캐주얼의 모든 시간과, 표준시간 직원의 '추가 시간'에 시급의 12.5%", en: "12.5% of the hourly rate on all casual hours and on a standard-hours employee's additional hours"},
+    quote: "A leave compensation payment (LCP), set at 12.5% of an employee's ordinary hourly rate",
+    section: "Leave compensation payments"
+  },
+  {
+    topic: {ko: "공휴일 OWD 판정", en: "Public holiday OWD test"},
+    old: {ko: "그 날이 '평소 근무일'이었는지 사안별 판단 (이 앱은 이전에 최근 8주 중 5주 기준을 임의로 사용)", en: "Case-by-case 'otherwise working day' judgement (this app previously used 5 of the last 8 weeks as its own convention)"},
+    now: {ko: "같은 요일을 직전 13주 중 50% 이상 근무했으면 OWD", en: "OWD if the same weekday was worked in 50%+ of the preceding 13 weeks"},
+    quote: "A day will be treated as an OWD if 50% or more of the same day of the week as the public holiday ... have been worked in the preceding 13 weeks.",
+    section: "Public holidays"
+  },
+  {
+    topic: {ko: "대체휴일", en: "Alternative holidays"},
+    old: {ko: "공휴일(OWD)에 일하면 대체휴무 1일", en: "One alternative day when working an OWD public holiday"},
+    now: {ko: "일한 시간 1시간당 1시간씩 시간 단위로 적립", en: "Accrues in hours, 1:1 for every hour worked"},
+    quote: "Alternative leave accrues in hours at a rate of 1:1 for every hour worked",
+    section: "Alternative holidays"
+  },
+  {
+    topic: {ko: "리브 지급 단가", en: "Leave pay rate"},
+    old: {ko: "평소 주급(OWP)과 평균 주급(AWE) 중 높은 쪽 등 복잡한 비교", en: "Compare ordinary weekly pay (OWP) and average weekly earnings (AWE), etc."},
+    now: {ko: "리브를 쓰는 근무의 '가장 낮은 시급' 기준 단일 단가", en: "A single rate: the lowest hourly rate payable for the shift"},
+    quote: "All leave paid at an hourly rate based on an employee's lowest hourly rate payable for the shift leave is taken",
+    section: "Leave pay"
+  },
+];
+
+function maybeShowLawChangeNotice() {
+  try {
+    if (localStorage.getItem("roster_law_notice_seen") === LAW_NOTICE_VERSION) return;
+  } catch (e) { /* 저장소를 못 읽으면 매번 보여주는 쪽으로 안전하게 처리 */ }
+  showLawChangeNotice(true);
+}
+
+function showLawChangeNotice(auto) {
+  if (document.getElementById("law-notice-overlay")) return;
+  const L = (o) => o[currentLang] || o.en;
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.id = "law-notice-overlay";
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.cssText = "max-width:760px; max-height:88vh; overflow:auto;";
+
+  const title = document.createElement("h3");
+  title.textContent = t("law_notice_title");
+  box.appendChild(title);
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("law_notice_sub");
+  box.appendChild(sub);
+
+  LAW_NOTICE_ROWS.forEach(r => {
+    const card = document.createElement("div");
+    card.style.cssText = "border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:10px; font-size:13px; line-height:1.55;";
+    const head = document.createElement("div");
+    head.style.cssText = "font-weight:700; margin-bottom:6px;";
+    head.textContent = L(r.topic);
+    const oldLine = document.createElement("div");
+    oldLine.style.color = "var(--text-muted)";
+    oldLine.textContent = t("law_notice_old") + " " + L(r.old);
+    const newLine = document.createElement("div");
+    newLine.textContent = t("law_notice_new") + " " + L(r.now);
+    const q = document.createElement("div");
+    q.style.cssText = "margin-top:6px; padding:6px 10px; border-left:3px solid var(--accent, #4fd8e0); font-size:12px; font-style:italic; background:var(--panel-solid); border-radius:0 6px 6px 0;";
+    q.textContent = "\u201C" + r.quote + "\u201D";
+    const src = document.createElement("div");
+    src.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:3px;";
+    const a = document.createElement("a");
+    a.href = LAW_NOTICE_SOURCE_URL; a.target = "_blank"; a.rel = "noopener noreferrer";
+    a.textContent = "MBIE — " + r.section;
+    src.appendChild(a);
+    card.append(head, oldLine, newLine, q, src);
+    box.appendChild(card);
+  });
+
+  const caveat = document.createElement("div");
+  caveat.style.cssText = "margin-top:12px; padding:8px 10px; background:var(--panel-solid); border-radius:6px; font-size:11.5px; color:var(--text-muted); line-height:1.6;";
+  caveat.textContent = t("law_notice_caveat");
+  box.appendChild(caveat);
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; justify-content:flex-end; margin-top:14px;";
+  const ok = document.createElement("button");
+  ok.className = "btn-primary";
+  ok.textContent = t("law_notice_ok");
+  ok.onclick = () => {
+    try { localStorage.setItem("roster_law_notice_seen", LAW_NOTICE_VERSION); } catch (e) { /* 무시 */ }
+    overlay.remove();
+  };
+  btnRow.appendChild(ok);
+  box.appendChild(btnRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
 async function initAppData() {
   applyFeatureToggles();
   window._weekOffDays = {};
@@ -8069,6 +8199,7 @@ async function initAppData() {
   if (isFeatureEnabled("public_holiday")) await loadPublicHolidays();
   await loadWeek();
   checkAlerts();
+  maybeShowLawChangeNotice();
 }
 
 let latestAlerts = {noShows: [], expiringDocs: []};
