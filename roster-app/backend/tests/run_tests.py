@@ -218,51 +218,53 @@ def _():
 
 
 # ---------------------------------------------------------------------------
-# 4. 리브 신청 잔액 diff (Lieu Day / 애뉴얼 리브)
+# 4. 리브 신청 잔액 diff (대체휴일 / 애뉴얼 리브 — 신법: 전부 시간 단위)
 # ---------------------------------------------------------------------------
 
-@test("Lieu Day 잔액 - 신청 시 정확히 차감된다")
+@test("대체휴일 잔액 - 신청 시 시간 단위로 정확히 차감된다 (평균 6시간/일 x 2일 = 12시간)")
 def _():
-    emp = {"lieu_day_balance": 3.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
+    emp = {"alternative_leave_balance_hours": 20.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
            "target_days_per_week": 5, "leave_requests": []}
-    new_reqs = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-16", "leave_type": "lieu_day"}]
+    new_reqs = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-16", "leave_type": "alt_holiday"}]
     result, err = H._apply_leave_balance_diff(emp, new_reqs)
     assert err is None
-    assert result["lieu_day_balance"] == 1.0, f"실제: {result}"
+    assert result["alternative_leave_balance_hours"] == 8.0, f"실제: {result}"
 
 
-@test("Lieu Day 잔액 - 취소하면 환불된다")
+@test("대체휴일 잔액 - 취소하면 시간이 환불된다")
 def _():
-    emp = {"lieu_day_balance": 1.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
+    start = (date.today() + timedelta(days=14)).isoformat()
+    end = (date.today() + timedelta(days=15)).isoformat()
+    emp = {"alternative_leave_balance_hours": 1.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
            "target_days_per_week": 5,
-           "leave_requests": [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-16", "leave_type": "lieu_day"}]}
+           "leave_requests": [{"id": "r1", "start_date": start, "end_date": end, "leave_type": "alt_holiday"}]}
     result, err = H._apply_leave_balance_diff(emp, [])
     assert err is None
-    assert result["lieu_day_balance"] == 3.0, f"실제: {result}"
+    assert result["alternative_leave_balance_hours"] == 13.0, f"실제: {result}"
 
 
-@test("Lieu Day 잔액 - 부족하면 거부된다")
+@test("대체휴일 잔액 - 부족하면 거부된다")
 def _():
-    emp = {"lieu_day_balance": 1.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
+    emp = {"alternative_leave_balance_hours": 5.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
            "target_days_per_week": 5, "leave_requests": []}
-    new_reqs = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-19", "leave_type": "lieu_day"}]
+    new_reqs = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-19", "leave_type": "alt_holiday"}]
     result, err = H._apply_leave_balance_diff(emp, new_reqs)
     assert result is None and err is not None
 
 
-@test("Lieu Day 잔액 - 이미 지난(만료된) 신청은 환불되지 않는다")
+@test("대체휴일 잔액 - 이미 지난(만료된) 신청은 환불되지 않는다")
 def _():
-    emp = {"lieu_day_balance": 2.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
+    emp = {"alternative_leave_balance_hours": 2.0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
            "target_days_per_week": 5,
-           "leave_requests": [{"id": "r1", "start_date": "2020-08-01", "end_date": "2020-08-02", "leave_type": "lieu_day"}]}
+           "leave_requests": [{"id": "r1", "start_date": "2020-08-01", "end_date": "2020-08-02", "leave_type": "alt_holiday"}]}
     result, err = H._apply_leave_balance_diff(emp, [])
     assert err is None
-    assert result["lieu_day_balance"] == 2.0, f"실제: {result} (환불되면 안 됨)"
+    assert result["alternative_leave_balance_hours"] == 2.0, f"실제: {result} (환불되면 안 됨)"
 
 
 @test("애뉴얼 리브 - 당겨쓰기 동의 없으면 마이너스 거부, 있으면 허용")
 def _():
-    emp = {"lieu_day_balance": 0, "annual_leave_balance_hours": 0, "min_hours_per_week": 35,
+    emp = {"annual_leave_balance_hours": 0, "min_hours_per_week": 35,
            "target_days_per_week": 5, "leave_requests": []}
     req_no_consent = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-15", "leave_type": "annual_leave", "allow_advance": False}]
     result, err = H._apply_leave_balance_diff(emp, req_no_consent)
@@ -275,7 +277,7 @@ def _():
 
 @test("리브 신청 - 날짜별 시간 직접입력(daily_hours)이 평균 대신 정확히 반영된다")
 def _():
-    emp = {"lieu_day_balance": 0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
+    emp = {"annual_leave_balance_hours": 0, "min_hours_per_week": 30,
            "target_days_per_week": 5, "leave_requests": []}
     new_reqs = [{
         "id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-17", "leave_type": "annual_leave",
@@ -289,7 +291,7 @@ def _():
 
 @test("리브 신청 - '대기중(pending)' 상태는 잔액에 전혀 영향을 주지 않는다")
 def _():
-    emp = {"lieu_day_balance": 0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
+    emp = {"annual_leave_balance_hours": 0, "min_hours_per_week": 30,
            "target_days_per_week": 5, "leave_requests": []}
     new_reqs = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-17",
                  "leave_type": "annual_leave", "status": "pending"}]
@@ -300,7 +302,7 @@ def _():
 
 @test("리브 신청 - status 필드가 없는 옛날 데이터는 승인된 것으로 취급된다(하위 호환)")
 def _():
-    emp = {"lieu_day_balance": 0, "annual_leave_balance_hours": 0, "min_hours_per_week": 30,
+    emp = {"annual_leave_balance_hours": 0, "min_hours_per_week": 30,
            "target_days_per_week": 5, "leave_requests": []}
     new_reqs = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-15", "leave_type": "annual_leave", "allow_advance": True}]
     result, err = H._apply_leave_balance_diff(emp, new_reqs)
@@ -334,47 +336,23 @@ def _():
 
 
 # ---------------------------------------------------------------------------
-# 4-2. 병가(Sick Leave) 잔액 — 일(day) 단위 관리, 부분 조퇴 급여 계산
+# 4-2. 병가(Sick Leave) 잔액 — 신법: 시간 단위(상한 160시간), 부분 조퇴 급여 계산
 # ---------------------------------------------------------------------------
 
-@test("병가 기념일 - 입사 7개월차, 첫 부여로 10일 발생한다")
+@test("병가 잔액 - 부분 시간(3시간) 신청은 3시간 그대로 차감된다 (일 환산 없음)")
 def _():
-    hire = date.today() - timedelta(days=210)
-    emp = {"hire_date": hire.isoformat(), "sick_leave_balance_days": 0.0, "sick_leave_anniversaries_granted": []}
-    P._process_sick_leave_anniversary(emp)
-    assert emp["sick_leave_balance_days"] == 10.0, f"실제: {emp['sick_leave_balance_days']}"
-
-
-@test("병가 기념일 - 20개월차, 두 번 부여되어도 20일(누적 상한)을 넘지 않는다")
-def _():
-    hire = date.today() - timedelta(days=610)
-    emp = {"hire_date": hire.isoformat(), "sick_leave_balance_days": 0.0, "sick_leave_anniversaries_granted": []}
-    P._process_sick_leave_anniversary(emp)
-    assert emp["sick_leave_balance_days"] == 20.0, f"실제: {emp['sick_leave_balance_days']}"
-
-
-@test("병가 기념일 - 이미 일부 사용한 상태(5일 남음)에서 2번째 기념일 -> 20일 안 넘으면 그대로 더해진다")
-def _():
-    hire = date.today() - timedelta(days=610)
-    emp = {"hire_date": hire.isoformat(), "sick_leave_balance_days": 5.0, "sick_leave_anniversaries_granted": ["1"]}
-    P._process_sick_leave_anniversary(emp)
-    assert emp["sick_leave_balance_days"] == 15.0, f"실제: {emp['sick_leave_balance_days']}"
-
-
-@test("병가 잔액 - 부분 시간(3시간, 평균 8시간) 신청 시 0.375일만 정확히 차감된다")
-def _():
-    emp = {"sick_leave_balance_days": 10.0, "lieu_day_balance": 0, "annual_leave_balance_hours": 0,
+    emp = {"sick_leave_balance_hours": 40.0, "annual_leave_balance_hours": 0,
            "min_hours_per_week": 40, "target_days_per_week": 5, "leave_requests": []}
     new_reqs = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-15", "leave_type": "sick",
                  "status": "approved", "daily_hours": {"2026-09-15": 3}}]
     result, err = H._apply_leave_balance_diff(emp, new_reqs)
     assert err is None
-    assert result["sick_leave_balance_days"] == 9.62, f"실제: {result} (기대: 10 - 3/8 = 9.625 -> 반올림 9.62)"
+    assert result["sick_leave_balance_hours"] == 37.0, f"실제: {result}"
 
 
 @test("병가 잔액 - 부족하면 거부, allow_sick_override 있으면 마이너스 허용")
 def _():
-    emp = {"sick_leave_balance_days": 0.2, "lieu_day_balance": 0, "annual_leave_balance_hours": 0,
+    emp = {"sick_leave_balance_hours": 2.0, "annual_leave_balance_hours": 0,
            "min_hours_per_week": 40, "target_days_per_week": 5, "leave_requests": []}
     no_override = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-15", "leave_type": "sick", "status": "approved"}]
     result, err = H._apply_leave_balance_diff(emp, no_override)
@@ -382,7 +360,7 @@ def _():
 
     with_override = [{"id": "r1", "start_date": "2026-09-15", "end_date": "2026-09-15", "leave_type": "sick", "status": "approved", "allow_sick_override": True}]
     result2, err2 = H._apply_leave_balance_diff(emp, with_override)
-    assert err2 is None and result2["sick_leave_balance_days"] < 0
+    assert err2 is None and result2["sick_leave_balance_hours"] < 0
 
 
 @test("부분 조퇴 급여 - 날짜별 시간(3h) 직접입력 시, 실제 일한 시간에 그대로 더해진다 (5h+3h=$200)")
@@ -390,12 +368,12 @@ def _():
     state = {
         "employees": [{
             "id": "e1", "name": "T", "department": "kitchen", "pay_type": "hourly", "hourly_wage": 25.0,
-            "hours_type": "fixed", "min_hours_per_week": 40, "target_days_per_week": 5, "hire_date": None,
+            "min_hours_per_week": 40, "target_days_per_week": 5, "hire_date": None,
             "leave_requests": [{
                 "id": "lr1", "start_date": "2026-09-07", "end_date": "2026-09-07", "leave_type": "sick",
                 "status": "approved", "daily_hours": {"2026-09-07": 3},
             }],
-            "annual_leave_balance_hours": 0.0, "lieu_day_balance": 0.0, "sick_leave_balance_days": 10.0,
+            "annual_leave_balance_hours": 0.0, "sick_leave_balance_hours": 10.0,
             "blocked_shift_types": [], "preferred": [], "preferred_off_days": [],
         }],
         "weeks": {"2026-09-07": {"schedule": {"assignments": [
@@ -421,9 +399,9 @@ def _():
     state = {
         "employees": [{
             "id": "e1", "name": "T", "department": "kitchen", "pay_type": "hourly", "hourly_wage": 25.0,
-            "hours_type": "fixed", "min_hours_per_week": 40, "target_days_per_week": 5, "hire_date": None,
+            "min_hours_per_week": 40, "target_days_per_week": 5, "hire_date": None,
             "leave_requests": [{"id": "lr1", "start_date": "2026-09-07", "end_date": "2026-09-07", "leave_type": "sick", "status": "approved"}],
-            "annual_leave_balance_hours": 0.0, "lieu_day_balance": 0.0, "sick_leave_balance_days": 10.0,
+            "annual_leave_balance_hours": 0.0, "sick_leave_balance_hours": 10.0,
             "blocked_shift_types": [], "preferred": [], "preferred_off_days": [],
         }],
         "weeks": {"2026-09-07": {"schedule": {"assignments": [
@@ -449,9 +427,9 @@ def _():
     state = {
         "employees": [{
             "id": "e1", "name": "T", "department": "kitchen", "pay_type": "hourly", "hourly_wage": 25.0,
-            "hours_type": "fixed", "min_hours_per_week": 40, "target_days_per_week": 5, "hire_date": None,
+            "min_hours_per_week": 40, "target_days_per_week": 5, "hire_date": None,
             "leave_requests": [{"id": "lr1", "start_date": "2026-09-07", "end_date": "2026-09-07", "leave_type": "sick", "status": "approved"}],
-            "annual_leave_balance_hours": 0.0, "lieu_day_balance": 0.0, "sick_leave_balance_days": 10.0,
+            "annual_leave_balance_hours": 0.0, "sick_leave_balance_hours": 10.0,
             "blocked_shift_types": [], "preferred": [], "preferred_off_days": [],
         }],
         "weeks": {"2026-09-07": {"schedule": {"assignments": [
@@ -480,9 +458,9 @@ def _():
     state = {
         "employees": [{
             "id": "e1", "name": "T", "department": "kitchen", "pay_type": "hourly", "hourly_wage": 25.0,
-            "hours_type": "fixed", "min_hours_per_week": 30, "target_days_per_week": 5, "hire_date": None,
+            "min_hours_per_week": 30, "target_days_per_week": 5, "hire_date": None,
             "leave_requests": [],
-            "annual_leave_balance_hours": 0.0, "lieu_day_balance": 0.0, "sick_leave_balance_days": 10.0,
+            "annual_leave_balance_hours": 0.0, "sick_leave_balance_hours": 10.0,
             "blocked_shift_types": [], "preferred": [], "preferred_off_days": [],
         }],
         "weeks": {"2026-09-07": {
@@ -601,8 +579,8 @@ def _():
     state = {
         "employees": [{
             "id": "e1", "name": "Test", "department": "kitchen", "pay_type": "hourly", "hourly_wage": 25.0,
-            "hours_type": "fixed", "min_hours_per_week": 30, "target_days_per_week": 5, "hire_date": None,
-            "leave_requests": [], "annual_leave_balance_hours": 0.0, "lieu_day_balance": 0.0, "sick_leave_balance_days": 10.0,
+            "min_hours_per_week": 30, "target_days_per_week": 5, "hire_date": None,
+            "leave_requests": [], "annual_leave_balance_hours": 0.0, "sick_leave_balance_hours": 10.0,
             "blocked_shift_types": [], "preferred": [], "preferred_off_days": [],
         }],
         "weeks": {
@@ -629,104 +607,263 @@ def _():
 
 
 # ---------------------------------------------------------------------------
-# 5. 애뉴얼 리브 기념일 자동 발생 + 8% 자동 적립 중복 방지
+# 5. 신법 리브 적립: 애뉴얼 0.0769/시간, 병가 0.0385/시간(160시간 상한), 대체휴일 1:1
 # ---------------------------------------------------------------------------
 
-@test("기념일 발생 - 자동적립 켜져있으면 첫 기념일엔 추가로 더하지 않는다")
+def _mini_state(employees, assignments_by_week=None, holidays=None, time_entries=None):
+    return {
+        "employees": employees,
+        "weeks": {wk: {"schedule": {"assignments": a}} for wk, a in (assignments_by_week or {}).items()},
+        "public_holidays": holidays or [], "shift_time_overrides": {},
+        "departments": [{"id": "kitchen", "name": "Kitchen"}],
+        "shift_types": [{"id": "opening", "name": "Opening", "department_id": "kitchen", "start": "09:00", "end": "17:00", "is_closing": False, "blocked_after_closing": False}],
+        "public_holiday_policy": H._default_public_holiday_policy(),
+        "time_entries": time_entries or [], "payroll_rounding_minutes": 1,
+        "annual_leave_auto_accrual_enabled": True, "leave_accrual_credits": {}, "alt_leave_credits": {},
+    }
+
+
+def _emp(**kw):
+    e = {"id": "e1", "name": "T", "department": "kitchen", "pay_type": "hourly", "hourly_wage": 25.0,
+         "employment_type": "standard", "contract_hours_per_week": 40, "min_hours_per_week": 40,
+         "target_days_per_week": 5, "hire_date": None, "leave_requests": [],
+         "annual_leave_balance_hours": 0.0, "sick_leave_balance_hours": 0.0, "alternative_leave_balance_hours": 0.0,
+         "blocked_shift_types": [], "preferred": [], "preferred_off_days": []}
+    e.update(kw)
+    return e
+
+
+def _shift(emp_id, day, start="09:00", end="17:00"):
+    return {"employee_id": emp_id, "day": day, "shift_type": "opening", "custom_start": start, "custom_end": end}
+
+
+@test("애뉴얼/병가 적립 - 40시간 계약 1주 = 3.076시간 / 1.54시간, 52주 후 ≈ 160시간 / 80시간")
 def _():
-    today = date.today()
-    hire = today - timedelta(days=400)
-    state = {"annual_leave_auto_accrual_enabled": True}
-    emp = {"hire_date": hire.isoformat(), "min_hours_per_week": 40,
-           "annual_leave_balance_hours": 158.0, "annual_leave_anniversaries_granted": []}
-    P._process_annual_leave_anniversary(emp, state)
-    assert emp["annual_leave_balance_hours"] == 158.0, f"실제: {emp['annual_leave_balance_hours']}"
+    e = _emp()
+    st = _mini_state([e])
+    monday = date(2026, 9, 7)
+    for i in range(52):
+        P._accrue_leave_for_week(st, (monday + timedelta(weeks=i)).isoformat())
+    assert approx(e["annual_leave_balance_hours"], 40 * 0.0769 * 52, 0.5), f"실제: {e['annual_leave_balance_hours']}"
+    assert 159 < e["annual_leave_balance_hours"] < 160.5
+    assert approx(e["sick_leave_balance_hours"], 40 * 0.0385 * 52, 0.5), f"실제: {e['sick_leave_balance_hours']}"
 
 
-@test("기념일 발생 - 자동적립 꺼져있으면 첫 기념일에 4주(160h)가 발생한다")
+@test("애뉴얼 적립 - 30시간 계약은 40시간 계약보다 적게 쌓이고 (30 x 0.0769 x 52 ≈ 120시간), 같은 주 중복 적립은 없다")
 def _():
-    today = date.today()
-    hire = today - timedelta(days=400)
-    state = {"annual_leave_auto_accrual_enabled": False}
-    emp = {"hire_date": hire.isoformat(), "min_hours_per_week": 40,
-           "annual_leave_balance_hours": 0.0, "annual_leave_anniversaries_granted": []}
-    P._process_annual_leave_anniversary(emp, state)
-    assert emp["annual_leave_balance_hours"] == 160.0, f"실제: {emp['annual_leave_balance_hours']}"
+    e = _emp(contract_hours_per_week=30, min_hours_per_week=30)
+    st = _mini_state([e])
+    P._accrue_leave_for_week(st, "2026-09-07")
+    P._accrue_leave_for_week(st, "2026-09-07")  # 두 번째는 무시되어야 함
+    assert approx(e["annual_leave_balance_hours"], 30 * 0.0769, 0.01), f"실제: {e['annual_leave_balance_hours']}"
 
 
-@test("기념일 발생 - 두 번째 기념일부터는 정상적으로 4주씩 누적된다")
+@test("병가 적립 - 160시간 상한에 닿으면 더 이상 쌓이지 않는다")
 def _():
-    today = date.today()
-    hire = today - timedelta(days=820)  # 2번째 기념일까지 지남
-    state = {"annual_leave_auto_accrual_enabled": True}
-    emp = {"hire_date": hire.isoformat(), "min_hours_per_week": 40,
-           "annual_leave_balance_hours": 158.0, "annual_leave_anniversaries_granted": []}
-    P._process_annual_leave_anniversary(emp, state)
-    assert emp["annual_leave_balance_hours"] == 318.0, f"실제: {emp['annual_leave_balance_hours']}"
-    assert set(emp["annual_leave_anniversaries_granted"]) == {"1", "2"}
+    e = _emp(sick_leave_balance_hours=159.5)
+    st = _mini_state([e])
+    P._accrue_leave_for_week(st, "2026-09-07")
+    assert e["sick_leave_balance_hours"] == 160.0, f"실제: {e['sick_leave_balance_hours']}"
+    P._accrue_leave_for_week(st, "2026-09-14")
+    assert e["sick_leave_balance_hours"] == 160.0
 
 
-@test("기념일 발생 - 같은 기념일에 중복 처리되지 않는다")
+@test("캐주얼은 리브가 적립되지 않는다 (LCP로 대체)")
 def _():
-    today = date.today()
-    hire = today - timedelta(days=400)
-    state = {"annual_leave_auto_accrual_enabled": False}
-    emp = {"hire_date": hire.isoformat(), "min_hours_per_week": 40,
-           "annual_leave_balance_hours": 0.0, "annual_leave_anniversaries_granted": []}
-    P._process_annual_leave_anniversary(emp, state)
-    first_balance = emp["annual_leave_balance_hours"]
-    changed_again = P._process_annual_leave_anniversary(emp, state)
-    assert changed_again is False
-    assert emp["annual_leave_balance_hours"] == first_balance
+    e = _emp(employment_type="casual", contract_hours_per_week=None)
+    st = _mini_state([e])
+    P._accrue_leave_for_week(st, "2026-09-07")
+    assert e["annual_leave_balance_hours"] == 0.0 and e["sick_leave_balance_hours"] == 0.0
+
+
+@test("무급 리브로 쉰 날은 그날 몫만큼 적립 기준시간에서 빠진다 (40시간, 1일 무급 → 32시간 기준)")
+def _():
+    e = _emp(leave_requests=[{"id": "u1", "start_date": "2026-09-08", "end_date": "2026-09-08",
+                              "leave_type": "unpaid", "status": "approved"}])
+    assert P._accrual_base_hours(e, "2026-09-07") == 32.0
+
+
+@test("입사 전 주에는 적립되지 않는다")
+def _():
+    e = _emp(hire_date="2026-09-20")
+    st = _mini_state([e])
+    P._accrue_leave_for_week(st, "2026-09-07")
+    assert e["annual_leave_balance_hours"] == 0.0
 
 
 # ---------------------------------------------------------------------------
-# 6. OWP/AWE 및 Section 23 / 기념일 이후 8% 정산
+# 6. LCP 12.5% / 추가 시간 / 계약시간 초과 알림 / 가장 낮은 시급 리브 지급
 # ---------------------------------------------------------------------------
 
-@test("OWP - 고정시간 직원은 계약시간 x 시급으로 계산된다")
+def _five_days(emp_id, hours_end="17:00", days=("mon", "tue", "wed", "thu", "fri")):
+    return [_shift(emp_id, d, "09:00", hours_end) for d in days]
+
+
+@test("LCP - 계약 30시간 직원이 35시간 스케줄되면 초과 5시간에만 12.5%가 붙는다")
 def _():
-    emp = {"hourly_wage": 25.0, "min_hours_per_week": 30, "hours_type": "fixed", "id": "e1"}
-    owp, weeks = P._owp_for_employee({}, emp)
-    assert owp == 750.0, f"실제: {owp}"
-    assert weeks is None
+    # 하루 7시간(9~17시, 휴게 1시간 차감) x 5일 = 35시간
+    e = _emp(contract_hours_per_week=30, min_hours_per_week=30)
+    st = _mini_state([e], {"2026-09-07": _five_days("e1")})
+    row = P._compute_week_payroll(st, "2026-09-07")["employees"][0]
+    assert row["weekly_hours"] == 35.0, f"실제: {row['weekly_hours']}"
+    assert row["additional_hours"] == 5.0
+    assert approx(row["lcp_pay"], 5 * 25 * 0.125), f"실제: {row['lcp_pay']}"
+    assert approx(row["weekly_pay"], 35 * 25 + 5 * 25 * 0.125), f"실제: {row['weekly_pay']}"
+    assert row["over_contract"] is True
 
 
-@test("Section 23 정산 - 실제 법령 예시(총소득 $18,000, 8%=$1,440, 기지급 $500 -> $940)와 일치한다")
+@test("LCP - 계약시간 이내로 일하면 LCP도 초과 경고도 없다")
 def _():
-    hire_week = H._week_key_for_date(date.today() - timedelta(weeks=36))
-    state = {"earnings_history": {
-        f"e1|{hire_week}": {"employee_id": "e1", "week_key": hire_week, "gross_pay": 18000.0, "annual_leave_pay": 500.0},
-    }}
-    emp = {"id": "e1", "hire_date": (date.today() - timedelta(weeks=36)).isoformat()}
-    settlement, info = P._section23_settlement(state, emp)
-    assert approx(settlement, 940.0), f"실제: {settlement}"
+    e = _emp(contract_hours_per_week=40)
+    st = _mini_state([e], {"2026-09-07": _five_days("e1")})
+    row = P._compute_week_payroll(st, "2026-09-07")["employees"][0]
+    assert row["lcp_pay"] == 0.0 and row["additional_hours"] == 0.0 and row["over_contract"] is False
 
 
-@test("기념일 이후 8% 정산 - 13주 x $700 x 8% = $728")
+@test("LCP - 캐주얼은 일한 모든 시간(35시간)에 12.5%가 붙는다")
 def _():
-    today = date.today()
-    hire = today - timedelta(days=450)
-    last_anniv = P._last_anniversary_date({"hire_date": hire.isoformat()})
-    state = {"earnings_history": {}}
-    cur = last_anniv
-    for i in range(13):
-        wk = H._week_key_for_date(cur)
-        state["earnings_history"][f"e1|{wk}"] = {"employee_id": "e1", "week_key": wk, "gross_pay": 700.0, "annual_leave_pay": 0.0}
-        cur = cur + timedelta(days=7)
-    settlement, info = P._eight_percent_since(state, {"id": "e1"}, last_anniv)
-    assert approx(settlement, 728.0), f"실제: {settlement}"
+    e = _emp(employment_type="casual", contract_hours_per_week=None, min_hours_per_week=0)
+    st = _mini_state([e], {"2026-09-07": _five_days("e1")})
+    row = P._compute_week_payroll(st, "2026-09-07")["employees"][0]
+    assert approx(row["lcp_pay"], 35 * 25 * 0.125), f"실제: {row['lcp_pay']}"
+    assert row["over_contract"] is False
+
+
+@test("리브 지급 - 유급 리브는 가장 낮은 시급(OWP/AWE 비교 없이)으로 하루치가 지급된다")
+def _():
+    e = _emp(leave_requests=[{"id": "l1", "start_date": "2026-09-09", "end_date": "2026-09-09",
+                              "leave_type": "annual_leave", "status": "approved"}])
+    st = _mini_state([e], {"2026-09-07": [_shift("e1", "mon")]})
+    wed = P._compute_week_payroll(st, "2026-09-07")["employees"][0]["per_day"]["wed"]
+    assert wed["pay"] == 8 * 25.0, f"실제: {wed} (평균 하루 8시간 x $25)"
+
+
+@test("연봉제 - 리브 단가는 연봉 ÷ 52 ÷ 표준시간이다")
+def _():
+    e = _emp(pay_type="salary", annual_salary=52000.0, hourly_wage=None)
+    assert approx(H._lowest_hourly_rate(e), 1000 / 40)
+
+
+# ---------------------------------------------------------------------------
+# 6-2. OWD(직전 13주 중 50%) / 공휴일 지급 / 대체휴일 1:1 적립
+# ---------------------------------------------------------------------------
+
+def _weeks_with_day(day, n_weeks, anchor_monday):
+    """anchor_monday 직전 n_weeks주 동안 매주 해당 요일에 근무한 기록."""
+    out = {}
+    for i in range(1, n_weeks + 1):
+        wk = (anchor_monday - timedelta(weeks=i)).isoformat()
+        out[wk] = [_shift("e1", day)]
+    return out
+
+
+@test("OWD - 직전 13주 중 7주(≥50%) 같은 요일에 일했으면 OWD, 6주면 아니다")
+def _():
+    anchor = date(2026, 12, 21)
+    e = _emp(employment_type="casual", contract_hours_per_week=None)
+    for weeks, expected in ((7, True), (6, False)):
+        st = _mini_state([e], _weeks_with_day("fri", weeks, anchor))
+        is_owd, hit, denom = P._is_owd(st, e, "fri", anchor.isoformat())
+        assert is_owd is expected, f"{weeks}주 -> {is_owd} (hit={hit}, denom={denom})"
+        assert denom == 13
+
+
+@test("OWD - 승인된 리브 기간도 근무한 것으로 센다")
+def _():
+    anchor = date(2026, 12, 21)
+    e = _emp(employment_type="casual", contract_hours_per_week=None,
+             leave_requests=[{"id": "l", "start_date": "2026-11-02", "end_date": "2026-11-27", "leave_type": "annual_leave", "status": "approved"}])
+    # 11/2~11/27 = 4주 리브 + 직접 근무 3주 = 7주
+    weeks = {k: v for k, v in _weeks_with_day("fri", 3, anchor).items()}
+    st = _mini_state([e], weeks)
+    is_owd, hit, denom = P._is_owd(st, e, "fri", anchor.isoformat())
+    assert is_owd and hit >= 7, f"hit={hit}, denom={denom}"
+
+
+@test("OWD - 입사한 지 얼마 안 되면 분모는 입사 후 경과 주 수 (3주 중 2주 근무 = 67% → OWD)")
+def _():
+    anchor = date(2026, 12, 21)
+    e = _emp(employment_type="casual", contract_hours_per_week=None, hire_date="2026-11-30")
+    weeks = _weeks_with_day("fri", 2, anchor)
+    st = _mini_state([e], weeks)
+    is_owd, hit, denom = P._is_owd(st, e, "fri", anchor.isoformat())
+    assert denom == 3 and hit == 2 and is_owd, f"hit={hit}, denom={denom}"
+
+
+@test("OWD - 합의된 근무요일(agreed_days)이 있으면 과거 기록과 무관하게 그 요일이 OWD")
+def _():
+    e = _emp(agreed_days=["mon", "tue"])
+    st = _mini_state([e])
+    assert P._is_owd(st, e, "mon", "2026-12-21")[0] is True
+    assert P._is_owd(st, e, "fri", "2026-12-21")[0] is False
+
+
+@test("공휴일 지급 - OWD+근무는 1.5배, OWD+미근무는 하루치(표준시간), 캐주얼 OWD 미근무는 0")
+def _():
+    anchor = date(2026, 12, 21)
+    hol = [{"date": "2026-12-25", "name": "Christmas Day"}]  # 금요일
+    for etype, worked, expected in (("standard", True, 7 * 25 * 1.5), ("standard", False, 8 * 25.0),
+                                    ("casual", False, 0.0)):
+        e = _emp(employment_type=etype, contract_hours_per_week=(40 if etype == "standard" else None),
+                 min_hours_per_week=40)
+        weeks = _weeks_with_day("fri", 10, anchor)
+        if worked:
+            weeks[anchor.isoformat()] = [_shift("e1", "fri")]
+        st = _mini_state([e], weeks, hol)
+        fri = P._compute_week_payroll(st, anchor.isoformat())["employees"][0]["per_day"]["fri"]
+        assert approx(fri["pay"], expected), f"{etype}/worked={worked}: {fri}"
+
+
+@test("공휴일 지급 - OWD가 아닌 날 일하면 1.0배 (신법 가정값)")
+def _():
+    anchor = date(2026, 12, 21)
+    e = _emp(employment_type="casual", contract_hours_per_week=None)
+    st = _mini_state([e], {anchor.isoformat(): [_shift("e1", "fri")]}, [{"date": "2026-12-25", "name": "Christmas Day"}])
+    fri = P._compute_week_payroll(st, anchor.isoformat())["employees"][0]["per_day"]["fri"]
+    assert fri["category"] == 3 and approx(fri["pay"], 7 * 25.0), f"실제: {fri}"
+
+
+@test("대체휴일 - OWD 공휴일에 7시간 일하면 7시간이 1:1로 적립되고, 재퍼블리시해도 중복되지 않는다")
+def _():
+    anchor = date(2026, 12, 21)
+    e = _emp()
+    weeks = _weeks_with_day("fri", 10, anchor)
+    weeks[anchor.isoformat()] = [_shift("e1", "fri")]
+    st = _mini_state([e], weeks, [{"date": "2026-12-25", "name": "Christmas Day"}])
+    P._credit_alt_holidays_for_week(st, anchor.isoformat())
+    P._credit_alt_holidays_for_week(st, anchor.isoformat())
+    assert e["alternative_leave_balance_hours"] == 7.0, f"실제: {e['alternative_leave_balance_hours']}"
+
+
+@test("대체휴일 - OWD가 아닌 공휴일 근무는 적립되지 않는다")
+def _():
+    anchor = date(2026, 12, 21)
+    e = _emp()
+    st = _mini_state([e], {anchor.isoformat(): [_shift("e1", "fri")]}, [{"date": "2026-12-25", "name": "Christmas Day"}])
+    P._credit_alt_holidays_for_week(st, anchor.isoformat())
+    assert e["alternative_leave_balance_hours"] == 0.0
+
+
+@test("퇴사 정산 추정 - 애뉴얼 100시간 + 대체휴일 7시간을 가장 낮은 시급($25)으로 계산한다")
+def _():
+    e = _emp(annual_leave_balance_hours=100.0, alternative_leave_balance_hours=7.0)
+    rate = H._lowest_hourly_rate(e)
+    assert approx(100 * rate + 7 * rate, 2675.0)
+
+
+@test("공휴일 정책 변경 API는 법정 고정값이라 거부된다")
+def _():
+    src = open(os.path.join(BACKEND_DIR, "payroll.py"), encoding="utf-8").read()
+    assert "법정 고정값이라 변경할 수 없습니다" in src
 
 
 @test("공휴일 근무 시급 x 1.5배 계산이 정확하다")
 def _():
-    # _assignment_duration_hours와 동일한 방식으로 8시간 근무(휴게 1시간 차감) 가정
     hours = 7.0
     wage = 25.0
     assert approx(hours * wage * 1.5, 262.5)
 
 
-# ---------------------------------------------------------------------------
 # 7. 지오펜싱 거리 계산
 # ---------------------------------------------------------------------------
 
@@ -811,10 +948,10 @@ def _():
         ast.parse(open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read())
 
 
-@test("전체 앱 임포트 성공 + 등록된 라우트가 103개(=101개 + 급여/리브 CSV 내보내기 2개)")
+@test("전체 앱 임포트 성공 + 등록된 라우트가 105개(=103개 + 계약시간 초과 조회 / 대체휴일 조정 2개)")
 def _():
     rules = list(A.app.url_map.iter_rules())
-    assert len(rules) == 103, f"실제 라우트 개수: {len(rules)}"
+    assert len(rules) == 105, f"실제 라우트 개수: {len(rules)}"
 
 
 @test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
