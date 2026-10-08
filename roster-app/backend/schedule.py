@@ -3,7 +3,7 @@ RosterFlow 스케줄 관리 모듈.
 
 부서/근무유형 설정, 근무요건, 자동 스케줄 생성(OR-Tools), 수동 조정, 퍼블리시,
 공휴일 등록, 근무 패턴 제안, 노쇼 알림 등을 담당합니다. helpers.py와
-payroll.py(퍼블리시 시 Lieu Day/애뉴얼 리브 자동 적립)에 의존합니다.
+payroll.py(퍼블리시 시 대체휴일·애뉴얼·병가 시간 자동 적립)에 의존합니다.
 """
 import random
 import time
@@ -22,12 +22,12 @@ from helpers import (
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
     REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
-from payroll import _credit_lieu_days_for_week, _accrue_annual_leave_for_week
+from payroll import _credit_alt_holidays_for_week, _accrue_leave_for_week
 
 schedule_bp = Blueprint("schedule", __name__)
 
 MIN_PATTERN_OCCURRENCES = 3
-FREQUENCY_HIGHLIGHT_THRESHOLD = 5  # 이 값(포함) 이상이면 화면에서 강조 표시 (강제 배정 제한 아님)
+FREQUENCY_HIGHLIGHT_THRESHOLD = 7  # 이 값(포함) 이상이면 화면에서 강조 표시 (강제 배정 제한 아님)
 CARRY_IN_LOOKBACK_DAYS = 14  # 전주 끝자락부터 최대 이만큼(2주)까지만 거슬러 올라가며 연속근무를 셉니다.
 RECENT_FAIRNESS_WINDOW_WEEKS = 4  # 공정성 판단에 참고하는 "최근" 기간
 
@@ -323,7 +323,7 @@ def publish_week(company_id, week_key):
     시점의 배정과 지금 배정을 직원별로 비교해서, **실제로 스케줄이 바뀐 직원의
     확인 기록만** 초기화합니다 — 한 명 스케줄만 급하게 바꿨다고 해서 나머지
     전원이 다시 확인 버튼을 누를 필요가 없도록 하기 위함입니다. 이때 이 주에
-    공휴일 근무(카테고리 A)가 있으면 Lieu Day도 같이 크레딧됩니다."""
+    OWD 공휴일 근무가 있으면 대체휴일(시간)도 1:1로 같이 적립됩니다."""
     if g.role not in ("owner", "manager"):
         return jsonify({"error": "이 작업은 사장 또는 매니저만 할 수 있습니다."}), 403
     state = load_state(company_id)
@@ -349,8 +349,8 @@ def publish_week(company_id, week_key):
     week["published"] = True
     week["locked"] = True
     week["last_published_assignments"] = new_assignments
-    _credit_lieu_days_for_week(state, week_key)
-    _accrue_annual_leave_for_week(state, week_key)
+    _credit_alt_holidays_for_week(state, week_key)
+    _accrue_leave_for_week(state, week_key)
     _log_audit(state, "week_published", f"{week_key} 주 스케줄 퍼블리시", {"week_key": week_key})
     save_state(company_id, state)
     return jsonify({
@@ -1053,7 +1053,7 @@ def get_weekday_frequency(company_id, week_key):
     """이 주(week_key)를 기준으로, 각 직원이 각 요일에 "몇 주 연속으로" 근무했는지
     (근무유형은 상관없이) 셉니다. 이번 주부터 거슬러 올라가며 세다가, 그 요일에
     근무하지 않은(쉬거나 배정이 없는) 주를 만나면 그 즉시 스트릭이 끊깁니다.
-    최대 8주까지만 셉니다. 순전히 참고용 정보이며, 스케줄 생성 로직에는 전혀
+    최대 13주(신법 OWD 판정 기간)까지만 셉니다. 순전히 참고용 정보이며, 스케줄 생성 로직에는 전혀
     영향을 주지 않습니다(하드 규칙도 소프트 규칙도 아님 — 화면에 숫자로만 표시)."""
     state = load_state(company_id)
     y, m, d = map(int, week_key.split("-"))

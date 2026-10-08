@@ -17,7 +17,7 @@
 파일 구조 (기능별로 분리되어 있습니다):
   app.py           - 이 파일. Flask 앱 생성, 로그인/인증, 관리자 패널, 매니저 관리
   helpers.py       - 공용 헬퍼(저장소, 인증 데코레이터, 이메일, 날짜/급여 기초 계산)
-  payroll.py       - 급여 계산, OWP/AWE, 애뉴얼 리브 자동적립/기념일, 공휴일 정책
+  payroll.py       - 급여 계산(LCP), 애뉴얼·병가 시간 적립, 대체휴일, OWD 공휴일 (신법 2026)
   employees.py     - 직원 등록/수정/삭제, PIN, 비자·자격증 관리
   schedule.py       - 스케줄 생성/수정/퍼블리시, 근무요건, 부서/근무유형, 공휴일 등록
   time_tracking.py - 클락인/아웃, 휴게시간, 지오펜싱
@@ -729,11 +729,12 @@ def employee_me():
     return jsonify({
         "id": employee["id"], "name": employee["name"],
         "company_name": company["name"] if company else "",
-        # 직원 본인이 리브를 신청할 때, 자기가 지금 얼마나 남았는지 보고 신청할 수
-        # 있도록 세 가지 잔액을 같이 내려줍니다.
-        "lieu_day_balance": employee.get("lieu_day_balance", 0.0),
+        # 직원 본인이 리브를 신청할 때 남은 잔액을 보고 신청할 수 있도록, 세 가지 잔액(전부
+        # 시간 단위)을 같이 내려줍니다.
         "annual_leave_balance_hours": employee.get("annual_leave_balance_hours", 0.0),
-        "sick_leave_balance_days": employee.get("sick_leave_balance_days", 0.0),
+        "sick_leave_balance_hours": employee.get("sick_leave_balance_hours", 0.0),
+        "alternative_leave_balance_hours": employee.get("alternative_leave_balance_hours", 0.0),
+        "employment_type": employee.get("employment_type", "standard"),
     })
 
 @app.route("/api/employee-auth/weeks/<week_key>", methods=["GET"])

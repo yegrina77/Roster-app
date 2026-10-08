@@ -441,9 +441,9 @@ def load_state(company_id):
             "departments": _default_departments(), "shift_types": _default_shift_types(),
             "public_holiday_policy": _default_public_holiday_policy(),
             "time_entries": [], "payroll_rounding_minutes": DEFAULT_PAYROLL_ROUNDING_MINUTES,
-            "geofence": _default_geofence(), "audit_log": [], "lieu_day_credits": [],
-            "annual_leave_auto_accrual_enabled": False, "annual_leave_accrual_credits": [],
-            "earnings_history": {},
+            "geofence": _default_geofence(), "audit_log": [],
+            "annual_leave_auto_accrual_enabled": True, "leave_accrual_credits": {},
+            "alt_leave_credits": {},
         }
     state = json.loads(raw)
     state.setdefault("employees", [])
@@ -467,15 +467,16 @@ def load_state(company_id):
     state.setdefault("geofence", _default_geofence())
     # 매니저/사장 활동 감사기록 — 이 기능이 생기기 전 회사는 빈 기록으로 시작합니다.
     state.setdefault("audit_log", [])
-    # 이미 크레딧된 (직원,공휴일날짜) Lieu Day 기록 — 중복 크레딧 방지용.
-    state.setdefault("lieu_day_credits", [])
-    # 애뉴얼 리브 자동 적립(매주 급여의 8%) — 기본은 꺼짐. 사장이 명시적으로 켜야
-    # 적용됩니다(잔액에 영향을 주는 자동화라, 조용히 켜져있지 않도록).
-    state.setdefault("annual_leave_auto_accrual_enabled", False)
-    state.setdefault("annual_leave_accrual_credits", [])
-    # 직원별 주간 실지급액 이력 — OWP(변동시간)/AWE 계산에 씁니다. key는
-    # "직원ID|week_key" 형태의 문자열이고, 지난 주가 완전히 끝난 뒤부터 하나씩 쌓입니다.
-    state.setdefault("earnings_history", {})
+    # 신법(Employment Leave Act 2026): 주간 리브 적립(애뉴얼 0.0769/병가 0.0385 × 표준시간)과
+    # 대체휴일(Alternative Holiday) 1:1 적립은 "직원|주" / "직원|공휴일날짜" 키로 기록해
+    # 같은 주를 여러 번 퍼블리시해도 중복 적립되지 않게 합니다. 신법 테스트가 목적이라
+    # 자동 적립은 기본 켜짐입니다.
+    state.setdefault("annual_leave_auto_accrual_enabled", True)
+    state.setdefault("leave_accrual_credits", {})
+    state.setdefault("alt_leave_credits", {})
+    # 구법(Holidays Act 2003) 잔재 데이터 제거
+    for legacy in ("lieu_day_credits", "annual_leave_accrual_credits", "earnings_history"):
+        state.pop(legacy, None)
     return state
 
 def save_state(company_id, state):
@@ -719,6 +720,21 @@ def _sanitize_documents(documents):
         })
     return out
 
+def _sanitize_contract_hours(value):
+    """계약 주당 표준시간: 0~80 사이 숫자만 허용, 아니면 None(= 로스터 최소시간으로 폴백)."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(v, 2) if 0 <= v <= 80 else None
+
+def _sanitize_agreed_days(value):
+    """합의된 근무요일 목록 정리 — mon~sun 중 유효한 값만, 중복 제거."""
+    valid = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [d for d in valid if d in value]
+
 def _sanitize_date(value):
     """날짜 입력값(YYYY-MM-DD)을 검증합니다. 형식이 잘못됐거나 미래 날짜(입사일이
     미래일 수는 없으므로)면 None으로 취급합니다."""
@@ -739,14 +755,20 @@ def _weekly_salary(employee_dict):
     return round(salary / 52, 2)
 
 def _effective_hourly_rate_for_salary(employee_dict):
-    """연봉제 직원의 '환산 시급'입니다 — 공휴일 근무 시 추가수당(0.5배)을 계산하기
-    위한 용도로만 씁니다. 연봉 ÷ 52주 ÷ 주당 계약시간(min_hours_per_week)으로
-    계산합니다. 계약시간이 0이거나 없으면 계산할 수 없으므로 None을 돌려줍니다."""
+    """연봉제 직원의 '환산 시급' — 신법에서는 연봉제의 리브 단가도 "연봉 ÷ 52주 ÷ 표준
+    주당시간"입니다. 표준시간(계약시간, 없으면 로스터 최소시간)이 0이거나 없으면 None."""
     weekly = _weekly_salary(employee_dict)
-    weekly_hours = employee_dict.get("min_hours_per_week") or 0
+    weekly_hours = _contract_hours(employee_dict) or (employee_dict.get("min_hours_per_week") or 0)
     if weekly is None or weekly_hours <= 0:
         return None
     return weekly / weekly_hours
+
+def _lowest_hourly_rate(employee_dict):
+    """신법의 리브 지급 단가: 그 직원이 해당 근무에서 받는 "가장 낮은 시급"(보너스·커미션·
+    변동수당 제외). 시급제는 hourly_wage, 연봉제는 환산 시급. 없으면 None."""
+    if employee_dict.get("pay_type") == "salary":
+        return _effective_hourly_rate_for_salary(employee_dict)
+    return employee_dict.get("hourly_wage")
 
 DEFAULT_GEOFENCE_RADIUS_M = 100  # 디퓨티 등 실제 업체들이 "GPS 오차 감안 시 최소 권장값"으로
 
@@ -800,18 +822,29 @@ def _employee_id_in_use_globally(auth, employee_id, exclude_company_id=None):
             return True
     return False
 
-FREQUENCY_WINDOW_WEEKS = 8
-HOLIDAY_OWD_THRESHOLD = 5  # 지난 8주(이번 주 포함) 중 이 값(포함) 이상 일했으면 "평소 근무 요일"로 간주
+# ---------------------------------------------------------------------------
+# Employment Leave Act 2026 상수 (2028-08-06 시행). 시행규칙(regulations)이 나오면
+# 이 블록의 값만 고치면 됩니다.
+# ---------------------------------------------------------------------------
+ACT_COMMENCEMENT = "2028-08-06"
+ANNUAL_ACCRUAL_PER_HOUR = 0.0769     # 표준 근무 1시간당 애뉴얼 리브 적립 시간 (≈ 4주/52주)
+SICK_ACCRUAL_PER_HOUR = 0.0385       # 표준 근무 1시간당 병가 적립 시간 (≈ 2주/52주)
+SICK_LEAVE_CAP_HOURS = 160.0         # 병가 잔액 상한(시간) — 넘으면 적립 중단
+LCP_RATE = 0.125                     # Leave Compensation Payment: 캐주얼 시간/추가 시간에 12.5%
+FREQUENCY_WINDOW_WEEKS = 13          # OWD 판정: 직전 13주
+HOLIDAY_OWD_RATIO = 0.5              # 같은 요일 근무(또는 리브) 비율이 50% 이상이면 OWD
+PH_WORKED_OWD_MULTIPLIER = 1.5       # OWD 공휴일에 일하면 1.5배(+ 대체휴일 1:1)
+PH_WORKED_NON_OWD_MULTIPLIER = 1.0   # ⚠️ 가정: OWD가 아닌 공휴일 근무는 1.0배 (구법은 1.5배)
+EMPLOYMENT_TYPES = ("standard", "casual")  # standard = 표준시간 계약, casual = 캐주얼
 
-
-LEAVE_TYPES = ("paid", "unpaid", "sick", "lieu_day", "annual_leave")  # sick/lieu_day/annual_leave도
+LEAVE_TYPES = ("paid", "unpaid", "sick", "alt_holiday", "annual_leave")
 
 
 def _is_paid_leave(leave_type):
-    """유급(paid), 병가(sick), Lieu Day, 애뉴얼 리브면 True — 급여 계산과 스케줄러의
+    """유급(paid), 병가(sick), 대체휴일(alt_holiday), 애뉴얼 리브면 True — 급여 계산과 스케줄러의
     최소시간 크레딧에서 "이미 지급이 약속된 시간"으로 취급합니다. 무급(unpaid)이거나
     값이 없으면 False."""
-    return leave_type in ("paid", "sick", "lieu_day", "annual_leave")
+    return leave_type in ("paid", "sick", "alt_holiday", "annual_leave")
 
 def _leave_request_day_span(lr):
     """이 Leave Request가 며칠짜리인지(시작일~종료일 포함) 계산합니다. 날짜 형식이
@@ -874,98 +907,56 @@ def _leave_day_hours(lr, employee, the_date_iso):
 
 def _apply_leave_balance_diff(employee, new_requests):
     """리브 신청 목록이 통째로 교체될 때(update_employee가 항상 이런 식으로 동작하므로),
-    Lieu Day/애뉴얼 리브/병가 잔액을 정확히 반영합니다. id가 있는 신청만 비교 대상으로
-    삼습니다(id 없는 옛날 데이터는 잔액 계산에서 건너뜁니다 — 이 기능 이전에 만들어진
-    신청까지 소급 적용하면 예상치 못하게 잔액이 깎일 수 있으므로).
+    애뉴얼 리브/병가/대체휴일 잔액을 **전부 시간 단위**로 정확히 반영합니다(신법: 모든
+    리브가 시간 단위). id가 있는 신청만 비교 대상으로 삼고, status가 "approved"인 신청만
+    잔액에 반영됩니다(status 없는 옛 데이터는 approved로 간주).
 
-    ⚠️ status가 "approved"인 신청만 잔액에 반영됩니다("pending"으로 새로 신청된
-    건은 아직 잔액에 영향을 주지 않고, 관리자가 승인해서 approved로 바뀌는 순간
-    이 함수가 다시 호출되면서 그제서야 차감됩니다 — approve_leave_request가 이
-    방식을 그대로 재사용합니다). status 필드가 아예 없는 옛날 데이터는 이 기능
-    이전에 만들어진 것이므로 approved로 간주합니다(하위 호환).
-
-    새로 승인되거나 종류가 바뀐 Lieu Day/애뉴얼 리브/병가 신청은 잔액에서 차감하고,
-    승인이 취소되거나 종류가 바뀐 신청은 그만큼 잔액을 되돌립니다. 애뉴얼 리브와
-    병가는 날짜별로 직접 입력한 시간(daily_hours)이 있으면 그 합계를, 없으면 평균
-    하루시간으로 계산합니다. 잔액이 모자라면 (None, 에러메시지)를 돌려주고, 성공하면
-    (갱신된 잔액 dict, None)을 돌려줍니다.
-
-    ⚠️ 병가는 애뉴얼 리브와 다르게 "일(day)" 단위로 관리됩니다(뉴질랜드 법상 병가
-    일수는 근무시간에 비례하지 않기 때문) — 그래서 "시간"을 "그 직원의 평균
-    하루시간"으로 나눠서 며칠치인지 환산합니다(예: 평균 8시간인 사람이 3시간만
-    병가를 쓰면 0.375일 차감). 병가는 법적으로 "당겨쓰기" 조항이 따로 없어서,
-    잔액이 부족하면 기본적으로 거부되고, allow_sick_override:true가 붙어있을 때만
-    (사장 재량으로 유급 인정) 마이너스를 허용합니다.
-
-    애뉴얼 리브는 아직 정식 발생 전이라도(입사 12개월 전) 사장 동의하에 "당겨쓰기"가
-    가능합니다(Holidays Act 2003 21A조) — 새로 승인되는 신청에 allow_advance:true가
-    붙어있으면, 그 신청 때문에 잔액이 마이너스가 되는 것까지는 허용합니다(Lieu Day는
-    당겨쓰기 개념이 없어서 이 예외가 적용되지 않습니다)."""
+    새로 승인되거나 종류/시간이 바뀐 신청은 차감하고, 승인 취소·삭제·종류 변경은 그만큼
+    되돌립니다(이미 기간이 지난 신청은 "다 쓴 것"이므로 환불하지 않습니다). 신청 시간은
+    날짜별 직접 입력(daily_hours)이 있으면 그 합계, 없으면 "평균 하루시간 × 일수"입니다.
+    잔액이 모자라면 (None, 에러메시지)를 돌려줍니다. 애뉴얼 리브는 allow_advance:true,
+    병가는 allow_sick_override:true인 신청에 한해 마이너스를 허용합니다(사장 재량).
+    대체휴일은 당겨쓰기가 없습니다."""
     old_requests = employee.get("leave_requests") or []
     old_by_id = {r.get("id"): r for r in old_requests if r.get("id") and r.get("status", "approved") == "approved"}
     new_by_id = {r.get("id"): r for r in (new_requests or []) if r.get("id") and r.get("status", "approved") == "approved"}
 
-    lieu_delta_days = 0.0
-    annual_delta_hours = 0.0
-    sick_delta_days = 0.0
+    keys = {"annual_leave": "annual_leave_balance_hours", "sick": "sick_leave_balance_hours",
+            "alt_holiday": "alternative_leave_balance_hours"}
+    delta = {k: 0.0 for k in keys}
     today = date.today()
     advance_allowed = False
     sick_override_allowed = False
-    avg_hours = _average_day_hours(employee) or 0
     for rid in set(old_by_id) | set(new_by_id):
         old_r, new_r = old_by_id.get(rid), new_by_id.get(rid)
         old_type = old_r.get("leave_type") if old_r else None
         new_type = new_r.get("leave_type") if new_r else None
-        old_span = _leave_request_day_span(old_r) if old_r else 0
-        new_span = _leave_request_day_span(new_r) if new_r else 0
         old_hours = _leave_request_hours(old_r, employee) if old_r else 0
         new_hours = _leave_request_hours(new_r, employee) if new_r else 0
-        old_sick_days = (old_hours / avg_hours) if (old_r and avg_hours > 0) else 0
-        new_sick_days = (new_hours / avg_hours) if (new_r and avg_hours > 0) else 0
         changed = (old_type, old_hours) != (new_type, new_hours)
         if old_r and (not new_r or changed):
-            # 이미 기간이 지나서 자연스럽게 화면에서 사라진 신청(만료)은 "취소"가
-            # 아니라 "이미 다 쓴 것"이므로, 잔액을 되돌리지 않습니다. 사용자가 실제로
-            # 삭제하거나 승인을 취소한, 아직 기간이 지나지 않은 신청만 환불합니다.
             try:
                 old_end = date.fromisoformat(old_r.get("end_date", ""))
             except (ValueError, TypeError):
                 old_end = None
-            still_active = old_end is None or old_end >= today
-            if still_active:
-                if old_type == "lieu_day":
-                    lieu_delta_days += old_span
-                elif old_type == "annual_leave":
-                    annual_delta_hours += old_hours
-                elif old_type == "sick":
-                    sick_delta_days += old_sick_days
+            if (old_end is None or old_end >= today) and old_type in delta:
+                delta[old_type] += old_hours
         if new_r and (not old_r or changed):
-            if new_type == "lieu_day":
-                lieu_delta_days -= new_span
-            elif new_type == "annual_leave":
-                annual_delta_hours -= new_hours
-                if new_r.get("allow_advance"):
-                    advance_allowed = True
-            elif new_type == "sick":
-                sick_delta_days -= new_sick_days
-                if new_r.get("allow_sick_override"):
-                    sick_override_allowed = True
+            if new_type in delta:
+                delta[new_type] -= new_hours
+            if new_type == "annual_leave" and new_r.get("allow_advance"):
+                advance_allowed = True
+            if new_type == "sick" and new_r.get("allow_sick_override"):
+                sick_override_allowed = True
 
-    new_lieu_balance = employee.get("lieu_day_balance", 0.0) + lieu_delta_days
-    new_annual_balance = employee.get("annual_leave_balance_hours", 0.0) + annual_delta_hours
-    new_sick_balance = employee.get("sick_leave_balance_days", 0.0) + sick_delta_days
-
-    if new_lieu_balance < -0.01:
-        return None, f"Lieu Day 잔액이 부족합니다 (보유: {employee.get('lieu_day_balance', 0):.1f}일)."
-    if new_annual_balance < -0.01 and not advance_allowed:
+    result = {k: (employee.get(f) or 0.0) + delta[k] for k, f in keys.items()}
+    if result["alt_holiday"] < -0.01:
+        return None, f"대체휴일 잔액이 부족합니다 (보유: {employee.get('alternative_leave_balance_hours', 0):.1f}시간)."
+    if result["annual_leave"] < -0.01 and not advance_allowed:
         return None, f"애뉴얼 리브 잔액이 부족합니다 (보유: {employee.get('annual_leave_balance_hours', 0):.1f}시간)."
-    if new_sick_balance < -0.01 and not sick_override_allowed:
-        return None, f"병가 잔액이 부족합니다 (보유: {employee.get('sick_leave_balance_days', 0):.1f}일)."
-    return {
-        "lieu_day_balance": round(new_lieu_balance, 2),
-        "annual_leave_balance_hours": round(new_annual_balance, 2),
-        "sick_leave_balance_days": round(new_sick_balance, 2),
-    }, None
+    if result["sick"] < -0.01 and not sick_override_allowed:
+        return None, f"병가 잔액이 부족합니다 (보유: {employee.get('sick_leave_balance_hours', 0):.1f}시간)."
+    return {f: round(result[k], 2) for k, f in keys.items()}, None
 
 def _stamp_new_leave_requests(old_requests, new_requests, role, name, default_status):
     """새로 추가되는 Leave Request(기존 목록에 없던 id)에 메타데이터를 채웁니다 —
@@ -1110,13 +1101,23 @@ def _leave_forced_days(employee_dict, week_key):
     """이 직원의 Leave Request 중, 이 주(week_key)의 날짜와 겹치는 요일들을 반환합니다."""
     return list(_leave_info_by_day(employee_dict, week_key).keys())
 
+def _contract_hours(employee_dict):
+    """계약상 표준 주당 근무시간(신법의 "standard hours"). contract_hours_per_week가
+    없으면(또는 캐주얼이 아닌데 0이면) 로스터 최소시간으로 폴백합니다. 캐주얼은 표준시간이
+    없으므로 0입니다."""
+    if employee_dict.get("employment_type") == "casual":
+        return 0.0
+    v = employee_dict.get("contract_hours_per_week")
+    if v is None:
+        v = employee_dict.get("min_hours_per_week") or 0
+    return float(v)
+
 def _average_day_hours(employee_dict):
-    """이 직원의 '하루 평균 근무시간' 추정치입니다 — 주당 최소시간을 목표 근무일수로
-    나눈 값이며, 실제 과거 지급 내역(relevant daily pay)이 아니라 추정치입니다.
-    유급/병가 리브 하루치 크레딧, 공휴일 카테고리 B(평소 근무일인데 안 일함) 계산에
-    공통으로 씁니다."""
+    """이 직원의 '하루 평균 근무시간' 추정치 — 계약 표준시간(캐주얼이면 로스터 최소시간)을
+    목표 근무일수로 나눈 값입니다. 유급 리브 하루치, 공휴일 OWD 미근무 지급 계산에 씁니다."""
     target_days = employee_dict.get("target_days_per_week") or 5
-    return (employee_dict.get("min_hours_per_week") or 0) / target_days
+    base = _contract_hours(employee_dict) or (employee_dict.get("min_hours_per_week") or 0)
+    return base / target_days
 
 def _credited_leave_hours(employee_dict, week_key):
     """이번 주에 유급/병가 리브로 인정되는 시간의 합계입니다(스케줄러의 최소시간
@@ -1149,16 +1150,10 @@ def _worked_that_weekday(state, employee_id, day, week_key):
     return any(a["employee_id"] == employee_id and a["day"] == day for a in assignments)
 
 def _default_public_holiday_policy():
-    """공휴일 급여 정책이 생기기 전부터 모든 회사에 똑같이 적용되던 계산 기준을
-    그대로 기본값으로 씁니다: 지난 8주(이번 주 포함) 중 5주 이상 그 요일에 근무했으면
-    '평소 근무 요일'로 간주. 회사는 이후 Settings에서 window_weeks/min_weeks_worked를
-    자유롭게 바꾸거나, method 자체를 "actual_only"(과거 기록 없이 그날 근무 여부만 기준)로
-    바꿀 수 있습니다."""
-    return {
-        "method": "threshold",  # "threshold" | "actual_only"
-        "window_weeks": FREQUENCY_WINDOW_WEEKS,
-        "min_weeks_worked": HOLIDAY_OWD_THRESHOLD,
-    }
+    """신법의 OWD 판정 기준(법정 고정값): 직전 13주 중 같은 요일에 50% 이상 근무(또는
+    리브)했으면 OWD. 회사가 임의로 바꿀 수 없으므로 표시용 정보로만 돌려줍니다."""
+    return {"method": "statutory_2028", "window_weeks": FREQUENCY_WINDOW_WEEKS,
+            "min_ratio": HOLIDAY_OWD_RATIO}
 
 
 # ---------------------------------------------------------------------------

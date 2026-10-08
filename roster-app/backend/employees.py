@@ -2,7 +2,7 @@
 RosterFlow 직원 관리 모듈.
 
 직원 등록/수정/삭제, PIN 조회·재발급, 비자·자격증 만료 알림을 담당합니다.
-helpers.py와 payroll.py(애뉴얼 리브 기념일 처리)에 의존합니다.
+helpers.py에 의존합니다.
 """
 from datetime import date, timedelta, datetime, timezone
 from flask import request, jsonify, g, Blueprint
@@ -13,8 +13,8 @@ from helpers import (
     _prune_expired_leave_requests, _sanitize_wage, _sanitize_annual_salary,
     _stamp_new_leave_requests,
     _sanitize_documents, _sanitize_date, _ensure_employee_limit,
+    EMPLOYMENT_TYPES, _sanitize_contract_hours, _sanitize_agreed_days,
 )
-from payroll import _process_annual_leave_anniversary, _process_sick_leave_anniversary
 
 employees_bp = Blueprint("employees", __name__)
 
@@ -22,17 +22,6 @@ employees_bp = Blueprint("employees", __name__)
 @require_login
 def list_employees(company_id):
     state = load_state(company_id)
-    # 조회할 때마다, 입사일이 지난 기념일이 있으면 애뉴얼 리브(12개월 단위 4주)와
-    # 병가(6개월 후 첫 부여, 이후 12개월마다 10일)를 자동으로 지급합니다 — 별도
-    # 예약 작업(cron) 없이도, 누군가 직원 목록을 볼 때마다 자연스럽게 체크되는 구조입니다.
-    any_changed = False
-    for e in state["employees"]:
-        if _process_annual_leave_anniversary(e, state):
-            any_changed = True
-        if _process_sick_leave_anniversary(e):
-            any_changed = True
-    if any_changed:
-        save_state(company_id, state)
     out = []
     for e in state["employees"]:
         e2 = dict(e)
@@ -104,28 +93,25 @@ def add_employee(company_id):
         "annual_salary": _sanitize_annual_salary(payload.get("annual_salary")),
         # 입사일 — 애뉴얼 리브 기념일(12개월마다 4주 자동 발생) 계산의 기준점입니다.
         "hire_date": _sanitize_date(payload.get("hire_date")),
-        # 근무시간 고정("fixed") 또는 변동("variable") — OWP(평소 주급) 계산 방식을
-        # 결정합니다. 고정이면 계약시간×현재시급, 변동이면 최근 4주 평균 실지급액을 씁니다.
-        "hours_type": payload.get("hours_type") if payload.get("hours_type") in ("fixed", "variable") else "fixed",
+        # 신법(Employment Leave Act 2026) 고용형태: "standard"(표준시간 계약, 기본값) 또는
+        # "casual"(캐주얼 — 리브 적립 없이 모든 시간에 LCP 12.5%).
+        "employment_type": payload.get("employment_type") if payload.get("employment_type") in EMPLOYMENT_TYPES else "standard",
+        # 계약서상 주당 표준 근무시간 — 리브 적립(×0.0769/0.0385)과 "추가 시간"(초과분 LCP)의
+        # 기준입니다. 로스터 최소시간(min_hours_per_week)과 별개이며, 비워두면 로스터 최소시간을 씁니다.
+        "contract_hours_per_week": _sanitize_contract_hours(payload.get("contract_hours_per_week")),
+        # 합의된 근무요일(예: ["mon","tue","wed"]) — 있으면 그 요일이 곧 OWD이고, 비어있으면
+        # 직전 13주 중 50% 이상 근무한 요일이 OWD입니다.
+        "agreed_days": _sanitize_agreed_days(payload.get("agreed_days")),
         # 직원 로그인용 PIN — 등록 시 자동으로 무작위 생성됩니다. 관리자/매니저가
         # "직원 PIN 조회" 화면에서 확인하거나 재발급할 수 있습니다.
         "pin": _generate_pin(),
         "pin_failed_attempts": 0,
         "pin_locked_until": None,
-        # Lieu Day 잔액(일 단위)과 애뉴얼 리브 잔액(시간 단위) — 둘 다 0에서 시작합니다.
-        # Lieu Day는 공휴일 근무(카테고리 A) 시 자동으로 쌓이고, 애뉴얼 리브는 기념일마다
-        # 자동으로 4주씩 발생하거나(입사일이 등록된 경우) 사장이 직접 조정합니다.
-        "lieu_day_balance": 0.0,
+        # 리브 잔액은 전부 시간 단위(신법): 애뉴얼(상한 없음), 병가(상한 160시간),
+        # 대체휴일(OWD 공휴일 근무 시간 1:1 적립). 스케줄 퍼블리시 시 자동 적립됩니다.
         "annual_leave_balance_hours": 0.0,
-        # 병가 잔액(일 단위) — 애뉴얼 리브와 달리 근무시간에 비례하지 않고, 자격
-        # 충족(입사 6개월) 시 10일, 그 후 12개월마다 10일씩 자동 발생합니다(최대 20일
-        # 누적). "하루"의 가치(시간/급여)는 그날 실제 근무 패턴에 따라 달라집니다.
-        "sick_leave_balance_days": 0.0,
-        # 이미 지급된 병가 기념일 목록(6개월째, 18개월째, 30개월째...) — 중복 지급 방지용.
-        "sick_leave_anniversaries_granted": [],
-        # 이미 지급된(정산된) 애뉴얼 리브 기념일 목록 — 같은 기념일에 중복으로 4주가
-        # 또 발생하지 않도록 기록해둡니다.
-        "annual_leave_anniversaries_granted": [],
+        "sick_leave_balance_hours": 0.0,
+        "alternative_leave_balance_hours": 0.0,
         # 비자·자격증 등 만료일이 있는 문서 목록 — 각 항목은 {id, doc_type, label, expiry_date}.
         "documents": [],
     }
@@ -146,7 +132,8 @@ def update_employee(company_id, employee_id):
         "name", "department", "min_hours_per_week", "target_days_per_week",
         "blocked_shift_types", "day_off_pattern", "preferred", "preferred_off_days",
         "leave_requests", "recent_night_count", "recent_weekend_count", "hourly_wage",
-        "pay_type", "annual_salary", "documents", "hire_date", "hours_type",
+        "pay_type", "annual_salary", "documents", "hire_date",
+        "employment_type", "contract_hours_per_week", "agreed_days",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "hourly_wage" in updates:
@@ -159,8 +146,12 @@ def update_employee(company_id, employee_id):
         updates["documents"] = _sanitize_documents(updates["documents"])
     if "hire_date" in updates:
         updates["hire_date"] = _sanitize_date(updates["hire_date"])
-    if "hours_type" in updates and updates["hours_type"] not in ("fixed", "variable"):
-        updates["hours_type"] = "fixed"
+    if "employment_type" in updates and updates["employment_type"] not in EMPLOYMENT_TYPES:
+        updates["employment_type"] = "standard"
+    if "contract_hours_per_week" in updates:
+        updates["contract_hours_per_week"] = _sanitize_contract_hours(updates["contract_hours_per_week"])
+    if "agreed_days" in updates:
+        updates["agreed_days"] = _sanitize_agreed_days(updates["agreed_days"])
     for i, e in enumerate(state["employees"]):
         if e["id"] == employee_id:
             if "leave_requests" in updates:
