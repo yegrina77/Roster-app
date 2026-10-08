@@ -549,11 +549,25 @@
       </div>
       <div class="field" id="emp-wage-field"><label data-i18n="label_hourly_wage">시급</label><input id="emp-wage" type="number" min="0" step="0.5" placeholder="25.00" style="width:80px;"></div>
       <div class="field" id="emp-salary-field" style="display:none;"><label data-i18n="label_annual_salary">연봉</label><input id="emp-salary" type="number" min="0" step="500" placeholder="52000" style="width:100px;"></div>
-      <div class="field" id="emp-hours-type-field"><label data-i18n="label_hours_type">근무시간 유형</label>
-        <select id="emp-hours-type">
-          <option value="fixed" data-i18n="opt_hours_fixed">고정</option>
-          <option value="variable" data-i18n="opt_hours_variable">변동</option>
+      <div class="field"><label data-i18n="label_employment_type">고용 형태</label>
+        <select id="emp-employment-type" onchange="updatePayTypeFields()">
+          <option value="standard" data-i18n="opt_emp_standard">표준시간 계약</option>
+          <option value="casual" data-i18n="opt_emp_casual">캐주얼</option>
         </select>
+      </div>
+      <div class="field" id="emp-contract-hours-field"><label data-i18n="label_contract_hours">계약 주당 표준시간</label>
+        <input id="emp-contract-hours" type="number" min="0" max="80" step="0.5" placeholder="40" style="width:70px;">
+      </div>
+      <div class="field" id="emp-agreed-days-field"><label data-i18n="label_agreed_days">합의된 근무요일 (선택)</label>
+        <div style="display:flex; gap:6px; font-size:12px; height:34px; align-items:center;">
+          <label><input type="checkbox" class="emp-agreed-day" value="mon">월</label>
+          <label><input type="checkbox" class="emp-agreed-day" value="tue">화</label>
+          <label><input type="checkbox" class="emp-agreed-day" value="wed">수</label>
+          <label><input type="checkbox" class="emp-agreed-day" value="thu">목</label>
+          <label><input type="checkbox" class="emp-agreed-day" value="fri">금</label>
+          <label><input type="checkbox" class="emp-agreed-day" value="sat">토</label>
+          <label><input type="checkbox" class="emp-agreed-day" value="sun">일</label>
+        </div>
       </div>
       <div class="field"><label data-i18n="label_hire_date">입사일</label><span id="emp-hire-date-slot" style="display:inline-flex; width:140px;"></span></div>
       <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
@@ -734,7 +748,16 @@ const I18N = {
     label_hourly_wage: "시급",
     label_pay_type: "급여 방식", opt_pay_hourly: "시급제", opt_pay_salary: "연봉제",
     label_annual_salary: "연봉", label_min_hours_salary: "주당 계약시간",
-    label_hours_type: "근무시간 유형", opt_hours_fixed: "고정", opt_hours_variable: "변동",
+    over_contract_publish_head: "⚠️ 계약 표준시간을 넘는 직원 (초과분은 추가 시간 → LCP 12.5%, 리브 미적립):",
+    over_contract_publish_line: "• {name}: 스케줄 {s}h / 계약 {c}h (초과 {a}h, LCP 약 ${lcp})",
+    label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
+    label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
+    balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
+    balance_adjust_alt_sub: "OWD 공휴일 근무 시 시간이 1:1로 자동 적립됩니다. 필요하면 직접 보정하세요.",
+    final_payment_rate: "적용 시급(가장 낮은 시급)", final_payment_rate_note: "신법: 모든 리브는 해당 근무의 가장 낮은 시급으로 지급됩니다 (보너스·커미션 제외).",
+    payroll_lcp_included: "LCP 12.5% ${v} 포함 (추가/캐주얼 {h}h)", payroll_over_contract: "⚠️ 계약 {c}h 초과 (스케줄 {s}h)",
+    ph_owd_agreed: "OWD (합의된 근무요일)", ph_not_owd_agreed: "OWD 아님 (합의된 근무요일 아님)",
+    ph_policy_rules_html: "<b>OWD (Otherwise Working Day)</b><br>• 합의된 근무요일이 있으면 그 요일이 OWD<br>• 없으면(캐주얼 포함) 직전 13주 중 같은 요일에 50% 이상 근무(또는 리브)했으면 OWD<br><br><b>지급</b><br>• OWD+근무: 1.5배 + 대체휴일(일한 시간 1:1)<br>• OWD+쉼: 하루치 (캐주얼은 해당 없음)<br>• OWD 아님+근무: 1.0배 (가정값)",
     label_hire_date: "입사일",
     opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
     modal_training_added_title: "Training 인원이 등록되었습니다",
@@ -826,14 +849,14 @@ const I18N = {
     rules_leave_desc: "날짜 구간을 등록하면, 그 기간이 포함된 어느 주든 자동으로 휴무 처리됩니다. 등록한 마지막 날짜가 지나면 이 목록에서 자동으로 사라집니다.",
     leave_reason_placeholder: "사유 (선택, 최대 200자)",
     leave_type_paid: "유급", leave_type_unpaid: "무급", leave_type_sick: "병가(유급)",
-    leave_type_annual_leave: "애뉴얼 리브", leave_type_lieu_day: "Lieu Day",
-    balance_lieu_day: "Lieu Day 잔액: {n}일", balance_annual_leave: "애뉴얼 리브 잔액: {h}시간",
-    balance_sick_leave: "병가 잔액: {n}일",
+    leave_type_annual_leave: "애뉴얼 리브", leave_type_alt_holiday: "대체휴일",
+    balance_alt_leave: "대체휴일 잔액: {h}시간", balance_annual_leave: "애뉴얼 리브 잔액: {h}시간",
+    balance_sick_leave: "병가 잔액: {h}시간 (상한 160)",
     tenure_days_display: "입사 {n}일째", tenure_no_hire_date: "입사일이 등록되어 있지 않습니다.",
     export_payroll_csv_btn: "📄 급여 기록 CSV", export_leave_history_csv_btn: "📄 리브 이력 CSV",
     balance_adjust_sick_btn: "병가 조정", balance_adjust_sick_title: "{name}님의 병가 잔액 조정",
-    balance_adjust_sick_sub: "새 잔액(일)을 직접 입력해주세요. 최대 20일까지 누적 가능합니다.",
-    balance_adjust_sick_input_label: "새 잔액(일)", balance_adjust_sick_invalid: "0~20 사이의 숫자를 입력해주세요.",
+    balance_adjust_sick_sub: "새 잔액(시간)을 직접 입력해주세요. 최대 160시간까지 누적 가능합니다.",
+    balance_adjust_sick_input_label: "새 잔액(시간)", balance_adjust_sick_invalid: "0~160 사이의 숫자를 입력해주세요.",
     shortfall_modal_title: "계약 최소시간 부족분 처리",
     shortfall_modal_sub: "{name}님 — 계약 최소시간 {min}시간 중 실제 {actual}시간만 배정됨 ({shortfall}시간 부족)",
     shortfall_reason_business: "사업 사정 (급여 보전)", shortfall_reason_employee: "직원 사정 (리브 등록)",
@@ -842,14 +865,14 @@ const I18N = {
     shortfall_hours_required: "0보다 큰 시간을 입력해주세요.",
     payroll_shortfall_tooltip: "계약 최소시간보다 부족합니다 — 클릭해서 처리하기",
     balance_adjust_btn: "조정", balance_adjust_title: "{name}의 애뉴얼 리브 잔액 조정",
-    balance_adjust_sub: "정확한 법정 적립 계산 대신, 참고용으로 직접 관리하는 잔액입니다.",
+    balance_adjust_sub: "스케줄 퍼블리시 때 자동 적립되는 잔액을 직접 보정할 때 사용합니다.",
     balance_adjust_input_label: "새 잔액 (시간)", balance_adjust_invalid: "0 이상의 숫자를 입력해주세요.",
     final_payment_nav_btn: "🧾 퇴사 정산 추정",
     final_payment_picker_title: "퇴사 정산 추정", final_payment_picker_sub: "정산을 계산할 직원을 선택하세요.",
     final_payment_title: "{name} 퇴사 정산 추정",
-    final_payment_warning: "⚠️ 이건 참고용 추정치입니다. 실제 뉴질랜드 Holidays Act 최종 정산은 평소 주급(OWP)과 최근 52주 평균소득(AWE) 비교 등 더 복잡한 계산이 필요합니다. 실제 지급 전 반드시 회계사·노무사 확인을 받으세요.",
+    final_payment_warning: "⚠️ 참고용 추정치입니다. 신법(Employment Leave Act 2026) 기준으로 남은 애뉴얼 리브·대체휴일 시간에 \"가장 낮은 시급\"을 곱한 값이며, 병가는 정산되지 않습니다. 실제 지급 전 회계사·노무사 확인이 필요합니다.",
     final_payment_annual_balance: "애뉴얼 리브 잔액", final_payment_annual_payout: "애뉴얼 리브 정산 추정액",
-    final_payment_lieu_balance: "Lieu Day 잔액", final_payment_lieu_payout: "Lieu Day 정산 추정액",
+    final_payment_lieu_balance: "대체휴일 잔액", final_payment_lieu_payout: "대체휴일 정산 추정액",
     final_payment_total: "총 추정액: ${amount}", final_payment_no_wage: "시급/연봉이 설정되지 않아 계산할 수 없습니다.",
     btn_leave_add: "추가", modal_leave_range_invalid: "종료일은 시작일보다 빠를 수 없습니다.",
     modal_leave_end_in_past: "종료일이 이미 지난 날짜입니다. 이미 끝난 휴가는 자동으로 목록에서 사라지니, 오늘 이후 날짜로 입력해주세요.",
@@ -870,7 +893,7 @@ const I18N = {
     region_hawkes_bay: "혹스베이", region_taranaki: "타라나키", region_nelson: "넬슨",
     region_marlborough: "말버러", region_south_canterbury: "사우스 캔터베리", region_westland: "웨스트랜드",
     region_chatham_islands: "채텀아일랜드",
-    ph_policy_title: "공휴일 판정 기준", ph_policy_sub: "직원이 공휴일에 '평소 근무일'이었는지를 판단하는 기준을 회사에 맞게 설정하세요.",
+    ph_policy_title: "공휴일 OWD 판정 기준 (신법)", ph_policy_sub: "법정 고정 기준이라 설정을 바꿀 수 없습니다.",
     ph_policy_method_threshold_title: "최근 근무 비율 기준",
     ph_policy_method_threshold_desc: "지난 N주 중 M주 이상 그 요일에 근무했으면 평소 근무일로 간주합니다.",
     ph_policy_window_prefix: "최근", ph_policy_window_mid: "주 중", ph_policy_window_suffix: "주 이상 근무",
@@ -879,9 +902,9 @@ const I18N = {
     ph_date: "날짜", ph_name: "이름", modal_ph_date_required: "날짜는 필수입니다.",
     modal_ph_week_title: "이번 주는 Public Holiday가 있는 주입니다",
     modal_ph_week_sub: "아래 공휴일에 대해, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인하세요. (참고용 계산이니 실제 지급 전 확인 권장)",
-    ph_cat1: "1.5배 급여 + Lieu Day", ph_cat2: "평소 일급만 지급 (Lieu Day 없음)",
-    ph_cat3: "1.5배 급여만 (Lieu Day 없음)", ph_cat4: "해당 없음",
-    ph_usual_day: "평소 근무 요일 (최근 8주 중 {n}주)", ph_not_usual_day: "평소 근무 요일 아님 (최근 8주 중 {n}주)",
+    ph_cat1: "1.5배 급여 + 대체휴일(근무시간 1:1 적립)", ph_cat2: "OWD인데 쉼 → 하루치 지급 (캐주얼은 해당 없음)",
+    ph_cat3: "OWD 아님 + 근무 → 1.0배 (대체휴일 없음)", ph_cat4: "해당 없음",
+    ph_usual_day: "OWD (직전 13주 중 {n}주 근무/리브)", ph_not_usual_day: "OWD 아님 (직전 13주 중 {n}주)",
     ph_worked: "이번 공휴일 근무함", ph_not_worked: "이번 공휴일 근무 안 함",
     btn_ph_detail: "🎌 Public Holiday 확인",
     modal_ph_simple_sub: "아래 날짜가 이번 주에 포함되어 있습니다. 스케줄을 완성하고 \"변경사항 저장\"을 누르면, 그때 직원별 노동법 적용 항목을 계산해서 보여드립니다. 궁금할 때는 이 옆의 \"Public Holiday 확인\" 버튼으로 언제든 다시 볼 수 있습니다.",
@@ -1004,14 +1027,14 @@ const I18N = {
     payroll_col_employee: "직원", payroll_col_wage: "시급", payroll_col_scheduled_pay: "이번 주 예상 지급액",
     payroll_wage_not_set: "시급 미설정", payroll_total: "이번 주 총 예상 인건비: ${amount}",
     payroll_salary_not_set: "연봉 미설정", payroll_salary_display: "연봉 ${amount}",
-    payroll_salary_note: "연봉제(고정 주급)", payroll_ph_premium_salary_included: "공휴일 추가수당(0.5배) {n}일 포함",
+    payroll_salary_note: "연봉제(고정 주급)", payroll_ph_premium_salary_included: "공휴일 추가수당 {n}일 포함",
     payroll_rounding_btn: "⏱️ 시간 계산 단위 설정", payroll_col_sched_hours: "스케줄 시간", payroll_col_sched_cost: "스케줄 인건비",
     payroll_col_actual_hours: "실제 시간", payroll_col_actual_cost: "실제 인건비", payroll_col_actual_pay: "실제 지급액",
     payroll_col_diff: "차액", payroll_open_entry_note: "클락아웃 안 함", time_entries_btn: "🕒 클락인/아웃 기록",
     payroll_rounding_title: "급여 계산 단위", payroll_rounding_sub: "클락인은 다음 단위로 올림, 클락아웃은 이전 단위로 버림 처리됩니다 — 일찍 오거나 늦게 나가도 그만큼 급여가 더 나가지 않도록 하는 방식입니다.",
     payroll_rounding_1min: "버림 없음 (1분 단위)", payroll_rounding_nmin: "{n}분 단위",
-    accrual_title: "애뉴얼 리브 자동 적립", accrual_desc: "매주 스케줄 퍼블리시 시, 시급제 직원의 그 주 예상 급여 8%만큼을 애뉴얼 리브 잔액에 자동으로 더합니다. 연봉제는 대상이 아닙니다.",
-    accrual_enable_label: "자동 적립(8%) 사용",
+    accrual_title: "리브 자동 적립", accrual_desc: "매주 스케줄 퍼블리시 시, 표준시간 직원의 애뉴얼 리브(표준시간 × 0.0769)와 병가(× 0.0385, 상한 160시간)를 시간 단위로 적립하고, OWD 공휴일 근무는 대체휴일로 1:1 적립합니다. 캐주얼은 적립 대신 LCP 12.5%입니다.",
+    accrual_enable_label: "자동 적립 사용",
     payroll_rounding_note: "현재 계산 단위: {n}분 (클락인은 올림, 클락아웃은 버림 — 직원에게 유리한 쪽으로는 반올림되지 않습니다).",
     payroll_total_scheduled: "스케줄 기준 총액: ${amount}", payroll_total_actual: "실제 기준 총액: ${amount}",
     time_entries_title: "클락인/아웃 기록", time_entries_sub: "{week} 주 — 직원별 실제 출퇴근 기록입니다.",
@@ -1036,8 +1059,8 @@ const I18N = {
     time_entries_create_reason_placeholder: "예: 직원이 그날 클락인을 아예 안 찍음",
     time_entries_delete_btn: "🗑️ 삭제", time_entries_delete_confirm_title: "클락인/아웃 기록 삭제",
     time_entries_delete_confirm_msg: "{name}님의 {date} 근무 기록을 완전히 삭제합니다. 되돌릴 수 없습니다. 계속할까요?",
-    payroll_leave_included: "유급/병가 리브 {n}일 포함",
-    payroll_ph_premium_included: "공휴일 1.5배 {n}일 포함", payroll_ph_avgpay_included: "공휴일 평균급여 {n}일 포함",
+    payroll_leave_included: "유급/병가/애뉴얼/대체휴일 리브 {n}일 포함",
+    payroll_ph_premium_included: "공휴일 1.5배/1.0배 근무 {n}일 포함", payroll_ph_avgpay_included: "공휴일 OWD 하루치 {n}일 포함",
     admin_pending_sub: "아래 요청을 검토해서 승인하거나 거절할 수 있습니다.", admin_pending_empty: "대기 중인 요청이 없습니다.",
     admin_pending_requested_at: "요청일", btn_approve: "승인", btn_reject: "거절",
     dept_mgmt_title: "부서 및 근무유형 관리",
@@ -1124,7 +1147,16 @@ const I18N = {
     label_hourly_wage: "Hourly Wage",
     label_pay_type: "Pay Type", opt_pay_hourly: "Hourly", opt_pay_salary: "Salary",
     label_annual_salary: "Annual Salary", label_min_hours_salary: "Contracted Hours/Week",
-    label_hours_type: "Hours Type", opt_hours_fixed: "Fixed", opt_hours_variable: "Variable",
+    over_contract_publish_head: "⚠️ Scheduled above contract hours (excess = additional hours → 12.5% LCP, no leave accrual):",
+    over_contract_publish_line: "• {name}: scheduled {s}h / contract {c}h (+{a}h, LCP ≈ ${lcp})",
+    label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
+    label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
+    balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
+    balance_adjust_alt_sub: "Hours are credited 1:1 automatically for OWD public-holiday work. Correct manually if needed.",
+    final_payment_rate: "Rate applied (lowest hourly rate)", final_payment_rate_note: "New Act: all leave is paid at the lowest hourly rate for the shift (bonuses/commission excluded).",
+    payroll_lcp_included: "Includes LCP 12.5% ${v} ({h}h additional/casual)", payroll_over_contract: "⚠️ Over contract {c}h (scheduled {s}h)",
+    ph_owd_agreed: "OWD (agreed working day)", ph_not_owd_agreed: "Not an OWD (not an agreed day)",
+    ph_policy_rules_html: "<b>OWD (Otherwise Working Day)</b><br>• If agreed working days exist, those weekdays are OWDs<br>• Otherwise (incl. casuals): OWD if worked (or on leave) on that weekday in at least 50% of the preceding 13 weeks<br><br><b>Pay</b><br>• OWD + worked: 1.5x + Alternative Holiday (hours worked, 1:1)<br>• OWD + off: daily pay (not for casuals)<br>• Not an OWD + worked: 1.0x (assumption)",
     label_hire_date: "Hire Date",
     opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
     modal_training_added_title: "Training employee registered",
@@ -1216,14 +1248,14 @@ const I18N = {
     rules_leave_desc: "Register a date range and it will automatically be treated as a day off in any week that overlaps it. It disappears from this list automatically once the last day has passed.",
     leave_reason_placeholder: "Reason (optional, max 200 chars)",
     leave_type_paid: "Paid", leave_type_unpaid: "Unpaid", leave_type_sick: "Sick (Paid)",
-    leave_type_annual_leave: "Annual Leave", leave_type_lieu_day: "Lieu Day",
-    balance_lieu_day: "Lieu Day balance: {n}", balance_annual_leave: "Annual Leave balance: {h}h",
-    balance_sick_leave: "Sick Leave balance: {n} day(s)",
+    leave_type_annual_leave: "Annual Leave", leave_type_alt_holiday: "Alternative Holiday",
+    balance_alt_leave: "Alternative Holiday balance: {h}h", balance_annual_leave: "Annual Leave balance: {h}h",
+    balance_sick_leave: "Sick Leave balance: {h}h (cap 160)",
     tenure_days_display: "Day {n} since hire", tenure_no_hire_date: "Hire date not set.",
     export_payroll_csv_btn: "📄 Payroll CSV", export_leave_history_csv_btn: "📄 Leave History CSV",
     balance_adjust_sick_btn: "Adjust Sick", balance_adjust_sick_title: "Adjust {name}'s Sick Leave Balance",
-    balance_adjust_sick_sub: "Enter the new balance (days). Max 20 days can be accumulated.",
-    balance_adjust_sick_input_label: "New balance (days)", balance_adjust_sick_invalid: "Please enter a number between 0 and 20.",
+    balance_adjust_sick_sub: "Enter the new balance (hours). Max 160 hours can be accumulated.",
+    balance_adjust_sick_input_label: "New balance (hours)", balance_adjust_sick_invalid: "Please enter a number between 0 and 160.",
     shortfall_modal_title: "Resolve Contracted Hours Shortfall",
     shortfall_modal_sub: "{name} — only {actual}h of {min}h contracted hours were rostered ({shortfall}h short)",
     shortfall_reason_business: "Business reason (top up pay)", shortfall_reason_employee: "Employee's own choice (register leave)",
@@ -1232,14 +1264,14 @@ const I18N = {
     shortfall_hours_required: "Please enter an hours value greater than 0.",
     payroll_shortfall_tooltip: "Below contracted minimum hours — click to resolve",
     balance_adjust_btn: "Adjust", balance_adjust_title: "Adjust {name}'s Annual Leave Balance",
-    balance_adjust_sub: "A reference balance you manage directly, not a certified legal accrual calculation.",
+    balance_adjust_sub: "Use this to manually correct the balance that is auto-accrued when a week is published.",
     balance_adjust_input_label: "New balance (hours)", balance_adjust_invalid: "Please enter a number 0 or greater.",
     final_payment_nav_btn: "🧾 Final Payment Estimate",
     final_payment_picker_title: "Final Payment Estimate", final_payment_picker_sub: "Select an employee to estimate their final payment.",
     final_payment_title: "Final Payment Estimate — {name}",
-    final_payment_warning: "⚠️ This is a reference estimate only. Actual final pay under the NZ Holidays Act requires comparing Ordinary Weekly Pay (OWP) and Average Weekly Earnings (AWE) over the last 52 weeks, among other factors. Always confirm with an accountant or payroll professional before paying out.",
+    final_payment_warning: "⚠️ Reference estimate only. Under the Employment Leave Act 2026, remaining annual leave and alternative holiday hours are multiplied by the lowest hourly rate; sick leave is not paid out. Confirm with an accountant before paying.",
     final_payment_annual_balance: "Annual Leave Balance", final_payment_annual_payout: "Annual Leave Payout Estimate",
-    final_payment_lieu_balance: "Lieu Day Balance", final_payment_lieu_payout: "Lieu Day Payout Estimate",
+    final_payment_lieu_balance: "Alternative Holiday Balance", final_payment_lieu_payout: "Alternative Holiday Payout Estimate",
     final_payment_total: "Total estimate: ${amount}", final_payment_no_wage: "Cannot calculate — no wage/salary set.",
     btn_leave_add: "Add", modal_leave_range_invalid: "The end date cannot be before the start date.",
     modal_leave_end_in_past: "The end date is already in the past. Finished leave requests are automatically removed from the list, so please pick a date today or later.",
@@ -1260,7 +1292,7 @@ const I18N = {
     region_hawkes_bay: "Hawke's Bay", region_taranaki: "Taranaki", region_nelson: "Nelson",
     region_marlborough: "Marlborough", region_south_canterbury: "South Canterbury", region_westland: "Westland",
     region_chatham_islands: "Chatham Islands",
-    ph_policy_title: "Public Holiday Determination Rule", ph_policy_sub: "Set how your company decides whether an employee's public holiday was a 'usual working day'.",
+    ph_policy_title: "Public Holiday OWD Rule (new Act)", ph_policy_sub: "Fixed by law — not configurable.",
     ph_policy_method_threshold_title: "Recent Work Ratio",
     ph_policy_method_threshold_desc: "If an employee worked that weekday at least M out of the last N weeks, treat it as a usual working day.",
     ph_policy_window_prefix: "Last", ph_policy_window_mid: "weeks, at least", ph_policy_window_suffix: "weeks worked",
@@ -1269,9 +1301,9 @@ const I18N = {
     ph_date: "Date", ph_name: "Name", modal_ph_date_required: "Date is required.",
     modal_ph_week_title: "This week contains a Public Holiday",
     modal_ph_week_sub: "For the holiday(s) below, check which NZ labour law entitlement applies to each employee. (This is a reference calculation - please verify before running payroll.)",
-    ph_cat1: "1.5x pay + Lieu Day", ph_cat2: "Normal daily pay only (no Lieu Day)",
-    ph_cat3: "1.5x pay only (no Lieu Day)", ph_cat4: "Not entitled",
-    ph_usual_day: "Usual working day ({n}/8 recent weeks)", ph_not_usual_day: "Not a usual working day ({n}/8 recent weeks)",
+    ph_cat1: "1.5x pay + Alternative Holiday (1:1 hours)", ph_cat2: "OWD but off → daily pay (not for casuals)",
+    ph_cat3: "Not an OWD, worked → 1.0x (no Alternative Holiday)", ph_cat4: "Not entitled",
+    ph_usual_day: "OWD ({n} of the last 13 weeks)", ph_not_usual_day: "Not an OWD ({n} of the last 13 weeks)",
     ph_worked: "Worked this holiday", ph_not_worked: "Did not work this holiday",
     btn_ph_detail: "🎌 View Public Holiday Info",
     modal_ph_simple_sub: "The date(s) below fall within this week. Once you finish the schedule and click \"Save Changes\", we\'ll calculate and show each employee\'s labour law entitlement. You can re-check anytime with the \"View Public Holiday Info\" button next to it.",
@@ -1394,14 +1426,14 @@ const I18N = {
     payroll_col_employee: "Employee", payroll_col_wage: "Wage", payroll_col_scheduled_pay: "Est. Pay This Week",
     payroll_wage_not_set: "Wage not set", payroll_total: "Total estimated labour cost this week: ${amount}",
     payroll_salary_not_set: "Salary not set", payroll_salary_display: "\${amount}/yr",
-    payroll_salary_note: "Salaried (fixed weekly)", payroll_ph_premium_salary_included: "Includes {n} day(s) of holiday premium (0.5x)",
+    payroll_salary_note: "Salaried (fixed weekly)", payroll_ph_premium_salary_included: "Includes {n} day(s) of holiday premium",
     payroll_rounding_btn: "⏱️ Time Calculation Settings", payroll_col_sched_hours: "Sched. Hours", payroll_col_sched_cost: "Sched. Cost",
     payroll_col_actual_hours: "Actual Hours", payroll_col_actual_cost: "Actual Cost", payroll_col_actual_pay: "Actual Pay",
     payroll_col_diff: "Difference", payroll_open_entry_note: "Not clocked out", time_entries_btn: "🕒 Time Entries",
     payroll_rounding_title: "Payroll Calculation Increment", payroll_rounding_sub: "Clock-in times are rounded up to the next increment; clock-out times are rounded down to the previous one — so arriving early or leaving late never adds paid time.",
     payroll_rounding_1min: "No truncation (1 min)", payroll_rounding_nmin: "{n}-minute increments",
-    accrual_title: "Automatic Annual Leave Accrual", accrual_desc: "When a week is published, automatically add 8% of that week's estimated pay to hourly employees' Annual Leave balance. Salaried employees are excluded.",
-    accrual_enable_label: "Enable automatic accrual (8%)",
+    accrual_title: "Automatic Leave Accrual", accrual_desc: "When a week is published, accrue annual leave (standard hours × 0.0769) and sick leave (× 0.0385, 160h cap) in hours, and credit Alternative Holiday 1:1 for OWD public-holiday work. Casuals get 12.5% LCP instead.",
+    accrual_enable_label: "Enable automatic accrual",
     payroll_rounding_note: "Current increment: {n} min (clock-in rounds up, clock-out rounds down — never in the employee's favor).",
     payroll_total_scheduled: "Total (scheduled): ${amount}", payroll_total_actual: "Total (actual): ${amount}",
     time_entries_title: "Time Entries", time_entries_sub: "Week of {week} — actual clock-in/out records by employee.",
@@ -1426,8 +1458,8 @@ const I18N = {
     time_entries_create_reason_placeholder: "e.g. Employee never clocked in that day",
     time_entries_delete_btn: "🗑️ Delete", time_entries_delete_confirm_title: "Delete Time Entry",
     time_entries_delete_confirm_msg: "This will permanently delete {name}'s time entry for {date}. This cannot be undone. Continue?",
-    payroll_leave_included: "Includes {n} day(s) of paid/sick leave",
-    payroll_ph_premium_included: "Includes {n} day(s) at 1.5x (public holiday)", payroll_ph_avgpay_included: "Includes {n} day(s) of average pay (public holiday)",
+    payroll_leave_included: "Includes {n} day(s) of paid leave",
+    payroll_ph_premium_included: "Includes {n} public-holiday work day(s)", payroll_ph_avgpay_included: "Includes {n} OWD public-holiday daily pay day(s)",
     admin_pending_sub: "Review the requests below and approve or reject each one.", admin_pending_empty: "No pending requests.",
     admin_pending_requested_at: "Requested", btn_approve: "Approve", btn_reject: "Reject",
     dept_mgmt_title: "Departments & Shift Types",
@@ -1515,9 +1547,10 @@ function updatePayTypeFields() {
   const isSalary = payType === "salary";
   document.getElementById("emp-wage-field").style.display = isSalary ? "none" : "block";
   document.getElementById("emp-salary-field").style.display = isSalary ? "block" : "none";
-  // 연봉제는 OWP/AWE 개념이 사실상 필요 없어서(주급이 애초에 고정), 근무시간 유형
-  // 선택 자체를 숨깁니다.
-  document.getElementById("emp-hours-type-field").style.display = isSalary ? "none" : "block";
+  // 신법: 캐주얼은 표준시간·합의 근무요일이 없습니다(적립 대신 모든 시간에 LCP 12.5%).
+  const isCasual = document.getElementById("emp-employment-type").value === "casual";
+  document.getElementById("emp-contract-hours-field").style.display = isCasual ? "none" : "block";
+  document.getElementById("emp-agreed-days-field").style.display = isCasual ? "none" : "block";
   // 연봉제일 때는 "주당 최소시간"이 스케줄용 최소시간이자, 공휴일 추가수당 계산의
   // 기준이 되는 "주당 계약시간"으로도 같이 쓰인다는 걸 알려주기 위해 라벨을 바꿔줍니다.
   const minHoursLabel = document.querySelector('label[data-i18n="label_min_hours"]');
@@ -1959,7 +1992,7 @@ async function showLeaveRequestModal() {
 
   // 잔액을 매번 새로 불러와서 보여줍니다(캐시된 값 대신) — 그래야 방금 승인된
   // 리브가 있어도 최신 잔액이 정확히 보입니다.
-  let balances = {lieu_day_balance: 0, annual_leave_balance_hours: 0, sick_leave_balance_days: 0};
+  let balances = {alternative_leave_balance_hours: 0, annual_leave_balance_hours: 0, sick_leave_balance_hours: 0};
   try {
     const me = await api("/api/employee-auth/me");
     if (me) balances = me;
@@ -1967,9 +2000,9 @@ async function showLeaveRequestModal() {
   const balanceRow = document.createElement("div");
   balanceRow.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px; font-size:12px;";
   balanceRow.innerHTML = `
-    <span>${tf("balance_lieu_day", {n: (balances.lieu_day_balance || 0).toFixed(1)})}</span>
+    <span>${tf("balance_alt_leave", {h: (balances.alternative_leave_balance_hours || 0).toFixed(1)})}</span>
     <span>${tf("balance_annual_leave", {h: (balances.annual_leave_balance_hours || 0).toFixed(1)})}</span>
-    <span>${tf("balance_sick_leave", {n: (balances.sick_leave_balance_days || 0).toFixed(2)})}</span>
+    <span>${tf("balance_sick_leave", {h: (balances.sick_leave_balance_hours || 0).toFixed(1)})}</span>
   `;
   box.appendChild(balanceRow);
 
@@ -1982,7 +2015,7 @@ async function showLeaveRequestModal() {
   typeLabel.style.cssText = "display:block; font-size:12px; margin-bottom:4px;";
   const typeSelect = document.createElement("select");
   typeSelect.style.width = "100%";
-  ["annual_leave", "sick", "lieu_day", "paid", "unpaid"].forEach(lt => {
+  ["annual_leave", "sick", "alt_holiday", "paid", "unpaid"].forEach(lt => {
     const opt = document.createElement("option");
     opt.value = lt;
     opt.textContent = t(`leave_type_${lt}`);
@@ -3287,8 +3320,9 @@ async function showFinalPaymentEstimate(employeeId) {
   const rows = [
     [t("final_payment_annual_balance"), `${data.annual_leave_balance_hours.toFixed(1)}h`],
     [t("final_payment_annual_payout"), data.annual_leave_payout_estimate != null ? `$${data.annual_leave_payout_estimate.toFixed(2)}` : "—"],
-    [t("final_payment_lieu_balance"), `${data.lieu_day_balance.toFixed(1)}${t("day_suffix")}`],
-    [t("final_payment_lieu_payout"), data.lieu_day_payout_estimate != null ? `$${data.lieu_day_payout_estimate.toFixed(2)}` : "—"],
+    [t("final_payment_lieu_balance"), `${data.alternative_leave_balance_hours.toFixed(1)}h`],
+    [t("final_payment_lieu_payout"), data.alternative_leave_payout_estimate != null ? `$${data.alternative_leave_payout_estimate.toFixed(2)}` : "—"],
+    [t("final_payment_rate"), data.lowest_hourly_rate != null ? `$${data.lowest_hourly_rate.toFixed(2)}` : "—"],
   ];
   const table = document.createElement("table");
   table.style.cssText = "width:100%; border-collapse:collapse; font-size:13px;";
@@ -3300,66 +3334,10 @@ async function showFinalPaymentEstimate(employeeId) {
   });
   box.appendChild(table);
 
-  if (data.section23) {
-    const s23 = data.section23;
-    const s23Box = document.createElement("div");
-    const isNegative = data.annual_leave_payout_estimate != null && data.annual_leave_payout_estimate < 0;
-    s23Box.style.cssText = `font-size:11.5px; margin-top:10px; padding:8px 10px; border-radius:6px; background:${isNegative ? "rgba(239,68,68,0.1)" : "var(--panel-solid)"}; color:${isNegative ? "var(--danger, #ef4444)" : "var(--text-muted)"};`;
-    s23Box.innerHTML = `
-      <div style="font-weight:600; margin-bottom:4px;">${t("final_payment_s23_title")}</div>
-      ${tf("final_payment_s23_gross", {v: `$${s23.gross_earnings.toFixed(2)} (${s23.weeks_used}${t("week_suffix")})`})}<br>
-      ${tf("final_payment_s23_eight_percent", {v: `$${s23.eight_percent.toFixed(2)}`})}<br>
-      ${tf("final_payment_s23_advance_paid", {v: `$${s23.advance_leave_paid.toFixed(2)}`})}
-    `;
-    if (isNegative) {
-      const note = document.createElement("div");
-      note.style.cssText = "margin-top:4px; font-weight:600;";
-      note.textContent = t("final_payment_s23_owes_back");
-      s23Box.appendChild(note);
-    }
-    box.appendChild(s23Box);
-  } else {
-    if (data.rate_breakdown) {
-      const rb = data.rate_breakdown;
-      const rateBox = document.createElement("div");
-      rateBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
-      const aweLabel = rb.prorated ? "final_payment_awe_prorated" : "final_payment_awe";
-      const owpText = rb.owp != null ? `$${rb.owp.toFixed(2)}${rb.owp_weeks_used ? ` (${rb.owp_weeks_used}${t("week_suffix")})` : ""}` : "—";
-      const aweText = rb.awe != null ? `$${rb.awe.toFixed(2)} (${rb.awe_weeks_used}${t("week_suffix")})` : "—";
-      rateBox.innerHTML = `${tf("final_payment_owp", {v: owpText})}<br>${tf(aweLabel, {v: aweText})}<br>${tf("final_payment_applied_rate", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"})}`;
-      if (rb.prorated) {
-        const note = document.createElement("div");
-        note.style.cssText = "margin-top:4px; color:#f59e0b;";
-        note.textContent = t("final_payment_advance_note");
-        rateBox.appendChild(note);
-      } else if (rb.awe_weeks_used != null && rb.awe_weeks_used < 52) {
-        const note = document.createElement("div");
-        note.style.cssText = "margin-top:4px; color:#f59e0b;";
-        note.textContent = t("final_payment_data_incomplete");
-        rateBox.appendChild(note);
-      }
-      box.appendChild(rateBox);
-    } else if (data.pay_type === "salary") {
-      const salaryNote = document.createElement("div");
-      salaryNote.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
-      salaryNote.textContent = tf("final_payment_salary_note", {v: data.applied_hourly_rate != null ? "$" + data.applied_hourly_rate.toFixed(2) : "—"});
-      box.appendChild(salaryNote);
-    }
-
-    if (data.post_anniversary_eight_percent) {
-      const pa = data.post_anniversary_eight_percent;
-      const paBox = document.createElement("div");
-      paBox.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:8px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
-      paBox.innerHTML = `
-        <div style="font-weight:600; margin-bottom:4px; color:var(--text);">${t("final_payment_post_anniv_title")}</div>
-        ${tf("final_payment_post_anniv_since", {v: formatDateNZ(pa.since_date)})}<br>
-        ${tf("final_payment_s23_gross", {v: `$${pa.gross_earnings.toFixed(2)} (${pa.weeks_used}${t("week_suffix")})`})}<br>
-        ${tf("final_payment_s23_eight_percent", {v: `$${pa.eight_percent.toFixed(2)}`})}<br>
-        ${tf("final_payment_s23_advance_paid", {v: `$${pa.advance_leave_paid.toFixed(2)}`})}
-      `;
-      box.appendChild(paBox);
-    }
-  }
+  const rateNote = document.createElement("div");
+  rateNote.style.cssText = "font-size:11.5px; color:var(--text-muted); margin-top:10px; padding:8px 10px; background:var(--panel-solid); border-radius:6px;";
+  rateNote.textContent = t("final_payment_rate_note");
+  box.appendChild(rateNote);
 
   const totalLine = document.createElement("div");
   totalLine.style.cssText = "text-align:right; font-weight:700; font-size:15px; margin-top:12px;";
@@ -3837,7 +3815,7 @@ async function showPayrollPage(weekKey) {
       const sign = diff > 0 ? "+" : "";
       diffCell = `<span style="color:${color};">${sign}$${diff.toFixed(2)}</span>`;
     }
-    const paidLeaveDays = Object.values(row.per_day).filter(d => ["paid", "sick", "annual_leave", "lieu_day"].includes(d.leave_type)).length;
+    const paidLeaveDays = Object.values(row.per_day).filter(d => ["paid", "sick", "annual_leave", "alt_holiday"].includes(d.leave_type)).length;
     const phPremiumDays = Object.values(row.per_day).filter(d => d.is_public_holiday && (d.category === 1 || d.category === 3)).length;
     const phAvgPayDays = Object.values(row.per_day).filter(d => d.is_public_holiday && d.category === 2).length;
     const notes = [];
@@ -3845,6 +3823,8 @@ async function showPayrollPage(weekKey) {
     if (paidLeaveDays > 0 && !isSalary) notes.push(tf("payroll_leave_included", {n: paidLeaveDays}));
     if (phPremiumDays > 0) notes.push(tf(isSalary ? "payroll_ph_premium_salary_included" : "payroll_ph_premium_included", {n: phPremiumDays}));
     if (phAvgPayDays > 0 && !isSalary) notes.push(tf("payroll_ph_avgpay_included", {n: phAvgPayDays}));
+    if (row.lcp_actual_pay > 0 || row.lcp_pay > 0) notes.push(tf("payroll_lcp_included", {v: (row.lcp_actual_pay || row.lcp_pay).toFixed(2), h: row.additional_hours.toFixed(1)}));
+    if (row.over_contract) notes.push(tf("payroll_over_contract", {c: row.contract_hours, s: row.weekly_hours.toFixed(1)}));
     if (row.has_open_entry) notes.push(t("payroll_open_entry_note"));
     const nameCell = notes.length > 0
       ? `${row.employee_name}<br><span style="font-size:10px; color:var(--text-muted);">${notes.join(" · ")}</span>`
@@ -5042,9 +5022,9 @@ function showAdjustSickLeaveModal(employee) {
   const input = document.createElement("input");
   input.type = "number";
   input.step = "0.5";
-  input.max = "20";
+  input.max = "160";
   input.style.width = "100%";
-  input.value = employee.sick_leave_balance_days || 0;
+  input.value = employee.sick_leave_balance_hours || 0;
 
   const errLine = document.createElement("div");
   errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
@@ -5064,7 +5044,7 @@ function showAdjustSickLeaveModal(employee) {
   saveBtn.textContent = t("btn_save");
   saveBtn.onclick = async () => {
     const val = Number(input.value);
-    if (isNaN(val) || val < 0 || val > 20) {
+    if (isNaN(val) || val < 0 || val > 160) {
       errLine.textContent = t("balance_adjust_sick_invalid");
       errLine.style.display = "block";
       return;
@@ -5074,7 +5054,7 @@ function showAdjustSickLeaveModal(employee) {
       await api(`/api/employees/${employee.id}/adjust-sick-leave`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({set_days: val}),
+        body: JSON.stringify({set_hours: val}),
       });
       overlay.remove();
       loadEmployees();
@@ -5086,6 +5066,66 @@ function showAdjustSickLeaveModal(employee) {
   btnRow.appendChild(saveBtn);
   box.appendChild(btnRow);
 
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function showAdjustAltLeaveModal(employee) {
+  // 대체휴일(Alternative Holiday) 잔액(시간) 직접 조정 — 구조는 병가 조정 모달과 같습니다.
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box";
+  box.style.maxWidth = "380px";
+  const title = document.createElement("h3");
+  title.textContent = tf("balance_adjust_alt_title", {name: employee.name});
+  box.appendChild(title);
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = t("balance_adjust_alt_sub");
+  box.appendChild(sub);
+  const label = document.createElement("label");
+  label.textContent = t("balance_adjust_input_label");
+  label.style.cssText = "display:block; font-size:12px; margin-top:12px; margin-bottom:4px;";
+  const input = document.createElement("input");
+  input.type = "number"; input.step = "0.5"; input.min = "0";
+  input.style.width = "100%";
+  input.value = employee.alternative_leave_balance_hours || 0;
+  const errLine = document.createElement("div");
+  errLine.style.cssText = "color:#ef4444; font-size:12px; display:none; margin-top:8px;";
+  box.append(label, input, errLine);
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "btn-ghost";
+  cancelBtn.textContent = t("btn_cancel");
+  cancelBtn.onclick = () => overlay.remove();
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "btn-primary";
+  saveBtn.textContent = t("btn_save");
+  saveBtn.onclick = async () => {
+    const val = Number(input.value);
+    if (isNaN(val) || val < 0) {
+      errLine.textContent = t("balance_adjust_invalid");
+      errLine.style.display = "block";
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      await api(`/api/employees/${employee.id}/adjust-alt-leave`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({set_hours: val}),
+      });
+      overlay.remove();
+      loadEmployees();
+    } catch (e) {
+      saveBtn.disabled = false;
+    }
+  };
+  btnRow.append(cancelBtn, saveBtn);
+  box.appendChild(btnRow);
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 }
@@ -5305,11 +5345,11 @@ function buildRulesPanel(e) {
   const balanceRow = document.createElement("div");
   balanceRow.style.cssText = "display:flex; align-items:center; gap:14px; margin-bottom:10px; font-size:12px; padding:8px 10px; background:var(--panel-solid); border-radius:6px; flex-wrap:wrap;";
   const lieuSpan = document.createElement("span");
-  lieuSpan.textContent = tf("balance_lieu_day", {n: (e.lieu_day_balance || 0).toFixed(1)});
+  lieuSpan.textContent = tf("balance_alt_leave", {h: (e.alternative_leave_balance_hours || 0).toFixed(1)});
   const annualSpan = document.createElement("span");
   annualSpan.textContent = tf("balance_annual_leave", {h: (e.annual_leave_balance_hours || 0).toFixed(1)});
   const sickSpan = document.createElement("span");
-  sickSpan.textContent = tf("balance_sick_leave", {n: (e.sick_leave_balance_days || 0).toFixed(2)});
+  sickSpan.textContent = tf("balance_sick_leave", {h: (e.sick_leave_balance_hours || 0).toFixed(1)});
   const adjustBtn = document.createElement("button");
   adjustBtn.className = "btn-ghost btn-sm";
   adjustBtn.textContent = t("balance_adjust_btn");
@@ -5318,7 +5358,12 @@ function buildRulesPanel(e) {
   adjustSickBtn.className = "btn-ghost btn-sm";
   adjustSickBtn.textContent = t("balance_adjust_sick_btn");
   adjustSickBtn.onclick = () => showAdjustSickLeaveModal(e);
+  const adjustAltBtn = document.createElement("button");
+  adjustAltBtn.className = "btn-ghost btn-sm";
+  adjustAltBtn.textContent = t("balance_adjust_alt_btn");
+  adjustAltBtn.onclick = () => showAdjustAltLeaveModal(e);
   balanceRow.appendChild(lieuSpan);
+  balanceRow.appendChild(adjustAltBtn);
   balanceRow.appendChild(annualSpan);
   balanceRow.appendChild(adjustBtn);
   balanceRow.appendChild(sickSpan);
@@ -5358,7 +5403,7 @@ function buildRulesPanel(e) {
   const typeSelect = document.createElement("select");
   typeSelect.style.cssText = "min-width:90px;";
   [["paid", "leave_type_paid"], ["unpaid", "leave_type_unpaid"], ["sick", "leave_type_sick"],
-   ["annual_leave", "leave_type_annual_leave"], ["lieu_day", "leave_type_lieu_day"]].forEach(([value, key]) => {
+   ["annual_leave", "leave_type_annual_leave"], ["alt_holiday", "leave_type_alt_holiday"]].forEach(([value, key]) => {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = t(key);
@@ -5632,7 +5677,9 @@ function startEditEmployee(e) {
   document.getElementById("emp-pay-type").value = e.pay_type === "salary" ? "salary" : "hourly";
   document.getElementById("emp-wage").value = e.hourly_wage != null ? e.hourly_wage : "";
   document.getElementById("emp-salary").value = e.annual_salary != null ? e.annual_salary : "";
-  document.getElementById("emp-hours-type").value = e.hours_type === "variable" ? "variable" : "fixed";
+  document.getElementById("emp-employment-type").value = e.employment_type === "casual" ? "casual" : "standard";
+  document.getElementById("emp-contract-hours").value = e.contract_hours_per_week != null ? e.contract_hours_per_week : "";
+  document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = (e.agreed_days || []).includes(cb.value); });
   document.getElementById("emp-hire-date").setValue(e.hire_date || "");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
@@ -5654,7 +5701,9 @@ function cancelEditEmployee() {
   document.getElementById("emp-pay-type").value = "hourly";
   document.getElementById("emp-wage").value = "";
   document.getElementById("emp-salary").value = "";
-  document.getElementById("emp-hours-type").value = "fixed";
+  document.getElementById("emp-employment-type").value = "standard";
+  document.getElementById("emp-contract-hours").value = "";
+  document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = false; });
   document.getElementById("emp-hire-date").setValue("");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = "30";
@@ -5674,7 +5723,10 @@ async function submitEmployee() {
   const hourly_wage = wageRaw === "" ? null : Number(wageRaw);
   const salaryRaw = document.getElementById("emp-salary").value.trim();
   const annual_salary = salaryRaw === "" ? null : Number(salaryRaw);
-  const hours_type = document.getElementById("emp-hours-type").value === "variable" ? "variable" : "fixed";
+  const employment_type = document.getElementById("emp-employment-type").value === "casual" ? "casual" : "standard";
+  const contractRaw = document.getElementById("emp-contract-hours").value.trim();
+  const contract_hours_per_week = (employment_type === "casual" || contractRaw === "") ? null : Number(contractRaw);
+  const agreed_days = employment_type === "casual" ? [] : Array.from(document.querySelectorAll(".emp-agreed-day")).filter(cb => cb.checked).map(cb => cb.value);
   const hire_date = document.getElementById("emp-hire-date").getValue() || null;
   const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
   const isAny = document.getElementById("emp-target-days-any").checked;
@@ -5688,7 +5740,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, hours_type, hire_date, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -5697,7 +5749,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, hours_type, hire_date, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
@@ -6540,9 +6592,9 @@ function showPublicHolidayModal(info) {
         const line = document.createElement("div");
         line.className = "modal-item-detail";
         const workNote = r.worked_on_holiday ? t("ph_worked") : t("ph_not_worked");
-        if (r.is_usual_working_day === null || r.is_usual_working_day === undefined) {
-          // actual_only 정책: 과거 근무 기록을 안 보므로 "평소 근무일" 판정 자체가 없습니다.
-          line.textContent = `${r.employee_name} — ${workNote}`;
+        if (r.occurrence_count === null || r.occurrence_count === undefined) {
+          // 합의된 근무요일(agreed_days) 기준 판정: 13주 기록 없이 계약 요일로 OWD를 정합니다.
+          line.textContent = `${r.employee_name} — ${r.is_usual_working_day ? t("ph_owd_agreed") : t("ph_not_owd_agreed")}, ${workNote}`;
         } else {
           const dayNote = r.is_usual_working_day
             ? tf("ph_usual_day", {n: r.occurrence_count})
@@ -6569,136 +6621,32 @@ function showPublicHolidayModal(info) {
 }
 
 async function showPublicHolidayPolicyModal() {
-  let policy;
-  try {
-    policy = await api("/api/public-holiday-policy");
-  } catch (e) {
-    return;
-  }
-
+  // 신법의 OWD 판정 기준은 법정 고정값이라 설정을 바꿀 수 없고, 기준만 읽기 전용으로 보여줍니다.
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
   const box = document.createElement("div");
   box.className = "modal-box";
   box.style.maxWidth = "520px";
-
   const title = document.createElement("h3");
   title.textContent = t("ph_policy_title");
   box.appendChild(title);
-
   const sub = document.createElement("div");
   sub.className = "modal-sub";
   sub.textContent = t("ph_policy_sub");
   box.appendChild(sub);
-
-  const methodWrap = document.createElement("div");
-  methodWrap.style.cssText = "display:flex; flex-direction:column; gap:10px; margin:14px 0;";
-
-  // --- 방식 1: 기준 근무일 비율 (threshold) ---
-  const thresholdLabel = document.createElement("label");
-  thresholdLabel.style.cssText = "display:flex; align-items:flex-start; gap:8px; cursor:pointer;";
-  const thresholdRadio = document.createElement("input");
-  thresholdRadio.type = "radio"; thresholdRadio.name = "ph-method"; thresholdRadio.value = "threshold";
-  thresholdRadio.checked = policy.method === "threshold";
-  thresholdLabel.appendChild(thresholdRadio);
-  const thresholdText = document.createElement("div");
-  const thresholdTitle = document.createElement("div");
-  thresholdTitle.style.fontWeight = "600";
-  thresholdTitle.textContent = t("ph_policy_method_threshold_title");
-  const thresholdDesc = document.createElement("div");
-  thresholdDesc.className = "modal-item-detail";
-  thresholdDesc.textContent = t("ph_policy_method_threshold_desc");
-  thresholdText.appendChild(thresholdTitle);
-  thresholdText.appendChild(thresholdDesc);
-  thresholdLabel.appendChild(thresholdText);
-  methodWrap.appendChild(thresholdLabel);
-
-  const thresholdFields = document.createElement("div");
-  thresholdFields.style.cssText = "margin-left:26px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px;";
-  const windowInput = document.createElement("input");
-  windowInput.type = "number"; windowInput.min = "1"; windowInput.max = "26"; windowInput.style.width = "56px";
-  windowInput.value = policy.window_weeks || 8;
-  const minInput = document.createElement("input");
-  minInput.type = "number"; minInput.min = "1"; minInput.style.width = "56px";
-  minInput.value = policy.min_weeks_worked || 5;
-  const percentNote = document.createElement("span");
-  percentNote.style.color = "var(--text-muted)";
-  const updatePercent = () => {
-    const w = Number(windowInput.value) || 1;
-    const m = Number(minInput.value) || 0;
-    percentNote.textContent = `(${Math.round((m / w) * 100)}%)`;
-  };
-  windowInput.oninput = updatePercent;
-  minInput.oninput = updatePercent;
-  updatePercent();
-  const l1 = document.createElement("span"); l1.textContent = t("ph_policy_window_prefix");
-  const l2 = document.createElement("span"); l2.textContent = t("ph_policy_window_mid");
-  const l3 = document.createElement("span"); l3.textContent = t("ph_policy_window_suffix");
-  thresholdFields.append(l1, windowInput, l2, minInput, l3, percentNote);
-  methodWrap.appendChild(thresholdFields);
-
-  // --- 방식 2: 과거 기록 없이 그날 근무 여부만 (actual_only) ---
-  const actualLabel = document.createElement("label");
-  actualLabel.style.cssText = "display:flex; align-items:flex-start; gap:8px; cursor:pointer;";
-  const actualRadio = document.createElement("input");
-  actualRadio.type = "radio"; actualRadio.name = "ph-method"; actualRadio.value = "actual_only";
-  actualRadio.checked = policy.method === "actual_only";
-  actualLabel.appendChild(actualRadio);
-  const actualText = document.createElement("div");
-  const actualTitle = document.createElement("div");
-  actualTitle.style.fontWeight = "600";
-  actualTitle.textContent = t("ph_policy_method_actual_title");
-  const actualDesc = document.createElement("div");
-  actualDesc.className = "modal-item-detail";
-  actualDesc.textContent = t("ph_policy_method_actual_desc");
-  actualText.appendChild(actualTitle);
-  actualText.appendChild(actualDesc);
-  actualLabel.appendChild(actualText);
-  methodWrap.appendChild(actualLabel);
-  box.appendChild(methodWrap);
-
-  const toggleFieldsEnabled = () => {
-    const isThreshold = thresholdRadio.checked;
-    thresholdFields.style.opacity = isThreshold ? "1" : "0.4";
-    windowInput.disabled = !isThreshold;
-    minInput.disabled = !isThreshold;
-  };
-  thresholdRadio.onchange = toggleFieldsEnabled;
-  actualRadio.onchange = toggleFieldsEnabled;
-  toggleFieldsEnabled();
-
+  const body = document.createElement("div");
+  body.style.cssText = "font-size:13px; line-height:1.7; margin:14px 0;";
+  body.innerHTML = t("ph_policy_rules_html");
+  box.appendChild(body);
   const btnRow = document.createElement("div");
-  btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end; margin-top:14px;";
-  const cancelBtn = document.createElement("button");
-  cancelBtn.className = "btn-ghost";
-  cancelBtn.textContent = t("btn_cancel");
-  cancelBtn.onclick = () => overlay.remove();
-  const saveBtn = document.createElement("button");
-  saveBtn.className = "btn-primary";
-  saveBtn.textContent = t("btn_save");
-  saveBtn.onclick = async () => {
-    const method = thresholdRadio.checked ? "threshold" : "actual_only";
-    const body = method === "threshold"
-      ? {method, window_weeks: Number(windowInput.value), min_weeks_worked: Number(minInput.value)}
-      : {method};
-    saveBtn.disabled = true;
-    try {
-      await api("/api/public-holiday-policy", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body),
-      });
-      overlay.remove();
-      checkPublicHolidayForWeek();
-    } catch (e) {
-      saveBtn.disabled = false;
-    }
-  };
-  btnRow.appendChild(cancelBtn);
-  btnRow.appendChild(saveBtn);
+  btnRow.style.cssText = "display:flex; justify-content:flex-end; margin-top:14px;";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "btn-ghost";
+  closeBtn.textContent = t("btn_close");
+  closeBtn.onclick = () => overlay.remove();
+  btnRow.appendChild(closeBtn);
   box.appendChild(btnRow);
-
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 }
@@ -6923,8 +6871,19 @@ function updateLockButtonUI() {
 }
 
 async function publishWeek() {
+  // 신법: 스케줄 시간이 계약 표준시간을 넘는 직원이 있으면 퍼블리시 전에 알려줍니다
+  // (초과분은 "추가 시간"이라 LCP 12.5%가 붙고 리브가 적립되지 않음).
+  let overNote = "";
+  try {
+    const over = await api(`/api/weeks/${currentWeekKey}/over-contract-hours`);
+    if (over && over.length) {
+      overNote = "\n\n" + t("over_contract_publish_head") + "\n" + over.map(o =>
+        tf("over_contract_publish_line", {name: o.employee_name, s: o.scheduled_hours, c: o.contract_hours, a: o.additional_hours, lcp: o.lcp_pay.toFixed(2)})
+      ).join("\n");
+    }
+  } catch (e) { /* 경고 조회가 실패해도 퍼블리시 자체는 계속 진행합니다 */ }
   const confirmed = await showConfirmModal(
-    t("publish_confirm_title"), t("publish_confirm_msg"),
+    t("publish_confirm_title"), t("publish_confirm_msg") + overNote,
     t("btn_publish"), t("btn_cancel"),
   );
   if (!confirmed) return;
@@ -7034,7 +6993,7 @@ function showConfirmModal(title, message, yesLabel, noLabel) {
     box.appendChild(h);
     const sub = document.createElement("div");
     sub.className = "modal-sub";
-    sub.textContent = message;
+    sub.textContent = message; sub.style.whiteSpace = "pre-line";
     box.appendChild(sub);
     const btnRow = document.createElement("div");
     btnRow.style.cssText = "display:flex; gap:8px; justify-content:flex-end;";
