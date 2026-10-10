@@ -755,6 +755,12 @@ const I18N = {
     law_notice_sub: "구법 Holidays Act 2003이 Employment Leave Act 2026으로 바뀝니다 (2028-08-06 시행). 이 앱은 신법 기준으로 계산합니다.",
     law_notice_old: "구법:", law_notice_new: "신법:", law_notice_ok: "확인했습니다",
     law_notice_caveat: "※ 영어 인용문은 MBIE 공식 비교표 원문입니다. 구법 설명은 요약이며 인용이 아닙니다. 시행규칙(regulations)이 아직 정해지지 않은 부분(기존 잔액 환산 등)이 있고, 이 앱의 일부 계산(예: OWD가 아닌 공휴일 근무 1.0배, 캐주얼의 OWD 미근무 시 지급 0)은 앱의 가정값입니다. 실제 급여는 회계사·노무사 확인이 필요합니다.",
+    hours_limit_title: "근무시간 한도 (학생비자 등)",
+    hours_limit_desc: "법적 주당 최대시간은 하드 규칙입니다 — 자동 생성은 절대 넘기지 않고, 수동 배치도 넘기면 저장이 막힙니다. 희망 최대시간은 직원이 원하는 상한으로, 인력이 부족하면 넘길 수 있는 소프트 규칙입니다. 비자별 정확한 한도는 직원 비자 조건(Immigration NZ)을 확인하세요.",
+    hours_limit_legal_label: "법적 주당 최대시간 (하드)", hours_limit_pref_label: "희망 최대시간 (소프트)",
+    hours_limit_none: "제한 없음", hours_limit_unlimited: "제한 없음", hours_limit_student_btn: "학생비자 25h 적용",
+    hours_limit_periods_title: "기간별 예외 한도 (예: 방학 중 풀타임)", hours_limit_period_add: "기간 추가",
+    hours_limit_mixed_week_note: "※ 한 주에 학기와 방학이 섞여 있으면 더 엄격한(작은) 한도를 적용합니다. 방학 날짜는 학생의 학교 일정표나 재학증명서로 확인해 입력하세요.",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1158,6 +1164,12 @@ const I18N = {
     law_notice_sub: "The Holidays Act 2003 is being replaced by the Employment Leave Act 2026 (in force 6 Aug 2028). This app calculates under the new Act.",
     law_notice_old: "Old law:", law_notice_new: "New law:", law_notice_ok: "Got it",
     law_notice_caveat: "Note: the quoted English text is verbatim from the official MBIE comparison table. Old-law descriptions are summaries, not quotes. Some details are still to be set in regulations (e.g. conversion of existing balances), and some calculations here are the app's own assumptions (e.g. 1.0x pay for working a non-OWD public holiday, $0 for casuals on an OWD they did not work). Confirm with an accountant before paying.",
+    hours_limit_title: "Work hour limit (student visa etc.)",
+    hours_limit_desc: "The legal weekly maximum is a hard rule — auto-generation never exceeds it, and manual saves that exceed it are blocked. The preferred maximum is the employee's own cap, a soft rule that may be exceeded if staffing is short. Check the visa conditions (Immigration NZ) for the exact limit.",
+    hours_limit_legal_label: "Legal weekly max hours (hard)", hours_limit_pref_label: "Preferred max hours (soft)",
+    hours_limit_none: "No limit", hours_limit_unlimited: "No limit", hours_limit_student_btn: "Apply student visa 25h",
+    hours_limit_periods_title: "Period exceptions (e.g. full-time during holidays)", hours_limit_period_add: "Add period",
+    hours_limit_mixed_week_note: "Note: if a week mixes term and holiday days, the stricter (lower) limit applies. Confirm holiday dates from the student's school calendar or enrolment letter.",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -4762,8 +4774,17 @@ async function loadEmployees() {
   renderCalendarArea();
 }
 
+function sortEmployeesByDepartment(list) {
+  // 부서 순서(관리 화면에 설정된 순서)대로 묶어서 보여줍니다. 같은 부서 안에서는 등록 순서를
+  // 유지하므로(안정 정렬), 새 직원은 "자기 부서 그룹의 맨 끝"에 들어갑니다.
+  const deptOrder = {};
+  (DEPARTMENTS || []).forEach((d, i) => { deptOrder[d] = i; });
+  const rank = (e) => (deptOrder[e.department || "kitchen"] != null ? deptOrder[e.department || "kitchen"] : 9999);
+  return list.map((e, i) => ({e, i})).sort((a, b) => (rank(a.e) - rank(b.e)) || (a.i - b.i)).map(x => x.e);
+}
+
 function renderEmployeeTable() {
-  const employees = window._employees || [];
+  const employees = sortEmployeesByDepartment(window._employees || []);
   ensureDepartmentSelectOptions();
   const tbody = document.querySelector("#employee-table tbody");
   tbody.innerHTML = "";
@@ -4797,10 +4818,23 @@ function renderEmployeeTable() {
     return;
   }
 
+  let lastDeptShown = null;
   displayEmployees.forEach(e => {
+    const dept = e.department || "kitchen";
+    if (dept !== lastDeptShown) {
+      // 부서가 바뀔 때마다 얇은 구분 행을 넣어 그룹이 눈에 보이게 합니다.
+      lastDeptShown = dept;
+      const headTr = document.createElement("tr");
+      const headTd = document.createElement("td");
+      headTd.colSpan = 7;
+      headTd.style.cssText = "background:var(--panel-solid); font-weight:700; font-size:12px; padding:6px 8px; color:var(--text-muted);";
+      const deptCount = employees.filter(x => (x.department || "kitchen") === dept).length;
+      headTd.textContent = `${DEPARTMENT_LABEL[dept] || dept} (${deptCount})`;
+      headTr.appendChild(headTd);
+      tbody.appendChild(headTr);
+    }
     const tr = document.createElement("tr");
     const ruleSummary = summarizeRules(e);
-    const dept = e.department || "kitchen";
     tr.innerHTML = `
       <td>${escapeHtml(e.id)}</td>
       <td>${escapeHtml(e.name)}</td>
@@ -4933,6 +4967,9 @@ function toggleRulesPanel(id) {
       blocked_shift_types: [...(e.blocked_shift_types || [])],
       leave_requests: (e.leave_requests || []).map(lr => ({...lr})),
       documents: (e.documents || []).map(d => ({...d})),
+      max_hours_per_week: e.max_hours_per_week != null ? e.max_hours_per_week : null,
+      preferred_max_hours: e.preferred_max_hours != null ? e.preferred_max_hours : null,
+      hours_limit_periods: (e.hours_limit_periods || []).map(p => ({...p})),
     };
   }
   loadEmployees();
@@ -5470,6 +5507,86 @@ function buildRulesPanel(e) {
   if (isFeatureEnabled("leave_request")) {
     wrap.appendChild(leaveBlock);
   }
+
+  // ---- 근무시간 한도 (학생비자 등 법적 주당 최대시간 + 방학 기간 + 희망 최대시간) ----
+  const hoursBlock = document.createElement("div");
+  hoursBlock.className = "rules-block";
+  hoursBlock.innerHTML = `<h4>${t("hours_limit_title")}</h4><div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">${t("hours_limit_desc")}</div>`;
+  const mkNumField = (labelKey, getVal, setVal, placeholder) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:12px; flex-wrap:wrap;";
+    const lab = document.createElement("span");
+    lab.textContent = t(labelKey);
+    lab.style.minWidth = "170px";
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.min = "1"; inp.max = "168"; inp.step = "0.5";
+    inp.style.width = "80px"; inp.placeholder = placeholder;
+    inp.value = getVal() != null ? getVal() : "";
+    inp.oninput = () => { setVal(inp.value.trim() === "" ? null : Number(inp.value)); };
+    row.append(lab, inp);
+    return {row, inp};
+  };
+  const legal = mkNumField("hours_limit_legal_label", () => rulesDraft.max_hours_per_week,
+    (v) => { rulesDraft.max_hours_per_week = v; }, t("hours_limit_none"));
+  const studentBtn = document.createElement("button");
+  studentBtn.className = "btn-ghost btn-sm";
+  studentBtn.textContent = t("hours_limit_student_btn");
+  studentBtn.onclick = () => { rulesDraft.max_hours_per_week = 25; legal.inp.value = 25; };
+  legal.row.appendChild(studentBtn);
+  hoursBlock.appendChild(legal.row);
+  const pref = mkNumField("hours_limit_pref_label", () => rulesDraft.preferred_max_hours,
+    (v) => { rulesDraft.preferred_max_hours = v; }, t("hours_limit_none"));
+  hoursBlock.appendChild(pref.row);
+
+  const periodsTitle = document.createElement("div");
+  periodsTitle.style.cssText = "font-size:12px; font-weight:600; margin:8px 0 4px;";
+  periodsTitle.textContent = t("hours_limit_periods_title");
+  hoursBlock.appendChild(periodsTitle);
+  const periodsList = document.createElement("div");
+  rulesDraft.hours_limit_periods.forEach((hp, idx) => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12px;";
+    const txt = document.createElement("span");
+    txt.textContent = `${formatDateNZ(hp.start_date)} ~ ${formatDateNZ(hp.end_date)} — ${hp.max_hours != null ? hp.max_hours + "h" : t("hours_limit_unlimited")}`;
+    const del = document.createElement("button");
+    del.className = "btn-danger btn-sm";
+    del.textContent = t("btn_delete");
+    del.onclick = () => { rulesDraft.hours_limit_periods.splice(idx, 1); loadEmployees(); };
+    row.append(txt, del);
+    periodsList.appendChild(row);
+  });
+  hoursBlock.appendChild(periodsList);
+  const periodAdd = document.createElement("div");
+  periodAdd.style.cssText = "display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;";
+  const hpStart = createNZDateField("");
+  const hpEnd = createNZDateField("");
+  const hpDash = document.createElement("span"); hpDash.textContent = "~";
+  const hpMax = document.createElement("input");
+  hpMax.type = "number"; hpMax.min = "1"; hpMax.max = "168"; hpMax.step = "0.5";
+  hpMax.style.width = "80px"; hpMax.placeholder = t("hours_limit_unlimited");
+  const hpAdd = document.createElement("button");
+  hpAdd.className = "btn-ghost btn-sm";
+  hpAdd.textContent = t("hours_limit_period_add");
+  hpAdd.onclick = () => {
+    if (!hpStart.getValue() || !hpEnd.getValue()) return;
+    if (hpStart.getValue() > hpEnd.getValue()) {
+      showMessageModal(t("modal_input_check_title"), t("modal_leave_range_invalid"), true);
+      return;
+    }
+    rulesDraft.hours_limit_periods.push({
+      id: "hp_" + Math.random().toString(36).slice(2, 10),
+      start_date: hpStart.getValue(), end_date: hpEnd.getValue(),
+      max_hours: hpMax.value.trim() === "" ? null : Number(hpMax.value),
+    });
+    loadEmployees();
+  };
+  periodAdd.append(hpStart, hpDash, hpEnd, hpMax, hpAdd);
+  hoursBlock.appendChild(periodAdd);
+  const hpNote = document.createElement("div");
+  hpNote.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:6px;";
+  hpNote.textContent = t("hours_limit_mixed_week_note");
+  hoursBlock.appendChild(hpNote);
+  wrap.appendChild(hoursBlock);
 
   const docsBlock = document.createElement("div");
   docsBlock.className = "rules-block";
