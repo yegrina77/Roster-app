@@ -13,7 +13,7 @@ from helpers import (
     _prune_expired_leave_requests, _sanitize_wage, _sanitize_annual_salary,
     _stamp_new_leave_requests,
     _sanitize_documents, _sanitize_date, _ensure_employee_limit,
-    EMPLOYMENT_TYPES, _sanitize_contract_hours, _sanitize_agreed_days,
+    EMPLOYMENT_TYPES, _sanitize_contract_hours, _sanitize_agreed_days, _sanitize_skill_level,
     _sanitize_max_hours, _sanitize_hours_limit_periods,
 )
 
@@ -109,6 +109,10 @@ def add_employee(company_id):
         "max_hours_per_week": _sanitize_max_hours(payload.get("max_hours_per_week")),
         "hours_limit_periods": _sanitize_hours_limit_periods(payload.get("hours_limit_periods")),
         "preferred_max_hours": _sanitize_max_hours(payload.get("preferred_max_hours")),
+        # 시니어(⭐): 요구인원이 있는 날마다 최소 1명 배정(하드). skill_level 1~5: 같은 부서·같은 조에
+        # 초보(<=2) 2명 동시 배치 금지(하드). 미설정 = 보통.
+        "is_senior": bool(payload.get("is_senior", False)),
+        "skill_level": _sanitize_skill_level(payload.get("skill_level")),
         # 직원 로그인용 PIN — 등록 시 자동으로 무작위 생성됩니다. 관리자/매니저가
         # "직원 PIN 조회" 화면에서 확인하거나 재발급할 수 있습니다.
         "pin": _generate_pin(),
@@ -142,6 +146,7 @@ def update_employee(company_id, employee_id):
         "pay_type", "annual_salary", "documents", "hire_date",
         "employment_type", "contract_hours_per_week", "agreed_days",
         "max_hours_per_week", "hours_limit_periods", "preferred_max_hours",
+        "is_senior", "skill_level",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "hourly_wage" in updates:
@@ -160,6 +165,10 @@ def update_employee(company_id, employee_id):
         updates["contract_hours_per_week"] = _sanitize_contract_hours(updates["contract_hours_per_week"])
     if "max_hours_per_week" in updates:
         updates["max_hours_per_week"] = _sanitize_max_hours(updates["max_hours_per_week"])
+    if "is_senior" in updates:
+        updates["is_senior"] = bool(updates["is_senior"])
+    if "skill_level" in updates:
+        updates["skill_level"] = _sanitize_skill_level(updates["skill_level"])
     if "preferred_max_hours" in updates:
         updates["preferred_max_hours"] = _sanitize_max_hours(updates["preferred_max_hours"])
     if "hours_limit_periods" in updates:

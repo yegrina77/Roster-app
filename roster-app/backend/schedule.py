@@ -20,7 +20,7 @@ from helpers import (
     _effective_shift_times, _effective_shift_hours, _slugify_id, empty_week,
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
-    _weekly_hour_cap, _assignment_duration_hours, PAYROLL_BREAK_HOURS,
+    _weekly_hour_cap, BEGINNER_MAX_LEVEL, _crew_rule_warnings, _assignment_duration_hours, PAYROLL_BREAK_HOURS,
     REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
 from payroll import _credit_alt_holidays_for_week, _accrue_leave_for_week
@@ -507,6 +507,8 @@ def generate_week_schedule(company_id, week_key):
             credited_off_hours=_credited_leave_hours(e, week_key),
             max_hours_per_week=_weekly_hour_cap(e, week_key),
             preferred_max_hours=e.get("preferred_max_hours"),
+            is_senior=bool(e.get("is_senior", False)),
+            skill_level=e.get("skill_level"),
         ))
 
     requirements = [
@@ -689,6 +691,7 @@ def generate_week_schedule(company_id, week_key):
         pinned=pinned or None,
         shift_hours=_effective_shift_hours(state),
         break_hours=PAYROLL_BREAK_HOURS,
+        beginner_max_level=BEGINNER_MAX_LEVEL,
         shift_types=shift_types,
         shift_defs=shift_defs,
         departments=departments,
@@ -711,6 +714,8 @@ def generate_week_schedule(company_id, week_key):
         relax_candidates = [
             ("min_hours", "이 직원(들)의 주당 최소시간 규칙"),
             ("max_hours", "이 직원(들)의 법적 주당 최대시간(예: 학생비자) 규칙"),
+            ("senior_coverage", "요구인원이 있는 날마다 시니어(⭐) 최소 1명 배치 규칙"),
+            ("beginner_pairing", "같은 부서·같은 조 초보자 2명 동시 배치 금지 규칙"),
             ("forbidden_consecutive", "마감 근무 다음날 오픈 근무 금지 규칙"),
             ("blocked_shift_types", "이 직원(들)에게 금지된 근무유형 설정"),
             ("cross_department", "다른 부서 근무유형 배정 금지 규칙"),
@@ -727,6 +732,7 @@ def generate_week_schedule(company_id, week_key):
                 pinned=pinned or None,
                 shift_hours=_effective_shift_hours(state),
                 break_hours=PAYROLL_BREAK_HOURS,
+        beginner_max_level=BEGINNER_MAX_LEVEL,
                 shift_types=shift_types,
                 shift_defs=shift_defs,
                 departments=departments,
@@ -755,6 +761,7 @@ def generate_week_schedule(company_id, week_key):
                     pinned=pinned or None,
                     shift_hours=_effective_shift_hours(state),
                     break_hours=PAYROLL_BREAK_HOURS,
+        beginner_max_level=BEGINNER_MAX_LEVEL,
                     shift_types=shift_types,
                     shift_defs=shift_defs,
                     departments=departments,
@@ -832,6 +839,11 @@ def manual_adjust_week(company_id, week_key):
         "pattern_issues": [], "preference_issues": [], "fairness_issues": [], "consecutive_issues": []
     }
     schedule["assignments"] = payload.get("assignments", [])
+    # 시니어/초보 규칙은 수동 배치에서는 막지 않고 경고만 돌려줍니다(저장은 됨).
+    by_day = {}
+    for a in schedule["assignments"]:
+        by_day.setdefault(a.get("day"), []).append((a.get("employee_id"), a.get("shift_type")))
+    schedule["crew_warnings"] = _crew_rule_warnings(state, week_key, by_day)
     schedule["status"] = "MANUAL"
     schedule["diagnostics"] = ["This schedule was manually rearranged."]
     state["weeks"][week_key]["schedule"] = schedule

@@ -745,6 +745,45 @@ def _sanitize_max_hours(value):
         return None
     return round(v, 2) if 0 < v <= 168 else None
 
+BEGINNER_MAX_LEVEL = 2  # 능력치가 이 값 이하면 '초보' — 같은 부서·같은 조에 초보 2명 금지
+
+def _sanitize_skill_level(value):
+    """능력치 1~5 정수. 비어있거나 범위 밖이면 None(= 미설정, 보통으로 취급)."""
+    if value is None or value == "":
+        return None
+    try:
+        v = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return v if 1 <= v <= 5 else None
+
+def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None):
+    """수동 배치 후 확인용 경고(저장은 막지 않음): 시니어 없는 날 / 같은 부서·같은 조 초보 2명 이상.
+    assignments_by_day: {day: [(emp_id, shift_type), ...]}"""
+    emps = {e["id"]: e for e in state.get("employees", [])}
+    shifts = {s["id"]: s for s in state.get("shift_types", []) if isinstance(s, dict) and "id" in s}
+    warnings = []
+    any_senior = any(e.get("is_senior") for e in emps.values())
+    for day, items in assignments_by_day.items():
+        if not items:
+            continue
+        if any_senior and not any(emps.get(i, {}).get("is_senior") for i, _ in items):
+            warnings.append({"type": "no_senior", "day": day})
+        groups = {}
+        for emp_id, st in items:
+            e = emps.get(emp_id) or {}
+            lv = e.get("skill_level")
+            if lv is None or lv > BEGINNER_MAX_LEVEL:
+                continue
+            sd = shifts.get(st) or {}
+            key = (sd.get("department_id") or e.get("department"), bool(sd.get("is_closing")))
+            groups.setdefault(key, []).append(e.get("name", emp_id))
+        for (dept, closing), names in groups.items():
+            if len(names) >= 2:
+                warnings.append({"type": "beginner_pair", "day": day, "department": dept,
+                                 "closing": closing, "names": names})
+    return warnings
+
 def _sanitize_hours_limit_periods(periods):
     """기간별 근무시간 한도(예: 학생비자의 방학 기간) 목록 정리 — 각 항목은
     {id, start_date, end_date, max_hours(None = 그 기간엔 제한 없음)}. 날짜가 잘못됐거나

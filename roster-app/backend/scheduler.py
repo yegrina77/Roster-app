@@ -117,6 +117,8 @@ class Employee:
     recent_weekend_count: int = 0
     max_hours_per_week: Optional[float] = None  # 하드: 이 주 법적 최대 근무시간(예: 학생비자 25h). None = 제한 없음
     preferred_max_hours: Optional[float] = None  # 소프트(4단계): 직원이 원하는 상한 — 넘으면 페널티
+    is_senior: bool = False  # 하드: 요구인원이 있는 모든 날에 시니어(⭐)가 최소 1명 배정돼야 함 (부서 무관)
+    skill_level: Optional[int] = None  # 1~5 (미설정=보통 취급). beginner_max_level 이하면 '초보'
     credited_off_hours: float = 0.0  # 유급/병가 리브로 이미 "채운 걸로 인정"할 시간
     # (하드: min_hours_per_week 계산 시 실제 배정 시간에 이만큼을 더한 걸로 칩니다 —
     # 유급으로 쉰 시간은 회사가 이미 지급을 약속한 시간이라, 나머지 요일에 억지로
@@ -142,6 +144,12 @@ class ScheduleResult:
     preference_issues: list[dict] = field(default_factory=list)
     fairness_issues: list[dict] = field(default_factory=list)
     consecutive_issues: list[dict] = field(default_factory=list)
+
+
+def is_beginner(e, max_level: int = 2) -> bool:
+    """skill_level이 설정돼 있고 max_level 이하이면 초보. 미설정은 보통(3)으로 보고 초보 아님."""
+    lv = getattr(e, "skill_level", None)
+    return lv is not None and lv <= max_level
 
 
 def _explain_shortfall(req: "ShiftRequirement", employees: list["Employee"], shift_department: dict) -> dict:
@@ -187,6 +195,7 @@ def solve_schedule(
     departments: Optional[list[str]] = None,
     relax: Optional[set] = None,
     relax_min_hours_employee_ids: Optional[set] = None,
+    beginner_max_level: int = 2,
     break_hours: float = 0.0,
     time_limit_seconds: float = 10.0,
 ) -> ScheduleResult:
@@ -315,6 +324,30 @@ def solve_schedule(
                 model.Add(
                     x[(e.id, today, prev_shift)] + x[(e.id, tomorrow, next_shift)] <= 1
                 )
+
+    # ---- 하드: 시니어 필수 배치 — 요구인원이 있는 날마다 시니어(부서·근무유형 무관) 최소 1명 ----
+    # 시니어가 한 명도 등록돼 있지 않으면 이 규칙은 건너뜁니다(등록 전에는 자동생성이 막히지 않게).
+    seniors = [e for e in employees if getattr(e, "is_senior", False)]
+    if seniors and "senior_coverage" not in relax:
+        demand_days = {r.day for r in requirements if r.required_count > 0}
+        for day in DAYS:
+            if day not in demand_days:
+                continue
+            model.Add(sum(x[(e.id, day, shift)] for e in seniors for shift in shift_types) >= 1)
+
+    # ---- 하드: 초보자 동시 배치 금지 — 같은 부서 + 같은 조(마감조/아침조)에서 하루 최대 1명 ----
+    if "beginner_pairing" not in relax:
+        beginners = [e for e in employees if is_beginner(e, beginner_max_level)]
+        if len(beginners) >= 2:
+            groups = {}
+            for shift in shift_types:
+                if shift not in shift_department:
+                    continue
+                key = (shift_department[shift], bool(shift_defs.get(shift, {}).get("is_closing")))
+                groups.setdefault(key, []).append(shift)
+            for (_dept, _closing), g_shifts in groups.items():
+                for day in DAYS:
+                    model.Add(sum(x[(e.id, day, sh)] for e in beginners for sh in g_shifts) <= 1)
 
     shortfall = {}
     for idx, req in enumerate(requirements):
