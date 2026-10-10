@@ -5609,7 +5609,12 @@ function buildRulesPanel(e) {
   hpNote.style.cssText = "font-size:11px; color:var(--text-muted); margin-top:6px;";
   hpNote.textContent = t("hours_limit_mixed_week_note");
   hoursBlock.appendChild(hpNote);
-  wrap.appendChild(hoursBlock);
+  // 학생비자 문서가 등록된 직원에게만 보여줍니다. 이미 한도 값이 들어있는 직원은
+  // (비자 문서를 지웠더라도) 적용 중인 하드 규칙이 숨겨지지 않도록 계속 보여줍니다.
+  const hasStudentVisa = (rulesDraft.documents || []).some(d => d.doc_type === "student_visa");
+  const hasHoursLimitValues = rulesDraft.max_hours_per_week != null || rulesDraft.preferred_max_hours != null
+    || (rulesDraft.hours_limit_periods || []).length > 0;
+  if (hasStudentVisa || hasHoursLimitValues) wrap.appendChild(hoursBlock);
 
   const docsBlock = document.createElement("div");
   docsBlock.className = "rules-block";
