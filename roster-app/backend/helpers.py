@@ -735,6 +735,60 @@ def _sanitize_agreed_days(value):
         return []
     return [d for d in valid if d in value]
 
+def _sanitize_max_hours(value):
+    """주당 최대 근무시간(법적 한도/희망 한도): 0 초과 168 이하 숫자만 허용, 비어있으면 None(= 제한 없음)."""
+    if value is None or value == "":
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(v, 2) if 0 < v <= 168 else None
+
+def _sanitize_hours_limit_periods(periods):
+    """기간별 근무시간 한도(예: 학생비자의 방학 기간) 목록 정리 — 각 항목은
+    {id, start_date, end_date, max_hours(None = 그 기간엔 제한 없음)}. 날짜가 잘못됐거나
+    시작일이 종료일보다 늦은 항목은 버립니다."""
+    out = []
+    if not isinstance(periods, (list, tuple)):
+        return out
+    for p in periods:
+        if not isinstance(p, dict):
+            continue
+        # ⚠️ _sanitize_date는 미래 날짜를 거부하므로(입사일용) 여기선 쓰지 않습니다 — 방학은 미래 날짜입니다.
+        try:
+            start = date.fromisoformat(str(p.get("start_date"))).isoformat()
+            end = date.fromisoformat(str(p.get("end_date"))).isoformat()
+        except ValueError:
+            continue
+        if start > end:
+            continue
+        out.append({
+            "id": str(p.get("id") or f"hp_{len(out)}")[:40],
+            "start_date": start, "end_date": end,
+            "max_hours": _sanitize_max_hours(p.get("max_hours")),
+        })
+    return out
+
+def _weekly_hour_cap(employee_dict, week_key):
+    """이 주(week_key)에 이 직원에게 적용되는 **법적** 주당 최대 근무시간(없으면 None).
+    기본 한도(max_hours_per_week, 예: 학생비자 학기 중 25시간)를 쓰되, 그 주의 어느 날이
+    '기간별 한도'(예: 방학 — 더 높은 한도 또는 제한 없음)에 속하면 그 날은 그 기간의 한도를
+    씁니다. 한 주 안에 학기와 방학이 섞여 있으면 **더 엄격한(작은) 한도**를 적용합니다."""
+    base = employee_dict.get("max_hours_per_week")
+    periods = employee_dict.get("hours_limit_periods") or []
+    caps = []
+    for d in _week_dates(week_key):
+        iso = d.isoformat()
+        cap = base
+        for p in periods:
+            if p.get("start_date", "") <= iso <= p.get("end_date", ""):
+                cap = p.get("max_hours")
+                break
+        caps.append(cap)
+    finite = [c for c in caps if c is not None]
+    return min(finite) if finite else None
+
 def _sanitize_date(value):
     """날짜 입력값(YYYY-MM-DD)을 검증합니다. 형식이 잘못됐거나 미래 날짜(입사일이
     미래일 수는 없으므로)면 None으로 취급합니다."""

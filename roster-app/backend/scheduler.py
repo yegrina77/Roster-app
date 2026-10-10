@@ -115,6 +115,8 @@ class Employee:
     carry_in_streak: int = 0  # 전주 끝자락부터 이어져온 연속 근무일수 (2단계 계산의 시작점)
     recent_night_count: int = 0
     recent_weekend_count: int = 0
+    max_hours_per_week: Optional[float] = None  # 하드: 이 주 법적 최대 근무시간(예: 학생비자 25h). None = 제한 없음
+    preferred_max_hours: Optional[float] = None  # 소프트(4단계): 직원이 원하는 상한 — 넘으면 페널티
     credited_off_hours: float = 0.0  # 유급/병가 리브로 이미 "채운 걸로 인정"할 시간
     # (하드: min_hours_per_week 계산 시 실제 배정 시간에 이만큼을 더한 걸로 칩니다 —
     # 유급으로 쉰 시간은 회사가 이미 지급을 약속한 시간이라, 나머지 요일에 억지로
@@ -195,7 +197,7 @@ def solve_schedule(
     relax: 이 세트에 이름을 넣으면 그 하드 규칙을 이번 계산에서만 꺼둡니다. 정상적으로
     스케줄을 만들 때는 항상 비워둡니다 — INFEASIBLE이 났을 때, app.py가 "어떤 규칙 하나를
     빼면 풀리는지"를 자동으로 찾아내서 사용자에게 정확한 원인을 알려주는 진단 용도로만
-    씁니다. 가능한 이름: "min_hours", "forbidden_consecutive", "blocked_shift_types",
+    씁니다. 가능한 이름: "min_hours", "max_hours", "forbidden_consecutive", "blocked_shift_types",
     "cross_department".
 
     relax_min_hours_employee_ids: "min_hours"가 원인으로 의심될 때, 이 세트에 담긴
@@ -291,6 +293,15 @@ def solve_schedule(
             for day in DAYS for shift in shift_types
         )
         model.Add(total_hours_x1000 >= round(effective_min_hours * 1000))
+
+    # ---- 하드: 법적 주당 최대 근무시간 (예: 학생비자) ----
+    for e in employees:
+        if e.max_hours_per_week is None or "max_hours" in relax:
+            continue
+        model.Add(
+            sum(x[(e.id, day, shift)] * round(hours_map[shift] * 1000)
+                for day in DAYS for shift in shift_types) <= round(e.max_hours_per_week * 1000)
+        )
 
     for e in employees:
         if "forbidden_consecutive" in relax:
@@ -409,6 +420,18 @@ def solve_schedule(
 
             pattern_violation_by_employee[e.id] = emp_pattern_vars
 
+    # ---- 소프트: 직원이 원하는 최대시간 초과분(시간 단위, 올림) ----
+    pref_max_over_vars = {}
+    for e in employees:
+        if e.preferred_max_hours is None:
+            continue
+        over = model.NewIntVar(0, 168, f"premax_over_{e.id}")
+        total_x1000 = sum(x[(e.id, day, shift)] * round(hours_map[shift] * 1000)
+                          for day in DAYS for shift in shift_types)
+        model.Add(over * 1000 >= total_x1000 - round(e.preferred_max_hours * 1000))
+        pref_max_over_vars[e.id] = over
+    total_pref_max_over = sum(pref_max_over_vars.values()) if pref_max_over_vars else 0
+
     total_shortfall = sum(shortfall.values())
     total_pref_off_violation = sum(pref_off_violation_terms) if pref_off_violation_terms else 0
     total_preference = sum(preference_terms) if preference_terms else 0
@@ -497,6 +520,7 @@ def solve_schedule(
     # ---- 4단계: 나머지 소프트 규칙 (1·2·3단계 결과는 그대로 유지) ----
     model.Minimize(
         total_day_count_penalty * day_count_weight
+        + total_pref_max_over * 3  # 희망 최대시간을 1시간 넘길 때마다 페널티 (소프트)
         + total_pattern_penalty * pattern_weight
         - total_preference * preference_weight
         + total_fairness_penalty * fairness_weight

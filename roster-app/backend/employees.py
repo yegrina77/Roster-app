@@ -14,6 +14,7 @@ from helpers import (
     _stamp_new_leave_requests,
     _sanitize_documents, _sanitize_date, _ensure_employee_limit,
     EMPLOYMENT_TYPES, _sanitize_contract_hours, _sanitize_agreed_days,
+    _sanitize_max_hours, _sanitize_hours_limit_periods,
 )
 
 employees_bp = Blueprint("employees", __name__)
@@ -102,6 +103,12 @@ def add_employee(company_id):
         # 합의된 근무요일(예: ["mon","tue","wed"]) — 있으면 그 요일이 곧 OWD이고, 비어있으면
         # 직전 13주 중 50% 이상 근무한 요일이 OWD입니다.
         "agreed_days": _sanitize_agreed_days(payload.get("agreed_days")),
+        # 근무시간 한도 — 학생비자처럼 법적으로 주당 최대 시간이 정해진 직원용. max_hours_per_week는
+        # 하드 규칙(자동 생성은 절대 넘기지 않고, 수동 저장도 막힘), hours_limit_periods는 방학 등
+        # 기간별 예외 한도(None = 그 기간 제한 없음), preferred_max_hours는 직원이 원하는 상한(소프트).
+        "max_hours_per_week": _sanitize_max_hours(payload.get("max_hours_per_week")),
+        "hours_limit_periods": _sanitize_hours_limit_periods(payload.get("hours_limit_periods")),
+        "preferred_max_hours": _sanitize_max_hours(payload.get("preferred_max_hours")),
         # 직원 로그인용 PIN — 등록 시 자동으로 무작위 생성됩니다. 관리자/매니저가
         # "직원 PIN 조회" 화면에서 확인하거나 재발급할 수 있습니다.
         "pin": _generate_pin(),
@@ -134,6 +141,7 @@ def update_employee(company_id, employee_id):
         "leave_requests", "recent_night_count", "recent_weekend_count", "hourly_wage",
         "pay_type", "annual_salary", "documents", "hire_date",
         "employment_type", "contract_hours_per_week", "agreed_days",
+        "max_hours_per_week", "hours_limit_periods", "preferred_max_hours",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "hourly_wage" in updates:
@@ -150,6 +158,12 @@ def update_employee(company_id, employee_id):
         updates["employment_type"] = "standard"
     if "contract_hours_per_week" in updates:
         updates["contract_hours_per_week"] = _sanitize_contract_hours(updates["contract_hours_per_week"])
+    if "max_hours_per_week" in updates:
+        updates["max_hours_per_week"] = _sanitize_max_hours(updates["max_hours_per_week"])
+    if "preferred_max_hours" in updates:
+        updates["preferred_max_hours"] = _sanitize_max_hours(updates["preferred_max_hours"])
+    if "hours_limit_periods" in updates:
+        updates["hours_limit_periods"] = _sanitize_hours_limit_periods(updates["hours_limit_periods"])
     if "agreed_days" in updates:
         updates["agreed_days"] = _sanitize_agreed_days(updates["agreed_days"])
     for i, e in enumerate(state["employees"]):

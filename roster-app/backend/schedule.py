@@ -20,6 +20,7 @@ from helpers import (
     _effective_shift_times, _effective_shift_hours, _slugify_id, empty_week,
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
+    _weekly_hour_cap, _assignment_duration_hours,
     REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
 from payroll import _credit_alt_holidays_for_week, _accrue_leave_for_week
@@ -504,6 +505,8 @@ def generate_week_schedule(company_id, week_key):
             recent_night_count=night_count,
             recent_weekend_count=weekend_count,
             credited_off_hours=_credited_leave_hours(e, week_key),
+            max_hours_per_week=_weekly_hour_cap(e, week_key),
+            preferred_max_hours=e.get("preferred_max_hours"),
         ))
 
     requirements = [
@@ -570,6 +573,19 @@ def generate_week_schedule(company_id, week_key):
         key = (day, shift)
         pin_count_by_req[key] = pin_count_by_req.get(key, 0) + 1
 
+    # 수동 사전 배치(pin)만으로 이미 법적 주당 최대시간(예: 학생비자)을 넘으면 거부합니다.
+    _pin_hours = {}
+    _shift_hours_for_pins = _effective_shift_hours(state)
+    for emp_id, day, shift in pinned:
+        _pin_hours[emp_id] = _pin_hours.get(emp_id, 0.0) + _shift_hours_for_pins.get(shift, 0)
+    for emp_id, hrs in _pin_hours.items():
+        emp = emp_by_id.get(emp_id)
+        if emp and emp.max_hours_per_week is not None and hrs > emp.max_hours_per_week + 0.01:
+            pin_errors.append(
+                f"{emp.name} is pinned for {hrs:.1f}h, which exceeds their legal weekly maximum of "
+                f"{emp.max_hours_per_week:g}h this week. Remove some pins."
+            )
+
     for (day, shift), count in pin_count_by_req.items():
         required = req_required.get((day, shift))
         if required is not None and count > required:
@@ -609,6 +625,14 @@ def generate_week_schedule(company_id, week_key):
                 f"{dept_max_shift_hours.get(e.department, 0):.1f}h — so at most {max_possible:.1f}h is "
                 f"reachable. Check for leftover Off marks copied from a previous week, or adjust their "
                 f"minimum hours / off days."
+            )
+
+    for e in employees:
+        if e.max_hours_per_week is not None and e.min_hours_per_week > e.max_hours_per_week + 0.01:
+            min_hours_errors.append(
+                f"{e.name}: minimum hours ({e.min_hours_per_week}h) is higher than their legal weekly "
+                f"maximum this week ({e.max_hours_per_week:g}h). Lower the minimum hours or check the "
+                f"hour-limit settings."
             )
 
     if min_hours_errors:
@@ -685,6 +709,7 @@ def generate_week_schedule(company_id, week_key):
         diagnosis_deadline = time.time() + 12.0  # 진단 전체에 쓸 수 있는 최대 시간(초)
         relax_candidates = [
             ("min_hours", "이 직원(들)의 주당 최소시간 규칙"),
+            ("max_hours", "이 직원(들)의 법적 주당 최대시간(예: 학생비자) 규칙"),
             ("forbidden_consecutive", "마감 근무 다음날 오픈 근무 금지 규칙"),
             ("blocked_shift_types", "이 직원(들)에게 금지된 근무유형 설정"),
             ("cross_department", "다른 부서 근무유형 배정 금지 규칙"),
@@ -786,6 +811,19 @@ def manual_adjust_week(company_id, week_key):
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     payload = request.get_json()
+    # 법적 주당 최대시간(예: 학생비자)을 넘기는 수동 배치는 저장 자체를 막습니다(하드 규칙).
+    shift_times = _effective_shift_times(state)
+    hours_by_emp = {}
+    for a in payload.get("assignments", []):
+        hours_by_emp[a["employee_id"]] = hours_by_emp.get(a["employee_id"], 0.0) + _assignment_duration_hours(a, shift_times)
+    over_msgs = []
+    for e in state["employees"]:
+        cap = _weekly_hour_cap(e, week_key)
+        hrs = hours_by_emp.get(e["id"], 0.0)
+        if cap is not None and hrs > cap + 0.01:
+            over_msgs.append(f"{e['name']}: {hrs:.1f}h scheduled, but the legal weekly maximum is {cap:g}h.")
+    if over_msgs:
+        return jsonify({"error": "Weekly hour limit exceeded — " + " ".join(over_msgs), "error_code": "hours_limit_exceeded"}), 400
     schedule = state["weeks"][week_key]["schedule"] or {
         "status": "MANUAL", "assignments": [], "unmet_requirements": [], "diagnostics": [], "day_count_issues": [], "preferred_off_issues": [],
         "pattern_issues": [], "preference_issues": [], "fairness_issues": [], "consecutive_issues": []
