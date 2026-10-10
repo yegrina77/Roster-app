@@ -20,7 +20,7 @@ from helpers import (
     _effective_shift_times, _effective_shift_hours, _slugify_id, empty_week,
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
-    _weekly_hour_cap, _assignment_duration_hours,
+    _weekly_hour_cap, _assignment_duration_hours, PAYROLL_BREAK_HOURS,
     REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
 from payroll import _credit_alt_holidays_for_week, _accrue_leave_for_week
@@ -577,7 +577,7 @@ def generate_week_schedule(company_id, week_key):
     _pin_hours = {}
     _shift_hours_for_pins = _effective_shift_hours(state)
     for emp_id, day, shift in pinned:
-        _pin_hours[emp_id] = _pin_hours.get(emp_id, 0.0) + _shift_hours_for_pins.get(shift, 0)
+        _pin_hours[emp_id] = _pin_hours.get(emp_id, 0.0) + max(0.0, _shift_hours_for_pins.get(shift, 0) - PAYROLL_BREAK_HOURS)
     for emp_id, hrs in _pin_hours.items():
         emp = emp_by_id.get(emp_id)
         if emp and emp.max_hours_per_week is not None and hrs > emp.max_hours_per_week + 0.01:
@@ -688,6 +688,7 @@ def generate_week_schedule(company_id, week_key):
         random_seed=random_seed,
         pinned=pinned or None,
         shift_hours=_effective_shift_hours(state),
+        break_hours=PAYROLL_BREAK_HOURS,
         shift_types=shift_types,
         shift_defs=shift_defs,
         departments=departments,
@@ -725,6 +726,7 @@ def generate_week_schedule(company_id, week_key):
                 random_seed=random_seed,
                 pinned=pinned or None,
                 shift_hours=_effective_shift_hours(state),
+                break_hours=PAYROLL_BREAK_HOURS,
                 shift_types=shift_types,
                 shift_defs=shift_defs,
                 departments=departments,
@@ -752,6 +754,7 @@ def generate_week_schedule(company_id, week_key):
                     random_seed=random_seed,
                     pinned=pinned or None,
                     shift_hours=_effective_shift_hours(state),
+                    break_hours=PAYROLL_BREAK_HOURS,
                     shift_types=shift_types,
                     shift_defs=shift_defs,
                     departments=departments,
