@@ -556,6 +556,16 @@
           <option value="casual" data-i18n="opt_emp_casual">캐주얼</option>
         </select>
       </div>
+      <div class="field"><label data-i18n="label_skill_level">능력치 (1~5)</label>
+        <select id="emp-skill-level">
+          <option value="" data-i18n="opt_skill_unset">미설정 (보통)</option>
+          <option value="1" data-i18n="opt_skill_1">1 · 신입 (혼자 불가)</option>
+          <option value="2" data-i18n="opt_skill_2">2 · 초보 (도움 필요)</option>
+          <option value="3" data-i18n="opt_skill_3">3 · 보통 (기본 업무 가능)</option>
+          <option value="4" data-i18n="opt_skill_4">4 · 숙련 (혼자서도 OK)</option>
+          <option value="5" data-i18n="opt_skill_5">5 · 에이스 (다른 사람 지도 가능)</option>
+        </select>
+      </div>
       <div class="field" id="emp-contract-hours-field"><label data-i18n="label_contract_hours">계약 주당 표준시간</label>
         <input id="emp-contract-hours" type="number" min="0" max="80" step="0.5" placeholder="40" style="width:70px;">
       </div>
@@ -761,6 +771,9 @@ const I18N = {
     hours_limit_none: "제한 없음", hours_limit_unlimited: "제한 없음", hours_limit_student_btn: "학생비자 25h 적용",
     hours_limit_periods_title: "기간별 예외 한도 (예: 방학 중 풀타임)", hours_limit_period_add: "기간 추가",
     hours_limit_mixed_week_note: "※ 한 주에 학기와 방학이 섞여 있으면 더 엄격한(작은) 한도를 적용합니다. 방학 날짜는 학생의 학교 일정표나 재학증명서로 확인해 입력하세요.",
+    label_skill_level: "능력치 (1~5)", opt_skill_unset: "미설정 (보통)", opt_skill_1: "1 · 신입 (혼자 불가)", opt_skill_2: "2 · 초보 (도움 필요)", opt_skill_3: "3 · 보통 (기본 업무 가능)", opt_skill_4: "4 · 숙련 (혼자서도 OK)", opt_skill_5: "5 · 에이스 (다른 사람 지도 가능)",
+    senior_toggle_tip: "시니어(파트너급) 지정/해제 — 요구인원이 있는 날마다 시니어 최소 1명이 자동 배치됩니다",
+    crew_warn_no_senior: "시니어가 배치되지 않은 날이 있습니다", crew_warn_beginner: "같은 부서·같은 조에 초보자가 2명 이상 배치됐습니다",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1170,6 +1183,9 @@ const I18N = {
     hours_limit_none: "No limit", hours_limit_unlimited: "No limit", hours_limit_student_btn: "Apply student visa 25h",
     hours_limit_periods_title: "Period exceptions (e.g. full-time during holidays)", hours_limit_period_add: "Add period",
     hours_limit_mixed_week_note: "Note: if a week mixes term and holiday days, the stricter (lower) limit applies. Confirm holiday dates from the student's school calendar or enrolment letter.",
+    label_skill_level: "Skill level (1-5)", opt_skill_unset: "Not set (average)", opt_skill_1: "1 · Trainee (can't work alone)", opt_skill_2: "2 · Beginner (needs help)", opt_skill_3: "3 · Average (basic tasks OK)", opt_skill_4: "4 · Experienced (works independently)", opt_skill_5: "5 · Ace (can coach others)",
+    senior_toggle_tip: "Mark/unmark as senior (partner level) — at least one senior is auto-scheduled on every day with staffing needs",
+    crew_warn_no_senior: "Some days have no senior scheduled", crew_warn_beginner: "Two or more beginners are scheduled in the same department and crew",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -4837,7 +4853,7 @@ function renderEmployeeTable() {
     const ruleSummary = summarizeRules(e);
     tr.innerHTML = `
       <td>${escapeHtml(e.id)}</td>
-      <td>${escapeHtml(e.name)}</td>
+      <td><button class="btn-ghost btn-sm" data-action="senior" title="${escapeHtml(t("senior_toggle_tip"))}" style="padding:0 6px; font-size:16px; color:${e.is_senior ? "#f5b301" : "var(--text-muted)"};">${e.is_senior ? "★" : "☆"}</button>${escapeHtml(e.name)}${e.skill_level != null ? ` <span style="font-size:11px; color:var(--text-muted);">Lv${e.skill_level}</span>` : ""}</td>
       <td>${escapeHtml(DEPARTMENT_LABEL[dept] || dept)}</td>
       <td>${e.min_hours_per_week}</td>
       <td>${e.target_days_per_week != null ? e.target_days_per_week + t("day_suffix") : "-"}</td>
@@ -4853,6 +4869,13 @@ function renderEmployeeTable() {
     // 직원 이름/ID처럼 사용자가 입력한 값을 onclick 문자열(HTML 속성)에 직접 끼워 넣지 않고,
     // 이렇게 DOM에서 버튼을 찾아 JS 함수로 직접 연결합니다 — 값에 따옴표나 특수문자가
     // 있어도(예: O'Brien) 절대 깨지거나 스크립트로 해석되지 않습니다.
+    tr.querySelector('[data-action="senior"]').onclick = async () => {
+      await api(`/api/employees/${encodeURIComponent(e.id)}`, {
+        method: "PUT", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({is_senior: !e.is_senior})
+      });
+      loadEmployees();
+    };
     tr.querySelector('[data-action="rules"]').onclick = () => toggleRulesPanel(e.id);
     tr.querySelector('[data-action="edit"]').onclick = () => startEditEmployee(e);
     tr.querySelector('[data-action="delete"]').onclick = () => deleteEmployee(e.id);
@@ -5803,6 +5826,7 @@ function startEditEmployee(e) {
   document.getElementById("emp-pay-type").value = e.pay_type === "salary" ? "salary" : "hourly";
   document.getElementById("emp-wage").value = e.hourly_wage != null ? e.hourly_wage : "";
   document.getElementById("emp-salary").value = e.annual_salary != null ? e.annual_salary : "";
+  document.getElementById("emp-skill-level").value = e.skill_level != null ? String(e.skill_level) : "";
   document.getElementById("emp-employment-type").value = e.employment_type === "casual" ? "casual" : "standard";
   document.getElementById("emp-contract-hours").value = e.contract_hours_per_week != null ? e.contract_hours_per_week : "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = (e.agreed_days || []).includes(cb.value); });
@@ -5827,6 +5851,7 @@ function cancelEditEmployee() {
   document.getElementById("emp-pay-type").value = "hourly";
   document.getElementById("emp-wage").value = "";
   document.getElementById("emp-salary").value = "";
+  document.getElementById("emp-skill-level").value = "";
   document.getElementById("emp-employment-type").value = "standard";
   document.getElementById("emp-contract-hours").value = "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = false; });
@@ -5849,6 +5874,8 @@ async function submitEmployee() {
   const hourly_wage = wageRaw === "" ? null : Number(wageRaw);
   const salaryRaw = document.getElementById("emp-salary").value.trim();
   const annual_salary = salaryRaw === "" ? null : Number(salaryRaw);
+  const skillRaw = document.getElementById("emp-skill-level").value;
+  const skill_level = skillRaw === "" ? null : Number(skillRaw);
   const employment_type = document.getElementById("emp-employment-type").value === "casual" ? "casual" : "standard";
   const contractRaw = document.getElementById("emp-contract-hours").value.trim();
   const contract_hours_per_week = (employment_type === "casual" || contractRaw === "") ? null : Number(contractRaw);
@@ -5866,7 +5893,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, skill_level, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -5875,7 +5902,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, skill_level, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
@@ -8145,13 +8172,24 @@ function swapAssignment(srcIdx, newEmployeeId, newDay) {
 
 async function saveManualAdjustments() {
   if (weekLocked) return;
-  await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
+  const adjustResult = await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({assignments: currentAssignments})
   });
   await refreshWeekdayFrequency();
   renderCalendarArea();
+
+  // 시니어 없는 날 / 같은 부서·같은 조 초보 2명 — 수동 배치는 막지 않고 경고만 보여줍니다.
+  const crewWarns = (adjustResult && adjustResult.crew_warnings) || [];
+  if (crewWarns.length) {
+    const dayName = d => (typeof DAY_LABEL !== "undefined" && DAY_LABEL[d]) ? DAY_LABEL[d] : d;
+    const lines = crewWarns.map(w => w.type === "no_senior"
+      ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior")}`
+      : `• ${dayName(w.day)} (${DEPARTMENT_LABEL[w.department] || w.department}): ${t("crew_warn_beginner")} — ${w.names.join(", ")}`);
+    showMessageModal(t("modal_save_done"), lines.join("\n"), true);
+    return;
+  }
 
   if (window._weekHolidays && window._weekHolidays.length) {
     // 이 주에 공휴일이 있으면, 방금 저장한 최신 배치를 기준으로 노동법 적용 항목을 다시 계산해서 보여줍니다.
