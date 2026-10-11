@@ -508,6 +508,7 @@ def generate_week_schedule(company_id, week_key):
             max_hours_per_week=_weekly_hour_cap(e, week_key),
             preferred_max_hours=e.get("preferred_max_hours"),
             extra_departments=list(e.get("extra_departments") or []),
+            max_consecutive_days=e.get("max_consecutive_days"),
             is_senior=bool(e.get("is_senior", False)),
             skill_level=e.get("skill_level"),
         ))
@@ -719,6 +720,7 @@ def generate_week_schedule(company_id, week_key):
             ("max_hours", "이 직원(들)의 법적 주당 최대시간(예: 학생비자) 규칙"),
             ("senior_coverage", "요구인원이 있는 날마다 시니어(⭐) 최소 1명 배치 규칙"),
             ("beginner_pairing", "같은 부서·같은 조 초보자 2명 동시 배치 금지 규칙"),
+            ("max_consecutive", "이 직원(들)의 최대 연속 근무일 제한"),
             ("forbidden_consecutive", "마감 근무 다음날 오픈 근무 금지 규칙"),
             ("blocked_shift_types", "이 직원(들)에게 금지된 근무유형 설정"),
             ("cross_department", "다른 부서 근무유형 배정 금지 규칙"),
@@ -846,7 +848,8 @@ def manual_adjust_week(company_id, week_key):
     by_day = {}
     for a in schedule["assignments"]:
         by_day.setdefault(a.get("day"), []).append((a.get("employee_id"), a.get("shift_type")))
-    schedule["crew_warnings"] = _crew_rule_warnings(state, week_key, by_day)
+    carry = {e["id"]: _carry_in_streak(state, e["id"], week_key) for e in state["employees"] if e.get("max_consecutive_days")}
+    schedule["crew_warnings"] = _crew_rule_warnings(state, week_key, by_day, carry_in=carry)
     schedule["status"] = "MANUAL"
     schedule["diagnostics"] = ["This schedule was manually rearranged."]
     state["weeks"][week_key]["schedule"] = schedule

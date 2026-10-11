@@ -118,6 +118,7 @@ class Employee:
     max_hours_per_week: Optional[float] = None  # 하드: 이 주 법적 최대 근무시간(예: 학생비자 25h). None = 제한 없음
     preferred_max_hours: Optional[float] = None  # 소프트(4단계): 직원이 원하는 상한 — 넘으면 페널티
     extra_departments: list[str] = field(default_factory=list)  # 지원 가능 부서: 자동 생성 시 이 부서 근무에도 (부족할 때만) 배정 가능
+    max_consecutive_days: Optional[int] = None  # 하드: 이 직원의 최대 연속 근무일(1~6). None = 전체 기본 규칙(소프트 6일)만 적용
     is_senior: bool = False  # 하드: 요구인원이 있는 모든 날에 시니어(⭐)가 최소 1명 배정돼야 함 (부서 무관)
     skill_level: Optional[int] = None  # 1~5 (미설정=보통 취급). beginner_max_level 이하면 '초보'
     credited_off_hours: float = 0.0  # 유급/병가 리브로 이미 "채운 걸로 인정"할 시간
@@ -385,6 +386,14 @@ def solve_schedule(
             model.Add(streak > MAX_CONSECUTIVE_DAYS).OnlyEnforceIf(viol)
             model.Add(streak <= MAX_CONSECUTIVE_DAYS).OnlyEnforceIf(viol.Not())
             consecutive_viol_vars[e.id][day] = viol
+
+    # ---- 하드: 직원별 최대 연속 근무일 (예: 체력 때문에 연속 3일까지만) — 전주에서 이어진 일수 포함 ----
+    if "max_consecutive" not in relax:
+        for e in employees:
+            if e.max_consecutive_days is None:
+                continue
+            for day in DAYS:
+                model.Add(streak_vars[e.id][day] <= e.max_consecutive_days)
 
     total_consecutive_violation = sum(
         v for byday in consecutive_viol_vars.values() for v in byday.values()

@@ -13,7 +13,7 @@ from helpers import (
     _prune_expired_leave_requests, _sanitize_wage, _sanitize_annual_salary,
     _stamp_new_leave_requests,
     _sanitize_documents, _sanitize_date, _ensure_employee_limit,
-    EMPLOYMENT_TYPES, _sanitize_contract_hours, _sanitize_agreed_days, _sanitize_skill_level, _sanitize_extra_departments,
+    EMPLOYMENT_TYPES, _sanitize_contract_hours, _sanitize_agreed_days, _sanitize_skill_level, _sanitize_extra_departments, _sanitize_max_consecutive_days,
     _sanitize_max_hours, _sanitize_hours_limit_periods,
 )
 
@@ -111,6 +111,7 @@ def add_employee(company_id):
         "preferred_max_hours": _sanitize_max_hours(payload.get("preferred_max_hours")),
         # 시니어(⭐): 요구인원이 있는 날마다 최소 1명 배정(하드). skill_level 1~5: 같은 부서·같은 조에
         # 초보(<=2) 2명 동시 배치 금지(하드). 미설정 = 보통.
+        "max_consecutive_days": _sanitize_max_consecutive_days(payload.get("max_consecutive_days")),
         "is_senior": bool(payload.get("is_senior", False)),
         # 지원 가능 부서: 자동 로스터가 부족한 부서로 이 직원을 보낼 수 있음(급여 영향 없음)
         "extra_departments": _sanitize_extra_departments(
@@ -149,7 +150,7 @@ def update_employee(company_id, employee_id):
         "pay_type", "annual_salary", "documents", "hire_date",
         "employment_type", "contract_hours_per_week", "agreed_days",
         "max_hours_per_week", "hours_limit_periods", "preferred_max_hours",
-        "is_senior", "skill_level", "extra_departments",
+        "is_senior", "skill_level", "extra_departments", "max_consecutive_days",
     }
     updates = {k: v for k, v in payload.items() if k in ALLOWED_FIELDS}
     if "hourly_wage" in updates:
@@ -171,6 +172,8 @@ def update_employee(company_id, employee_id):
     if "extra_departments" in updates:
         updates["extra_departments"] = _sanitize_extra_departments(
             updates["extra_departments"], [d["id"] for d in state.get("departments", [])], updates.get("department"))
+    if "max_consecutive_days" in updates:
+        updates["max_consecutive_days"] = _sanitize_max_consecutive_days(updates["max_consecutive_days"])
     if "is_senior" in updates:
         updates["is_senior"] = bool(updates["is_senior"])
     if "skill_level" in updates:

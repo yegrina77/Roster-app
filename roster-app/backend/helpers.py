@@ -745,6 +745,16 @@ def _sanitize_max_hours(value):
         return None
     return round(v, 2) if 0 < v <= 168 else None
 
+def _sanitize_max_consecutive_days(value):
+    """직원별 최대 연속 근무일: 1~6 정수만 허용(7 이상은 어차피 전체 규칙이 막음), 비어있으면 None."""
+    if value is None or value == "":
+        return None
+    try:
+        v = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return v if 1 <= v <= 6 else None
+
 def _sanitize_extra_departments(value, state_departments=None, own=None):
     """지원 가능 부서 목록 정리: 문자열 id만, 중복/본인 부서 제외. state_departments(부서 id 목록)가 주어지면 존재하는 부서만."""
     out = []
@@ -768,7 +778,7 @@ def _sanitize_skill_level(value):
         return None
     return v if 1 <= v <= 5 else None
 
-def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None):
+def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None, carry_in=None):
     """수동 배치 후 확인용 경고(저장은 막지 않음): 시니어 없는 날 / 같은 부서·같은 조 초보 2명 이상.
     assignments_by_day: {day: [(emp_id, shift_type), ...]}"""
     emps = {e["id"]: e for e in state.get("employees", [])}
@@ -793,6 +803,21 @@ def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None):
             if len(names) >= 2:
                 warnings.append({"type": "beginner_pair", "day": day, "department": dept,
                                  "closing": closing, "names": names})
+    # 직원별 최대 연속 근무일 — 전주에서 이어진 일수(carry_in: {emp_id: n})까지 포함해 확인
+    order = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    for emp_id, e in emps.items():
+        limit = e.get("max_consecutive_days")
+        if not limit:
+            continue
+        streak = (carry_in or {}).get(emp_id, 0)
+        for day in order:
+            if any(i == emp_id for i, _ in assignments_by_day.get(day, [])):
+                streak += 1
+                if streak > limit:
+                    warnings.append({"type": "consecutive_limit", "day": day, "name": e.get("name", emp_id), "limit": limit})
+                    break
+            else:
+                streak = 0
     return warnings
 
 def _sanitize_hours_limit_periods(periods):
