@@ -69,6 +69,10 @@ if not HAS_ORTOOLS:
         recent_weekend_count: int = 0
         credited_off_hours: float = 0
         carry_in_streak: int = 0
+        max_hours_per_week: Optional[float] = None
+        preferred_max_hours: Optional[float] = None
+        is_senior: bool = False
+        skill_level: Optional[int] = None
 
     @dataclass
     class ShiftRequirement:
@@ -747,6 +751,49 @@ def _():
 # ---------------------------------------------------------------------------
 # 6-2. OWD(직전 13주 중 50%) / 공휴일 지급 / 대체휴일 1:1 적립
 # ---------------------------------------------------------------------------
+# 6-3. 학생비자 등 법적 주당 최대시간 (기본 한도 + 방학 기간 예외 + 희망 최대시간)
+# ---------------------------------------------------------------------------
+
+@test("근무시간 한도 - 기본 25시간, 방학 기간(제한 없음)에는 한도가 풀린다")
+def _():
+    e = {"max_hours_per_week": 25, "hours_limit_periods": [
+        {"id": "h1", "start_date": "2026-12-01", "end_date": "2027-02-15", "max_hours": None}]}
+    assert H._weekly_hour_cap(e, "2026-10-12") == 25      # 학기 중
+    assert H._weekly_hour_cap(e, "2026-12-14") is None    # 방학 중 → 제한 없음
+
+
+@test("근무시간 한도 - 방학 기간에 별도 상한(예: 40시간)을 둘 수 있다")
+def _():
+    e = {"max_hours_per_week": 25, "hours_limit_periods": [
+        {"id": "h1", "start_date": "2026-12-01", "end_date": "2027-02-15", "max_hours": 40}]}
+    assert H._weekly_hour_cap(e, "2026-12-14") == 40
+
+
+@test("근무시간 한도 - 학기와 방학이 섞인 주는 더 엄격한(작은) 한도를 쓴다")
+def _():
+    e = {"max_hours_per_week": 25, "hours_limit_periods": [
+        {"id": "h1", "start_date": "2026-12-09", "end_date": "2027-02-15", "max_hours": None}]}
+    # 2026-12-07(월) 주: 월~화는 학기(25), 수~일은 방학(제한 없음) → 25
+    assert H._weekly_hour_cap(e, "2026-12-07") == 25
+
+
+@test("근무시간 한도 - 한도 설정이 없으면 None(제한 없음)")
+def _():
+    assert H._weekly_hour_cap({}, "2026-10-12") is None
+
+
+@test("근무시간 한도 - 잘못된 값/기간은 정리 단계에서 걸러진다")
+def _():
+    assert H._sanitize_max_hours("abc") is None and H._sanitize_max_hours(0) is None
+    assert H._sanitize_max_hours("25") == 25.0
+    periods = H._sanitize_hours_limit_periods([
+        {"start_date": "2027-02-01", "end_date": "2026-12-01", "max_hours": 40},   # 시작>종료 → 버림
+        {"start_date": "2026-12-01", "end_date": "2027-02-01", "max_hours": ""},    # 제한 없음
+    ])
+    assert len(periods) == 1 and periods[0]["max_hours"] is None
+
+
+# ---------------------------------------------------------------------------
 
 def _weeks_with_day(day, n_weeks, anchor_monday):
     """anchor_monday 직전 n_weeks주 동안 매주 해당 요일에 근무한 기록."""
@@ -939,6 +986,61 @@ def _():
         if dupes:
             all_dupes[fname] = dupes
     assert not all_dupes, f"중복 함수: {all_dupes}"
+
+
+@test("능력치 정리: 1~5 정수만 허용, 범위 밖/빈 값은 None")
+def _t_skill_sanitize():
+    assert H._sanitize_skill_level("3") == 3 and H._sanitize_skill_level(5) == 5
+    assert H._sanitize_skill_level(0) is None and H._sanitize_skill_level(6) is None
+    assert H._sanitize_skill_level("") is None and H._sanitize_skill_level(None) is None
+
+
+@test("수동배치 경고: 시니어 없는 날 + 같은 부서·같은 조 초보 2명은 경고, 다른 조/미설정은 경고 없음")
+def _t_crew_warnings():
+    st = {"employees": [
+        {"id": "s", "name": "Senior", "department": "kitchen", "is_senior": True, "skill_level": 5},
+        {"id": "b1", "name": "B1", "department": "kitchen", "skill_level": 1},
+        {"id": "b2", "name": "B2", "department": "kitchen", "skill_level": 2},
+        {"id": "n", "name": "N", "department": "kitchen"},
+    ], "shift_types": [
+        {"id": "opening", "department_id": "kitchen", "is_closing": False},
+        {"id": "helper", "department_id": "kitchen", "is_closing": False},
+        {"id": "closing", "department_id": "kitchen", "is_closing": True},
+    ]}
+    w = H._crew_rule_warnings(st, "2026-01-05", {
+        "mon": [("b1", "opening"), ("b2", "helper")],           # 같은 조 초보 2명 + 시니어 없음
+        "tue": [("b1", "opening"), ("b2", "closing"), ("s", "opening"), ("n", "helper")],  # OK
+    })
+    types = sorted((x["type"], x["day"]) for x in w)
+    assert types == [("beginner_pair", "mon"), ("no_senior", "mon")], types
+
+
+@test("시니어 미등록이면 시니어 경고가 나오지 않는다")
+def _t_no_senior_registered():
+    st = {"employees": [{"id": "a", "name": "A", "department": "kitchen"}],
+          "shift_types": [{"id": "opening", "department_id": "kitchen"}]}
+    assert H._crew_rule_warnings(st, "2026-01-05", {"mon": [("a", "opening")]}) == []
+
+
+@test("scheduler.py 소스에 시니어/초보 하드 규칙(senior_coverage, beginner_pairing)이 들어 있다")
+def _t_scheduler_has_rules():
+    src = open(os.path.join(BACKEND_DIR, "scheduler.py"), encoding="utf-8").read()
+    for k in ("senior_coverage", "beginner_pairing", "def is_beginner"):
+        assert k in src, k
+
+
+@test("지원 가능 부서 정리: 존재하는 부서만, 본인 부서/중복/잘못된 값 제외")
+def _t_extra_depts():
+    f = H._sanitize_extra_departments
+    assert f(["foh", "kitchen", "foh", "zzz", 5], ["kitchen", "foh"], "kitchen") == ["foh"]
+    assert f(None, ["kitchen"], "kitchen") == [] and f("foh", ["foh"], "kitchen") == []
+
+
+@test("scheduler.py에 지원 근무 규칙(extra_departments + 페널티)이 들어 있다")
+def _t_help_rule():
+    src = open(os.path.join(BACKEND_DIR, "scheduler.py"), encoding="utf-8").read()
+    for k in ("extra_departments", "HELP_SHIFT_PENALTY", "total_help_shifts"):
+        assert k in src, k
 
 
 @test("6개 파일 전부 문법이 유효하다")
