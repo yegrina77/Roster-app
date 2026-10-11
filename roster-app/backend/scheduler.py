@@ -20,7 +20,7 @@
 
 우선순위 기반 단계별(lexicographic) 최적화:
   1단계: 필요인원 최대한 채우기 (shortfall 최소화) — 항상 최우선
-  2단계: 연속근무 7일 제한 최대한 지키기 — 전주에서 넘어온 연속근무일수(carry_in_streak)까지
+  2단계: 연속근무 최대 6일 제한 최대한 지키기 — 전주에서 넘어온 연속근무일수(carry_in_streak)까지
          포함해서 계산합니다. 1단계 결과를 해치지 않는 선에서 최적화 (완전한 하드는 아님 —
          인력이 정말 부족하면 예외적으로 뚫릴 수 있고, 그 경우 진단에 안내됩니다)
   3단계: 선호 오프요일 최대한 지키기 — 1·2단계 결과를 해치지 않는 선에서 최적화
@@ -97,7 +97,7 @@ FORBIDDEN_CONSECUTIVE = {
 }
 
 # 연속근무 최대 일수 (2단계 소프트 규칙 — 인력이 정말 부족하면 예외적으로 뚫릴 수 있음)
-MAX_CONSECUTIVE_DAYS = 7
+MAX_CONSECUTIVE_DAYS = 6  # 최대 6일 연속 근무 (7일째 연속 근무는 위반)
 
 
 @dataclass
@@ -360,7 +360,7 @@ def solve_schedule(
         model.Add(sum(eligible) + shortfall[idx] >= req.required_count)
         model.Add(sum(eligible) <= req.required_count)
 
-    # ---- 2단계용: 연속근무 7일 제한 (전주에서 이어져온 연속근무일수 포함) ----
+    # ---- 2단계용: 연속근무 최대 6일 제한 (전주에서 이어져온 연속근무일수 포함) ----
     worked_vars = {}
     streak_vars = {}
     consecutive_viol_vars = {}
@@ -547,7 +547,7 @@ def solve_schedule(
     shortfall_min = solver.Value(total_shortfall)
     model.Add(total_shortfall <= shortfall_min)
 
-    # ---- 2단계: 연속근무 7일 제한 최대한 지키기 (1단계 결과는 그대로 유지) ----
+    # ---- 2단계: 연속근무 최대 6일 제한 최대한 지키기 (1단계 결과는 그대로 유지) ----
     if consecutive_viol_vars:
         model.Minimize(total_consecutive_violation)
         status2 = solver.Solve(model)
