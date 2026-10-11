@@ -786,6 +786,8 @@ const I18N = {
     crew_warn_no_senior: "시니어가 배치되지 않은 날이 있습니다", crew_warn_beginner: "같은 부서·같은 조에 초보자가 2명 이상 배치됐습니다",
     label_extra_depts: "지원 가능 부서", help_shift_tip: "다른 부서 지원 근무",
     label_max_consec: "최대 연속 근무일", opt_max_consec_none: "제한 없음", crew_warn_consec: "최대 연속 {n}일 제한을 넘었습니다",
+    rules_day_block: "요일별 배정 불가 근무유형 (하드)", rules_day_block_desc: "예: 수요일은 오후에 다른 일이 있어 마감 근무 불가. 눌러서 선택한 근무유형은 그 요일에 자동 배정되지 않습니다.", rules_day_block_closing: "마감조 전체", crew_warn_day_blocked: "근무는 이 직원에게 해당 요일 배정 불가로 설정돼 있습니다",
+    summary_day_block: "요일별 불가 {n}건",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1200,6 +1202,8 @@ const I18N = {
     crew_warn_no_senior: "Some days have no senior scheduled", crew_warn_beginner: "Two or more beginners are scheduled in the same department and crew",
     label_extra_depts: "Can help in", help_shift_tip: "Helping in another department",
     label_max_consec: "Max consecutive days", opt_max_consec_none: "No limit", crew_warn_consec: "exceeds the {n}-day consecutive limit",
+    rules_day_block: "Weekday-specific blocked shifts (hard)", rules_day_block_desc: "E.g. can't work closing on Wednesdays because of another job. Selected shift types are never auto-assigned on that weekday.", rules_day_block_closing: "All closing", crew_warn_day_blocked: "is set as unavailable for this employee on that weekday",
+    summary_day_block: "{n} weekday restriction(s)",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -5002,6 +5006,7 @@ function summarizeRules(e) {
   if (e.leave_requests && e.leave_requests.length) parts.push(tf("summary_leave", {n: e.leave_requests.length}));
   if (e.preferred_off_days && e.preferred_off_days.length) parts.push(tf("summary_pref_off", {n: e.preferred_off_days.length}));
   if (e.day_off_pattern) parts.push(e.day_off_pattern === "consecutive" ? t("summary_pattern_consecutive") : t("summary_pattern_split"));
+  { const n = Object.values(e.day_blocked_shifts || {}).reduce((a, l) => a + l.length, 0); if (n) parts.push(tf("summary_day_block", {n})); }
   if (e.blocked_shift_types && e.blocked_shift_types.length) parts.push(tf("summary_blocked", {list: e.blocked_shift_types.map(s=>SHIFT_LABEL[s]).join("/")}));
   if (e.preferred && e.preferred.length) parts.push(tf("summary_pref_count", {n: e.preferred.length}));
   return parts.length ? parts.join(" · ") : t("rules_none");
@@ -5018,6 +5023,7 @@ function toggleRulesPanel(id) {
       preferred: (e.preferred || []).map(p => [...p]),
       preferred_off_days: [...(e.preferred_off_days || [])],
       blocked_shift_types: [...(e.blocked_shift_types || [])],
+      day_blocked_shifts: JSON.parse(JSON.stringify(e.day_blocked_shifts || {})),
       leave_requests: (e.leave_requests || []).map(lr => ({...lr})),
       documents: (e.documents || []).map(d => ({...d})),
       max_hours_per_week: e.max_hours_per_week != null ? e.max_hours_per_week : null,
@@ -5802,6 +5808,53 @@ function buildRulesPanel(e) {
   });
   blockBlock.appendChild(blockWrap);
   wrap.appendChild(blockBlock);
+
+  // ---- 요일별 배정 불가 근무유형 (예: 수요일은 오후 다른 잡 때문에 마감 근무 불가) ----
+  const dayBlockBlock = document.createElement("div");
+  dayBlockBlock.className = "rules-block";
+  dayBlockBlock.innerHTML = `<h4>${t("rules_day_block")}</h4><div style="font-size:11px; color:var(--text-muted); margin-bottom:8px;">${t("rules_day_block_desc")}</div>`;
+  const dayBlockShifts = [...new Set([...(deptShifts || []), ...((e.extra_departments || []).flatMap(d => DEPARTMENT_SHIFTS[d] || []))])];
+  if (!rulesDraft.day_blocked_shifts) rulesDraft.day_blocked_shifts = {};
+  DAYS.forEach(day => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:6px;";
+    const lab = document.createElement("span");
+    lab.textContent = DAY_LABEL[day];
+    lab.style.cssText = "min-width:24px; font-size:12px; font-weight:700;";
+    row.appendChild(lab);
+    dayBlockShifts.forEach(shift => {
+      const cur = rulesDraft.day_blocked_shifts[day] || [];
+      const has = cur.includes(shift);
+      const chip = document.createElement("span");
+      chip.className = "chip " + shift + (has ? " active" : "");
+      chip.textContent = SHIFT_LABEL[shift];
+      chip.onclick = () => {
+        const list = rulesDraft.day_blocked_shifts[day] || [];
+        const idx = list.indexOf(shift);
+        if (idx >= 0) list.splice(idx, 1); else list.push(shift);
+        if (list.length) rulesDraft.day_blocked_shifts[day] = list; else delete rulesDraft.day_blocked_shifts[day];
+        loadEmployees();
+      };
+      row.appendChild(chip);
+    });
+    // 빠른 선택: 그 요일의 마감조 전체 차단/해제
+    const closingShifts = dayBlockShifts.filter(sh => (customShiftTypes.find(s => s.id === sh) || {}).is_closing);
+    if (closingShifts.length) {
+      const quick = document.createElement("button");
+      quick.className = "btn-ghost btn-sm";
+      quick.textContent = t("rules_day_block_closing");
+      quick.onclick = () => {
+        const list = rulesDraft.day_blocked_shifts[day] || [];
+        const allBlocked = closingShifts.every(sh => list.includes(sh));
+        const next = allBlocked ? list.filter(sh => !closingShifts.includes(sh)) : [...new Set([...list, ...closingShifts])];
+        if (next.length) rulesDraft.day_blocked_shifts[day] = next; else delete rulesDraft.day_blocked_shifts[day];
+        loadEmployees();
+      };
+      row.appendChild(quick);
+    }
+    dayBlockBlock.appendChild(row);
+  });
+  wrap.appendChild(dayBlockBlock);
 
   const patternBlock = document.createElement("div");
   patternBlock.className = "rules-block";
@@ -8255,6 +8308,8 @@ async function saveManualAdjustments() {
     const dayName = d => (typeof DAY_LABEL !== "undefined" && DAY_LABEL[d]) ? DAY_LABEL[d] : d;
     const lines = crewWarns.map(w => w.type === "no_senior"
       ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior")}`
+      : w.type === "day_blocked"
+      ? `• ${dayName(w.day)}: ${w.name} — ${SHIFT_LABEL[w.shift_type] || w.shift_type} ${t("crew_warn_day_blocked")}`
       : w.type === "consecutive_limit"
       ? `• ${dayName(w.day)}: ${w.name} — ${tf("crew_warn_consec", {n: w.limit})}`
       : `• ${dayName(w.day)} (${DEPARTMENT_LABEL[w.department] || w.department}): ${t("crew_warn_beginner")} — ${w.names.join(", ")}`);
