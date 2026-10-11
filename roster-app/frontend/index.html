@@ -542,6 +542,13 @@
       <div class="field"><label data-i18n="label_department">부서</label>
         <select id="emp-department"></select>
       </div>
+      <div class="field"><label data-i18n="label_max_consec">최대 연속 근무일</label>
+        <select id="emp-max-consec">
+          <option value="" data-i18n="opt_max_consec_none">제한 없음</option>
+          <option value="2">2일</option><option value="3">3일</option><option value="4">4일</option>
+          <option value="5">5일</option><option value="6">6일</option>
+        </select>
+      </div>
       <div class="field"><label data-i18n="label_extra_depts">지원 가능 부서</label>
         <div id="emp-extra-depts" style="display:flex; gap:8px; flex-wrap:wrap; font-size:12px; height:34px; align-items:center;"></div>
       </div>
@@ -778,6 +785,7 @@ const I18N = {
     senior_toggle_tip: "시니어(파트너급) 지정/해제 — 요구인원이 있는 날마다 시니어 최소 1명이 자동 배치됩니다",
     crew_warn_no_senior: "시니어가 배치되지 않은 날이 있습니다", crew_warn_beginner: "같은 부서·같은 조에 초보자가 2명 이상 배치됐습니다",
     label_extra_depts: "지원 가능 부서", help_shift_tip: "다른 부서 지원 근무",
+    label_max_consec: "최대 연속 근무일", opt_max_consec_none: "제한 없음", crew_warn_consec: "최대 연속 {n}일 제한을 넘었습니다",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1191,6 +1199,7 @@ const I18N = {
     senior_toggle_tip: "Mark/unmark as senior (partner level) — at least one senior is auto-scheduled on every day with staffing needs",
     crew_warn_no_senior: "Some days have no senior scheduled", crew_warn_beginner: "Two or more beginners are scheduled in the same department and crew",
     label_extra_depts: "Can help in", help_shift_tip: "Helping in another department",
+    label_max_consec: "Max consecutive days", opt_max_consec_none: "No limit", crew_warn_consec: "exceeds the {n}-day consecutive limit",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -5854,6 +5863,7 @@ function startEditEmployee(e) {
   document.getElementById("emp-salary").value = e.annual_salary != null ? e.annual_salary : "";
   document.getElementById("emp-skill-level").value = e.skill_level != null ? String(e.skill_level) : "";
   renderExtraDeptChecks(e.extra_departments || []);
+  document.getElementById("emp-max-consec").value = e.max_consecutive_days != null ? String(e.max_consecutive_days) : "";
   document.getElementById("emp-employment-type").value = e.employment_type === "casual" ? "casual" : "standard";
   document.getElementById("emp-contract-hours").value = e.contract_hours_per_week != null ? e.contract_hours_per_week : "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = (e.agreed_days || []).includes(cb.value); });
@@ -5880,6 +5890,7 @@ function cancelEditEmployee() {
   document.getElementById("emp-salary").value = "";
   document.getElementById("emp-skill-level").value = "";
   renderExtraDeptChecks([]);
+  document.getElementById("emp-max-consec").value = "";
   document.getElementById("emp-employment-type").value = "standard";
   document.getElementById("emp-contract-hours").value = "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = false; });
@@ -5903,6 +5914,8 @@ async function submitEmployee() {
   const salaryRaw = document.getElementById("emp-salary").value.trim();
   const annual_salary = salaryRaw === "" ? null : Number(salaryRaw);
   const extra_departments = Array.from(document.querySelectorAll(".emp-extra-dept")).filter(cb => cb.checked && cb.value !== department).map(cb => cb.value);
+  const maxConsecRaw = document.getElementById("emp-max-consec").value;
+  const max_consecutive_days = maxConsecRaw === "" ? null : Number(maxConsecRaw);
   const skillRaw = document.getElementById("emp-skill-level").value;
   const skill_level = skillRaw === "" ? null : Number(skillRaw);
   const employment_type = document.getElementById("emp-employment-type").value === "casual" ? "casual" : "standard";
@@ -5922,7 +5935,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, max_consecutive_days, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -5931,7 +5944,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, max_consecutive_days, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
@@ -8242,6 +8255,8 @@ async function saveManualAdjustments() {
     const dayName = d => (typeof DAY_LABEL !== "undefined" && DAY_LABEL[d]) ? DAY_LABEL[d] : d;
     const lines = crewWarns.map(w => w.type === "no_senior"
       ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior")}`
+      : w.type === "consecutive_limit"
+      ? `• ${dayName(w.day)}: ${w.name} — ${tf("crew_warn_consec", {n: w.limit})}`
       : `• ${dayName(w.day)} (${DEPARTMENT_LABEL[w.department] || w.department}): ${t("crew_warn_beginner")} — ${w.names.join(", ")}`);
     showMessageModal(t("modal_save_done"), lines.join("\n"), true);
     return;
