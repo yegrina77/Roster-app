@@ -4770,6 +4770,56 @@ async function api(path, opts) {
   return res.status === 204 ? null : res.json();
 }
 
+
+// ---- 팝업 키보드 단축키: Enter = 확인, Esc = 취소/닫기 ----
+// 모든 팝업(.modal-overlay)에 공통 적용됩니다. 되돌릴 수 없는 작업(삭제·탈퇴·초기화 등)의
+// 확인창은 실수로 Enter를 눌러 실행되지 않도록 Enter를 무시하고 마우스 클릭만 받습니다.
+const MODAL_DANGER_LABEL_RE = /삭제|탈퇴|초기화|제거|delete|remove|reset|withdraw|unsubscribe/i;
+const MODAL_DANGER_TEXT_RE = /삭제|탈퇴|초기화|되돌릴 수 없|대체되|delete|remove|reset|withdraw|cannot be undone|replaced/i;
+function _modalPrimaryButton(overlay) {
+  const prims = Array.from(overlay.querySelectorAll("button.btn-primary")).filter(b => !b.disabled && b.offsetParent !== null);
+  return prims.length ? prims[prims.length - 1] : null;
+}
+function _modalIsDanger(btn) {
+  if (!btn) return false;
+  // 확인/취소가 함께 있는 확인창이면, 제목·설명에 삭제/되돌릴 수 없음 등이 들어 있을 때도 위험으로 봅니다.
+  const hasCancel = btn.parentElement && Array.from(btn.parentElement.querySelectorAll("button")).some(b => b !== btn);
+  const overlay = btn.closest(".modal-overlay");
+  if (hasCancel && overlay && MODAL_DANGER_TEXT_RE.test(overlay.textContent || "")) return true;
+  const bg = (btn.style.background || btn.style.backgroundColor || "").toLowerCase();
+  return btn.classList.contains("btn-danger") || bg.includes("#ef4444") || bg.includes("239, 68, 68")
+    || MODAL_DANGER_LABEL_RE.test(btn.textContent || "");
+}
+document.addEventListener("keydown", (ev) => {
+  if (ev.isComposing || ev.keyCode === 229) return;  // 한글 등 조합 입력 중에는 건드리지 않음
+  if (ev.key !== "Enter" && ev.key !== "Escape") return;
+  const overlays = document.querySelectorAll(".modal-overlay");
+  if (!overlays.length) return;
+  const overlay = overlays[overlays.length - 1];  // 가장 위에 떠 있는 팝업
+  const target = ev.target;
+  const inside = overlay.contains(target);
+  const tag = (target && target.tagName) || "";
+  if (ev.key === "Enter") {
+    if (ev.repeat || tag === "TEXTAREA") return;
+    if (inside && (tag === "BUTTON" || tag === "A" || tag === "SELECT")) return;  // 포커스된 버튼은 기본 동작(그 버튼 클릭)
+    if (inside && tag === "INPUT" && !["text", "password", "number", "email", "search", "tel", ""].includes((target.type || "").toLowerCase())) return;
+    const primary = _modalPrimaryButton(overlay);
+    if (!primary) return;
+    // 팝업 뒤쪽 화면의 포커스된 버튼이 Enter로 다시 눌리지 않게 막습니다.
+    ev.preventDefault(); ev.stopPropagation();
+    if (_modalIsDanger(primary)) return;  // 위험 작업은 마우스 클릭만
+    primary.click();
+  } else {
+    const primary = _modalPrimaryButton(overlay);
+    let cancel = null;
+    if (primary && primary.parentElement) {
+      cancel = Array.from(primary.parentElement.querySelectorAll("button")).find(b => b !== primary && !b.disabled && b.classList.contains("btn-ghost"));
+    }
+    if (cancel) { ev.preventDefault(); cancel.click(); }
+    else if (primary && !_modalIsDanger(primary) && primary.parentElement && primary.parentElement.querySelectorAll("button").length === 1) { ev.preventDefault(); primary.click(); }  // 안내창: 버튼 하나뿐이면 닫기
+  }
+}, true);
+
 function showMessageModal(title, message, isError) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
