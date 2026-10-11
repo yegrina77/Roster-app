@@ -542,6 +542,9 @@
       <div class="field"><label data-i18n="label_department">부서</label>
         <select id="emp-department"></select>
       </div>
+      <div class="field"><label data-i18n="label_extra_depts">지원 가능 부서</label>
+        <div id="emp-extra-depts" style="display:flex; gap:8px; flex-wrap:wrap; font-size:12px; height:34px; align-items:center;"></div>
+      </div>
       <div class="field"><label data-i18n="label_pay_type">급여 방식</label>
         <select id="emp-pay-type" onchange="updatePayTypeFields()">
           <option value="hourly" data-i18n="opt_pay_hourly">시급제</option>
@@ -774,6 +777,7 @@ const I18N = {
     label_skill_level: "능력치 (1~5)", opt_skill_unset: "미설정 (보통)", opt_skill_1: "1 · 신입 (혼자 불가)", opt_skill_2: "2 · 초보 (도움 필요)", opt_skill_3: "3 · 보통 (기본 업무 가능)", opt_skill_4: "4 · 숙련 (혼자서도 OK)", opt_skill_5: "5 · 에이스 (다른 사람 지도 가능)",
     senior_toggle_tip: "시니어(파트너급) 지정/해제 — 요구인원이 있는 날마다 시니어 최소 1명이 자동 배치됩니다",
     crew_warn_no_senior: "시니어가 배치되지 않은 날이 있습니다", crew_warn_beginner: "같은 부서·같은 조에 초보자가 2명 이상 배치됐습니다",
+    label_extra_depts: "지원 가능 부서", help_shift_tip: "다른 부서 지원 근무",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1186,6 +1190,7 @@ const I18N = {
     label_skill_level: "Skill level (1-5)", opt_skill_unset: "Not set (average)", opt_skill_1: "1 · Trainee (can't work alone)", opt_skill_2: "2 · Beginner (needs help)", opt_skill_3: "3 · Average (basic tasks OK)", opt_skill_4: "4 · Experienced (works independently)", opt_skill_5: "5 · Ace (can coach others)",
     senior_toggle_tip: "Mark/unmark as senior (partner level) — at least one senior is auto-scheduled on every day with staffing needs",
     crew_warn_no_senior: "Some days have no senior scheduled", crew_warn_beginner: "Two or more beginners are scheduled in the same department and crew",
+    label_extra_depts: "Can help in", help_shift_tip: "Helping in another department",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -4956,8 +4961,24 @@ async function loadDepartmentsAndShiftTypes() {
   renderDeptManagementUI();
 }
 
+function renderExtraDeptChecks(selected) {
+  const box = document.getElementById("emp-extra-depts");
+  if (!box) return;
+  const keep = selected || Array.from(box.querySelectorAll("input:checked")).map(i => i.value);
+  box.innerHTML = "";
+  DEPARTMENTS.forEach(dept => {
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.className = "emp-extra-dept"; cb.value = dept; cb.checked = keep.includes(dept);
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(DEPARTMENT_LABEL[dept] || dept));
+    box.appendChild(lab);
+  });
+}
+
 function ensureDepartmentSelectOptions() {
   const sel = document.getElementById("emp-department");
+  if (!document.querySelector(".emp-extra-dept")) renderExtraDeptChecks([]);
   if (sel.options.length > 0) return;
   DEPARTMENTS.forEach(dept => {
     const opt = document.createElement("option");
@@ -5832,6 +5853,7 @@ function startEditEmployee(e) {
   document.getElementById("emp-wage").value = e.hourly_wage != null ? e.hourly_wage : "";
   document.getElementById("emp-salary").value = e.annual_salary != null ? e.annual_salary : "";
   document.getElementById("emp-skill-level").value = e.skill_level != null ? String(e.skill_level) : "";
+  renderExtraDeptChecks(e.extra_departments || []);
   document.getElementById("emp-employment-type").value = e.employment_type === "casual" ? "casual" : "standard";
   document.getElementById("emp-contract-hours").value = e.contract_hours_per_week != null ? e.contract_hours_per_week : "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = (e.agreed_days || []).includes(cb.value); });
@@ -5857,6 +5879,7 @@ function cancelEditEmployee() {
   document.getElementById("emp-wage").value = "";
   document.getElementById("emp-salary").value = "";
   document.getElementById("emp-skill-level").value = "";
+  renderExtraDeptChecks([]);
   document.getElementById("emp-employment-type").value = "standard";
   document.getElementById("emp-contract-hours").value = "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = false; });
@@ -5879,6 +5902,7 @@ async function submitEmployee() {
   const hourly_wage = wageRaw === "" ? null : Number(wageRaw);
   const salaryRaw = document.getElementById("emp-salary").value.trim();
   const annual_salary = salaryRaw === "" ? null : Number(salaryRaw);
+  const extra_departments = Array.from(document.querySelectorAll(".emp-extra-dept")).filter(cb => cb.checked && cb.value !== department).map(cb => cb.value);
   const skillRaw = document.getElementById("emp-skill-level").value;
   const skill_level = skillRaw === "" ? null : Number(skillRaw);
   const employment_type = document.getElementById("emp-employment-type").value === "casual" ? "casual" : "standard";
@@ -5898,7 +5922,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, skill_level, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -5907,7 +5931,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, skill_level, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
@@ -7872,7 +7896,7 @@ function buildCalendarGrid() {
               : "";
             block.innerHTML = `
               ${freqBadgeHtml}
-              ${SHIFT_LABEL[a.shift_type]}<span class="shift-time">${timeLabel}</span><span class="shift-source">${sourceLabel}</span>
+              ${(empDeptById[empId] && SHIFT_DEPT[a.shift_type] && SHIFT_DEPT[a.shift_type] !== empDeptById[empId]) ? `<span title="${escapeHtml(t("help_shift_tip"))}">↪ </span>` : ""}${SHIFT_LABEL[a.shift_type]}<span class="shift-time">${timeLabel}</span><span class="shift-source">${sourceLabel}</span>
             `;
             if (!weekLocked) {
               block.addEventListener("dragstart", (ev) => {
