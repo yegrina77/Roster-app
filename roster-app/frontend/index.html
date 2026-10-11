@@ -6107,6 +6107,9 @@ function showNewWeekChoiceModal(weekLabel) {
 let lastLoadedWeekKey = null; // 취소 시 되돌아갈 "마지막으로 정상 로드된 주"
 
 let deptManagementExpanded = false;
+// 근무유형 행에서 아직 저장하지 않은 수정값 — 다른 행/부서를 저장하면서 화면이 다시 그려져도
+// 입력해 둔 값이 사라지지 않게 보관합니다. (저장에 성공하면 지움)
+const shiftDrafts = {};
 const DEPT_MANAGEMENT_DEFAULT_COUNT = 3;
 
 function renderDeptManagementUI() {
@@ -6132,6 +6135,7 @@ function renderDeptManagementUI() {
     const renameBtn = document.createElement("button");
     renameBtn.className = "btn-ghost btn-sm";
     renameBtn.textContent = t("btn_save");
+    const shiftRowSavers = [];  // 이 부서의 근무유형 행 저장 함수들 — 부서 "저장"이 한 번에 호출
     renameBtn.onclick = async () => {
       const newName = nameInput.value.trim();
       if (!newName) return;
@@ -6140,8 +6144,13 @@ function renderDeptManagementUI() {
           method: "PUT", headers: {"Content-Type": "application/json"},
           body: JSON.stringify({name: newName}),
         });
+        // 부서 "저장"은 이 부서 안에서 수정해 둔 근무유형 행(시간·체크박스)도 함께 저장합니다.
+        for (const saveRow of shiftRowSavers) await saveRow();
         await loadDepartmentsAndShiftTypes();
         renderDeptManagementUI();
+        renderShiftTimeSettingsUI();
+        renderRequirementGrid();
+        renderCalendarArea();
       } catch (e) {}
     };
     headRow.appendChild(renameBtn);
@@ -6172,14 +6181,15 @@ function renderDeptManagementUI() {
       const row = document.createElement("div");
       row.style.cssText = "display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap; padding-left:10px; border-left:2px solid var(--line);";
 
+      const draft = shiftDrafts[shift.id] || {};
       const sNameInput = document.createElement("input");
-      sNameInput.value = shift.name;
+      sNameInput.value = draft.name !== undefined ? draft.name : shift.name;
       sNameInput.style.cssText = "max-width:150px; font-size:12.5px;";
       row.appendChild(sNameInput);
 
       const startInput = document.createElement("input");
       startInput.type = "time";
-      startInput.value = shift.start;
+      startInput.value = draft.start !== undefined ? draft.start : shift.start;
       enableClickToOpenDatePicker(startInput);
       row.appendChild(startInput);
 
@@ -6190,7 +6200,7 @@ function renderDeptManagementUI() {
 
       const endInput = document.createElement("input");
       endInput.type = "time";
-      endInput.value = shift.end;
+      endInput.value = draft.end !== undefined ? draft.end : shift.end;
       enableClickToOpenDatePicker(endInput);
       row.appendChild(endInput);
 
@@ -6198,7 +6208,7 @@ function renderDeptManagementUI() {
       closingLabel.style.cssText = "font-size:11.5px; display:flex; align-items:center; gap:4px; color:var(--text-muted);";
       const closingCb = document.createElement("input");
       closingCb.type = "checkbox";
-      closingCb.checked = !!shift.is_closing;
+      closingCb.checked = draft.is_closing !== undefined ? draft.is_closing : !!shift.is_closing;
       closingLabel.appendChild(closingCb);
       closingLabel.appendChild(document.createTextNode(t("shift_is_closing")));
       row.appendChild(closingLabel);
@@ -6207,23 +6217,39 @@ function renderDeptManagementUI() {
       blockedLabel.style.cssText = "font-size:11.5px; display:flex; align-items:center; gap:4px; color:var(--text-muted);";
       const blockedCb = document.createElement("input");
       blockedCb.type = "checkbox";
-      blockedCb.checked = !!shift.blocked_after_closing;
+      blockedCb.checked = draft.blocked_after_closing !== undefined ? draft.blocked_after_closing : !!shift.blocked_after_closing;
       blockedLabel.appendChild(blockedCb);
       blockedLabel.appendChild(document.createTextNode(t("shift_blocked_after_closing")));
       row.appendChild(blockedLabel);
+
+      // 입력할 때마다 임시 보관 — 화면이 다시 그려져도 저장 전 수정값이 유지됩니다.
+      const syncDraft = () => {
+        shiftDrafts[shift.id] = {
+          name: sNameInput.value, start: startInput.value, end: endInput.value,
+          is_closing: closingCb.checked, blocked_after_closing: blockedCb.checked,
+        };
+      };
+      [sNameInput, startInput, endInput].forEach(el => { el.addEventListener("input", syncDraft); el.addEventListener("change", syncDraft); });
+      [closingCb, blockedCb].forEach(el => el.addEventListener("change", syncDraft));
+
+      const saveThisRow = async () => {
+        await api(`/api/shift-types/${shift.id}`, {
+          method: "PUT", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            name: sNameInput.value.trim(), start: startInput.value, end: endInput.value,
+            is_closing: closingCb.checked, blocked_after_closing: blockedCb.checked,
+          }),
+        });
+        delete shiftDrafts[shift.id];
+      };
+      shiftRowSavers.push(saveThisRow);
 
       const sSaveBtn = document.createElement("button");
       sSaveBtn.className = "btn-ghost btn-sm";
       sSaveBtn.textContent = t("btn_save");
       sSaveBtn.onclick = async () => {
         try {
-          await api(`/api/shift-types/${shift.id}`, {
-            method: "PUT", headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-              name: sNameInput.value.trim(), start: startInput.value, end: endInput.value,
-              is_closing: closingCb.checked, blocked_after_closing: blockedCb.checked,
-            }),
-          });
+          await saveThisRow();
           await loadDepartmentsAndShiftTypes();
           renderDeptManagementUI();
           renderShiftTimeSettingsUI();
@@ -6243,6 +6269,7 @@ function renderDeptManagementUI() {
         if (!confirmed) return;
         try {
           await api(`/api/shift-types/${shift.id}`, {method: "DELETE"});
+          delete shiftDrafts[shift.id];
           await loadDepartmentsAndShiftTypes();
           renderDeptManagementUI();
           renderShiftTimeSettingsUI();
