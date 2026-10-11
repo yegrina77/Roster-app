@@ -4939,6 +4939,17 @@ const SHIFT_COLOR_PALETTE = [
 ];
 let _shiftColorCache = {};
 
+// 선택된(active) 근무유형 칩에 달력과 같은 색을 입힙니다. 직접 만든 근무유형은 CSS에 색이
+// 정해져 있지 않아 칩이 배경색과 같은 어두운 색으로 보이던 문제를 막습니다.
+function applyShiftChipColor(chip, shiftId, active) {
+  if (!active) return;
+  const c = shiftColor(shiftId);
+  chip.style.background = c;
+  chip.style.color = "#06171a";
+  chip.style.borderColor = "transparent";
+  chip.style.boxShadow = `0 0 12px ${c}66`;
+}
+
 function shiftColor(shiftId) {
   if (_shiftColorCache[shiftId]) return _shiftColorCache[shiftId];
   const idx = customShiftTypes.findIndex(s => s.id === shiftId);
@@ -5775,6 +5786,7 @@ function buildRulesPanel(e) {
       const has = rulesDraft.preferred.some(p => p[0] === day && p[1] === shift);
       const chip = document.createElement("span");
       chip.className = "chip " + shift + (has ? " active" : "");
+      applyShiftChipColor(chip, shift, has);
       chip.textContent = SHIFT_LABEL[shift];
       chip.onclick = () => {
         const idx = rulesDraft.preferred.findIndex(p => p[0] === day && p[1] === shift);
@@ -5797,6 +5809,7 @@ function buildRulesPanel(e) {
     const has = rulesDraft.blocked_shift_types.includes(shift);
     const chip = document.createElement("span");
     chip.className = "chip " + shift + (has ? " active" : "");
+      applyShiftChipColor(chip, shift, has);
     chip.textContent = SHIFT_LABEL[shift] + ` (${SHIFT_TIME[shift]})`;
     chip.onclick = () => {
       const idx = rulesDraft.blocked_shift_types.indexOf(shift);
@@ -5827,6 +5840,7 @@ function buildRulesPanel(e) {
       const has = cur.includes(shift);
       const chip = document.createElement("span");
       chip.className = "chip " + shift + (has ? " active" : "");
+      applyShiftChipColor(chip, shift, has);
       chip.textContent = SHIFT_LABEL[shift];
       chip.onclick = () => {
         const list = rulesDraft.day_blocked_shifts[day] || [];
