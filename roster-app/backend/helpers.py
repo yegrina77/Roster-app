@@ -745,6 +745,17 @@ def _sanitize_max_hours(value):
         return None
     return round(v, 2) if 0 < v <= 168 else None
 
+def _sanitize_extra_departments(value, state_departments=None, own=None):
+    """지원 가능 부서 목록 정리: 문자열 id만, 중복/본인 부서 제외. state_departments(부서 id 목록)가 주어지면 존재하는 부서만."""
+    out = []
+    for d in (value or []) if isinstance(value, list) else []:
+        if not isinstance(d, str) or d in out or d == own:
+            continue
+        if state_departments is not None and d not in state_departments:
+            continue
+        out.append(d)
+    return out
+
 BEGINNER_MAX_LEVEL = 2  # 능력치가 이 값 이하면 '초보' — 같은 부서·같은 조에 초보 2명 금지
 
 def _sanitize_skill_level(value):

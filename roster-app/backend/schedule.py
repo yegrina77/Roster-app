@@ -507,6 +507,7 @@ def generate_week_schedule(company_id, week_key):
             credited_off_hours=_credited_leave_hours(e, week_key),
             max_hours_per_week=_weekly_hour_cap(e, week_key),
             preferred_max_hours=e.get("preferred_max_hours"),
+            extra_departments=list(e.get("extra_departments") or []),
             is_senior=bool(e.get("is_senior", False)),
             skill_level=e.get("skill_level"),
         ))
@@ -618,7 +619,7 @@ def generate_week_schedule(company_id, week_key):
             continue
         proportional_cap = e.min_hours_per_week * available_days / 7
         effective_min_hours = min(target_after_credit, proportional_cap)
-        max_possible = available_days * dept_max_shift_hours.get(e.department, 0)
+        max_possible = available_days * max(dept_max_shift_hours.get(d, 0) for d in [e.department] + list(e.extra_departments or []))
         if effective_min_hours > max_possible + 0.01:
             min_hours_errors.append(
                 f"{e.name}: needs at least {effective_min_hours:.1f}h this week, but is only "
@@ -665,6 +666,8 @@ def generate_week_schedule(company_id, week_key):
             continue
         proportional_cap = e.min_hours_per_week * available_days / 7
         effective_min_hours = min(target_after_credit, proportional_cap)
+        if e.extra_departments:
+            continue  # 지원 가능 부서가 있는 직원은 다른 부서 근무로도 최소시간을 채울 수 있어 부서별 용량 검증에서 제외
         dept_demand_hours[e.department] = dept_demand_hours.get(e.department, 0) + effective_min_hours
         dept_employee_names.setdefault(e.department, []).append(e.name)
 

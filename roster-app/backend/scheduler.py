@@ -117,6 +117,7 @@ class Employee:
     recent_weekend_count: int = 0
     max_hours_per_week: Optional[float] = None  # 하드: 이 주 법적 최대 근무시간(예: 학생비자 25h). None = 제한 없음
     preferred_max_hours: Optional[float] = None  # 소프트(4단계): 직원이 원하는 상한 — 넘으면 페널티
+    extra_departments: list[str] = field(default_factory=list)  # 지원 가능 부서: 자동 생성 시 이 부서 근무에도 (부족할 때만) 배정 가능
     is_senior: bool = False  # 하드: 요구인원이 있는 모든 날에 시니어(⭐)가 최소 1명 배정돼야 함 (부서 무관)
     skill_level: Optional[int] = None  # 1~5 (미설정=보통 취급). beginner_max_level 이하면 '초보'
     credited_off_hours: float = 0.0  # 유급/병가 리브로 이미 "채운 걸로 인정"할 시간
@@ -146,6 +147,9 @@ class ScheduleResult:
     consecutive_issues: list[dict] = field(default_factory=list)
 
 
+HELP_SHIFT_PENALTY = 20  # 지원 근무 1회당 페널티 (선호/공정성보다 크게 — 부족하지 않으면 지원 보내지 않음)
+
+
 def is_beginner(e, max_level: int = 2) -> bool:
     """skill_level이 설정돼 있고 max_level 이하이면 초보. 미설정은 보통(3)으로 보고 초보 아님."""
     lv = getattr(e, "skill_level", None)
@@ -166,7 +170,7 @@ def _explain_shortfall(req: "ShiftRequirement", employees: list["Employee"], shi
         if shift in e.blocked_shift_types:
             reasons["blocked_shift_type"] += 1
             blocked = True
-        if req_dept is not None and e.department != req_dept:
+        if req_dept is not None and e.department != req_dept and req_dept not in (e.extra_departments or []):
             reasons["different_department"] += 1
             blocked = True
         if blocked:
@@ -272,7 +276,7 @@ def solve_schedule(
     # ---- 하드: 자동 생성 시 타 부서 근무유형 배정 금지 (수동 고정 배치는 예외) ----
     for e in employees:
         for shift in shift_types:
-            if shift_department[shift] == e.department:
+            if shift_department[shift] == e.department or shift_department[shift] in (e.extra_departments or []):
                 continue
             for day in DAYS:
                 if (e.id, day, shift) in pinned_set:
@@ -468,6 +472,15 @@ def solve_schedule(
         pref_max_over_vars[e.id] = over
     total_pref_max_over = sum(pref_max_over_vars.values()) if pref_max_over_vars else 0
 
+    # 소프트: 지원 근무(본인 부서가 아닌 부서 근무)는 꼭 필요할 때만 — 1회당 페널티
+    help_terms = [
+        x[(e.id, day, shift)]
+        for e in employees if e.extra_departments
+        for shift in shift_types if shift_department.get(shift) not in (None, e.department)
+        for day in DAYS
+    ]
+    total_help_shifts = sum(help_terms) if help_terms else 0
+
     total_shortfall = sum(shortfall.values())
     total_pref_off_violation = sum(pref_off_violation_terms) if pref_off_violation_terms else 0
     total_preference = sum(preference_terms) if preference_terms else 0
@@ -556,6 +569,7 @@ def solve_schedule(
     # ---- 4단계: 나머지 소프트 규칙 (1·2·3단계 결과는 그대로 유지) ----
     model.Minimize(
         total_day_count_penalty * day_count_weight
+        + total_help_shifts * HELP_SHIFT_PENALTY  # 타 부서 지원 근무는 최소화 (소프트)
         + total_pref_max_over * 3  # 희망 최대시간을 1시간 넘길 때마다 페널티 (소프트)
         + total_pattern_penalty * pattern_weight
         - total_preference * preference_weight
