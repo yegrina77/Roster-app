@@ -788,6 +788,7 @@ const I18N = {
     label_max_consec: "최대 연속 근무일", opt_max_consec_none: "제한 없음", crew_warn_consec: "최대 연속 {n}일 제한을 넘었습니다",
     rules_day_block: "요일별 배정 불가 근무유형 (하드)", rules_day_block_desc: "예: 수요일은 오후에 다른 일이 있어 마감 근무 불가. 눌러서 선택한 근무유형은 그 요일에 자동 배정되지 않습니다.", rules_day_block_closing: "마감조 전체", crew_warn_day_blocked: "근무는 이 직원에게 해당 요일 배정 불가로 설정돼 있습니다",
     summary_day_block: "요일별 불가 {n}건",
+    crew_warn_no_senior_closing: "마감 근무에 시니어가 배치되지 않은 날이 있습니다",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1204,6 +1205,7 @@ const I18N = {
     label_max_consec: "Max consecutive days", opt_max_consec_none: "No limit", crew_warn_consec: "exceeds the {n}-day consecutive limit",
     rules_day_block: "Weekday-specific blocked shifts (hard)", rules_day_block_desc: "E.g. can't work closing on Wednesdays because of another job. Selected shift types are never auto-assigned on that weekday.", rules_day_block_closing: "All closing", crew_warn_day_blocked: "is set as unavailable for this employee on that weekday",
     summary_day_block: "{n} weekday restriction(s)",
+    crew_warn_no_senior_closing: "Some days have no senior on the closing shift",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -8372,6 +8374,8 @@ async function saveManualAdjustments() {
     const dayName = d => (typeof DAY_LABEL !== "undefined" && DAY_LABEL[d]) ? DAY_LABEL[d] : d;
     const lines = crewWarns.map(w => w.type === "no_senior"
       ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior")}`
+      : w.type === "no_senior_closing"
+      ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior_closing")}`
       : w.type === "day_blocked"
       ? `• ${dayName(w.day)}: ${w.name} — ${SHIFT_LABEL[w.shift_type] || w.shift_type} ${t("crew_warn_day_blocked")}`
       : w.type === "consecutive_limit"
