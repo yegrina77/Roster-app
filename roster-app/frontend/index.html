@@ -755,13 +755,7 @@ let DEPARTMENT_LABEL = {};
 let DEPARTMENT_SHIFTS = {};
 let customDepartments = [];  // [{id, name}] - 부서 관리 화면에서 그대로 씀
 let customShiftTypes = [];   // [{id, name, department_id, start, end, is_closing, blocked_after_closing}]
-const SHIFT_DEPT = {
-  opening:"kitchen", helper:"kitchen", closing1:"kitchen", closing2:"kitchen",
-  sushi1:"sushi", sushi2:"sushi", sushi3:"sushi",
-  c_opening:"cashier", c_helper:"cashier", c_closing1:"cashier", c_closing2:"cashier",
-  management:"management", management_cashier:"management",
-  training:"training",
-};
+let SHIFT_DEPT = {};  // {근무유형 id: 부서 id} — loadDepartmentsAndShiftTypes()에서 이 회사의 실제 데이터로 채웁니다
 
 // ---------------------------------------------------------------------------
 // 다국어(i18n) — 한국어 / English
@@ -5039,7 +5033,9 @@ async function loadDepartmentsAndShiftTypes() {
   SHIFT_TYPES = customShiftTypes.map(s => s.id);
   SHIFT_LABEL = {};
   SHIFT_TIME = {};
+  SHIFT_DEPT = {};
   customShiftTypes.forEach(s => {
+    SHIFT_DEPT[s.id] = s.department_id;
     SHIFT_LABEL[s.id] = s.name;
     SHIFT_TIME[s.id] = `${s.start}-${s.end}`;
   });
