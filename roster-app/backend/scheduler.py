@@ -118,6 +118,7 @@ class Employee:
     max_hours_per_week: Optional[float] = None  # 하드: 이 주 법적 최대 근무시간(예: 학생비자 25h). None = 제한 없음
     preferred_max_hours: Optional[float] = None  # 소프트(4단계): 직원이 원하는 상한 — 넘으면 페널티
     extra_departments: list[str] = field(default_factory=list)  # 지원 가능 부서: 자동 생성 시 이 부서 근무에도 (부족할 때만) 배정 가능
+    day_blocked_shifts: dict = field(default_factory=dict)  # 하드: {요일: [근무유형,...]} — 그 요일엔 이 근무유형 배정 금지(예: 오후 다른 잡)
     max_consecutive_days: Optional[int] = None  # 하드: 이 직원의 최대 연속 근무일(1~6). None = 전체 기본 규칙(소프트 6일)만 적용
     is_senior: bool = False  # 하드: 요구인원이 있는 모든 날에 시니어(⭐)가 최소 1명 배정돼야 함 (부서 무관)
     skill_level: Optional[int] = None  # 1~5 (미설정=보통 취급). beginner_max_level 이하면 '초보'
@@ -274,6 +275,14 @@ def solve_schedule(
                     continue
                 model.Add(x[(e.id, day, shift)] == 0)
 
+    # ---- 하드: 요일별 배정 불가 근무유형 (수동 고정 배치는 예외 — 사전 검증에서 따로 안내) ----
+    if "day_blocked_shifts" not in relax:
+        for e in employees:
+            for day, blocked in (e.day_blocked_shifts or {}).items():
+                for shift in blocked:
+                    if (e.id, day, shift) in x and (e.id, day, shift) not in pinned_set:
+                        model.Add(x[(e.id, day, shift)] == 0)
+
     # ---- 하드: 자동 생성 시 타 부서 근무유형 배정 금지 (수동 고정 배치는 예외) ----
     for e in employees:
         for shift in shift_types:
@@ -339,6 +348,18 @@ def solve_schedule(
             if day not in demand_days:
                 continue
             model.Add(sum(x[(e.id, day, shift)] for e in seniors for shift in shift_types) >= 1)
+
+    # ---- 하드: 마감조 시니어 — 마감 근무 요구인원이 있는 날은, 시니어(⭐) 최소 1명이 마감 근무에 들어감 ----
+    # (마감 마무리·정리정돈을 맡길 시니어가 필요하므로, 시니어가 1명뿐이어도 그날은 마감에 배치합니다.)
+    if seniors and "senior_closing" not in relax:
+        closing_shifts = [sh for sh in shift_types if shift_defs.get(sh, {}).get("is_closing")]
+        closing_demand_days = {
+            r.day for r in requirements
+            if r.required_count > 0 and shift_defs.get(r.shift_type, {}).get("is_closing")
+        }
+        for day in DAYS:
+            if day in closing_demand_days and closing_shifts:
+                model.Add(sum(x[(e.id, day, sh)] for e in seniors for sh in closing_shifts) >= 1)
 
     # ---- 하드: 초보자 동시 배치 금지 — 같은 부서 + 같은 조(마감조/아침조)에서 하루 최대 1명 ----
     if "beginner_pairing" not in relax:

@@ -509,6 +509,7 @@ def generate_week_schedule(company_id, week_key):
             preferred_max_hours=e.get("preferred_max_hours"),
             extra_departments=list(e.get("extra_departments") or []),
             max_consecutive_days=e.get("max_consecutive_days"),
+            day_blocked_shifts=dict(e.get("day_blocked_shifts") or {}),
             is_senior=bool(e.get("is_senior", False)),
             skill_level=e.get("skill_level"),
         ))
@@ -573,6 +574,11 @@ def generate_week_schedule(company_id, week_key):
             pin_errors.append(
                 f"{emp.name} is pinned to '{shift}' on {day}, but that shift type is in their "
                 f"blocked list. Remove the pin or un-block the shift type for this employee."
+            )
+        if shift in (emp.day_blocked_shifts or {}).get(day, []):
+            pin_errors.append(
+                f"{emp.name} is pinned to '{shift}' on {day}, but that shift type is blocked for them on that "
+                f"weekday. Remove the pin or change their weekday restrictions."
             )
         key = (day, shift)
         pin_count_by_req[key] = pin_count_by_req.get(key, 0) + 1
@@ -718,8 +724,10 @@ def generate_week_schedule(company_id, week_key):
         relax_candidates = [
             ("min_hours", "이 직원(들)의 주당 최소시간 규칙"),
             ("max_hours", "이 직원(들)의 법적 주당 최대시간(예: 학생비자) 규칙"),
+            ("senior_closing", "마감 근무가 있는 날 마감조 시니어(⭐) 최소 1명 배치 규칙"),
             ("senior_coverage", "요구인원이 있는 날마다 시니어(⭐) 최소 1명 배치 규칙"),
             ("beginner_pairing", "같은 부서·같은 조 초보자 2명 동시 배치 금지 규칙"),
+            ("day_blocked_shifts", "이 직원(들)의 요일별 배정 불가 근무유형 설정"),
             ("max_consecutive", "이 직원(들)의 최대 연속 근무일 제한"),
             ("forbidden_consecutive", "마감 근무 다음날 오픈 근무 금지 규칙"),
             ("blocked_shift_types", "이 직원(들)에게 금지된 근무유형 설정"),

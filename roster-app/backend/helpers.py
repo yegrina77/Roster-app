@@ -745,6 +745,25 @@ def _sanitize_max_hours(value):
         return None
     return round(v, 2) if 0 < v <= 168 else None
 
+def _sanitize_day_blocked_shifts(value, valid_shift_ids=None):
+    """요일별 배정 불가 근무유형 {day: [shift_id,...]} 정리 — 유효한 요일/문자열 id만, 중복 제거,
+    빈 요일은 생략. valid_shift_ids가 주어지면 존재하는 근무유형만 남김."""
+    days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    out = {}
+    if not isinstance(value, dict):
+        return out
+    for day in days:
+        lst = value.get(day)
+        if not isinstance(lst, list):
+            continue
+        clean = []
+        for sid in lst:
+            if isinstance(sid, str) and sid not in clean and (valid_shift_ids is None or sid in valid_shift_ids):
+                clean.append(sid)
+        if clean:
+            out[day] = clean
+    return out
+
 def _sanitize_max_consecutive_days(value):
     """직원별 최대 연속 근무일: 1~6 정수만 허용(7 이상은 어차피 전체 규칙이 막음), 비어있으면 None."""
     if value is None or value == "":
@@ -790,6 +809,13 @@ def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None, carry
             continue
         if any_senior and not any(emps.get(i, {}).get("is_senior") for i, _ in items):
             warnings.append({"type": "no_senior", "day": day})
+        elif any_senior:
+            # 마감 근무가 있는 날은 시니어가 마감 근무에도 최소 1명 있어야 함
+            has_closing = any((shifts.get(st) or {}).get("is_closing") for _, st in items)
+            senior_in_closing = any(
+                emps.get(i, {}).get("is_senior") and (shifts.get(st) or {}).get("is_closing") for i, st in items)
+            if has_closing and not senior_in_closing:
+                warnings.append({"type": "no_senior_closing", "day": day})
         groups = {}
         for emp_id, st in items:
             e = emps.get(emp_id) or {}
@@ -803,6 +829,12 @@ def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None, carry
             if len(names) >= 2:
                 warnings.append({"type": "beginner_pair", "day": day, "department": dept,
                                  "closing": closing, "names": names})
+    # 요일별 배정 불가 근무유형 — 수동 배치에서는 막지 않고 경고
+    for day, items in assignments_by_day.items():
+        for emp_id, st in items:
+            e = emps.get(emp_id) or {}
+            if st in ((e.get("day_blocked_shifts") or {}).get(day) or []):
+                warnings.append({"type": "day_blocked", "day": day, "name": e.get("name", emp_id), "shift_type": st})
     # 직원별 최대 연속 근무일 — 전주에서 이어진 일수(carry_in: {emp_id: n})까지 포함해 확인
     order = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
     for emp_id, e in emps.items():
