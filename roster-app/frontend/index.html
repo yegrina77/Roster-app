@@ -133,6 +133,18 @@
 
   .row-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 18px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
+  /* 다중 선택 드롭다운(지원 가능 부서, 합의된 근무요일) */
+  .msd { position: relative; }
+  .msd-btn { width: 100%; min-width: 150px; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: var(--panel-solid); color: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; font: inherit; cursor: pointer; }
+  .msd-btn::after { content: "▾"; color: var(--text-muted); }
+  .msd-btn .msd-empty { color: var(--text-muted); }
+  .msd-panel { display: none; position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; min-width: 100%;
+    background: var(--panel-solid); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .msd.open .msd-panel { display: block; }
+  .msd-panel label { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; font-size: 13px; }
+  .msd-panel label:hover { background: rgba(255,255,255,0.06); }
+
   .field label { font-size: 11px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.02em; }
   input, select {
     font-size: 13px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 7px;
@@ -550,7 +562,7 @@
         </select>
       </div>
       <div class="field"><label data-i18n="label_extra_depts">지원 가능 부서</label>
-        <div id="emp-extra-depts" style="display:flex; gap:8px; flex-wrap:wrap; font-size:12px; height:34px; align-items:center;"></div>
+        <div class="msd" data-empty-key="msd_none"><button type="button" class="msd-btn"></button><div class="msd-panel" id="emp-extra-depts"></div></div>
       </div>
       <div class="field"><label data-i18n="label_pay_type">급여 방식</label>
         <select id="emp-pay-type" onchange="updatePayTypeFields()">
@@ -576,26 +588,26 @@
           <option value="5" data-i18n="opt_skill_5">5 · 에이스 (다른 사람 지도 가능)</option>
         </select>
       </div>
-      <div class="field" id="emp-contract-hours-field"><label data-i18n="label_contract_hours">계약 주당 표준시간</label>
-        <input id="emp-contract-hours" type="number" min="0" max="80" step="0.5" placeholder="40" style="width:70px;">
-      </div>
       <div class="field" id="emp-agreed-days-field"><label data-i18n="label_agreed_days">합의된 근무요일 (선택)</label>
-        <div style="display:flex; gap:6px; font-size:12px; height:34px; align-items:center;">
-          <label><input type="checkbox" class="emp-agreed-day" value="mon">월</label>
-          <label><input type="checkbox" class="emp-agreed-day" value="tue">화</label>
-          <label><input type="checkbox" class="emp-agreed-day" value="wed">수</label>
-          <label><input type="checkbox" class="emp-agreed-day" value="thu">목</label>
-          <label><input type="checkbox" class="emp-agreed-day" value="fri">금</label>
-          <label><input type="checkbox" class="emp-agreed-day" value="sat">토</label>
-          <label><input type="checkbox" class="emp-agreed-day" value="sun">일</label>
-        </div>
+        <div class="msd" data-empty-key="msd_none"><button type="button" class="msd-btn"></button><div class="msd-panel">
+          <label><input type="checkbox" class="emp-agreed-day" value="mon"><span>월</span></label>
+          <label><input type="checkbox" class="emp-agreed-day" value="tue"><span>화</span></label>
+          <label><input type="checkbox" class="emp-agreed-day" value="wed"><span>수</span></label>
+          <label><input type="checkbox" class="emp-agreed-day" value="thu"><span>목</span></label>
+          <label><input type="checkbox" class="emp-agreed-day" value="fri"><span>금</span></label>
+          <label><input type="checkbox" class="emp-agreed-day" value="sat"><span>토</span></label>
+          <label><input type="checkbox" class="emp-agreed-day" value="sun"><span>일</span></label>
+        </div></div>
       </div>
       <div class="field"><label data-i18n="label_hire_date">입사일</label><span id="emp-hire-date-slot" style="display:inline-flex; width:140px;"></span></div>
       <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
         <select id="emp-min-hours">
           <option value="0" data-i18n="opt_0h">0시간</option>
           <option value="5" data-i18n="opt_5h">5시간</option>
+          <option value="20" data-i18n="opt_20h">20시간</option>
+          <option value="25" data-i18n="opt_25h">25시간</option>
           <option value="30" selected data-i18n="opt_30h">30시간</option>
+          <option value="35" data-i18n="opt_35h">35시간</option>
           <option value="40" data-i18n="opt_40h">40시간</option>
         </select>
       </div>
@@ -789,6 +801,7 @@ const I18N = {
     rules_day_block: "요일별 배정 불가 근무유형 (하드)", rules_day_block_desc: "예: 수요일은 오후에 다른 일이 있어 마감 근무 불가. 눌러서 선택한 근무유형은 그 요일에 자동 배정되지 않습니다.", rules_day_block_closing: "마감조 전체", crew_warn_day_blocked: "근무는 이 직원에게 해당 요일 배정 불가로 설정돼 있습니다",
     summary_day_block: "요일별 불가 {n}건",
     crew_warn_no_senior_closing: "마감 근무에 시니어가 배치되지 않은 날이 있습니다",
+    msd_none: "선택 안 함",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -798,7 +811,7 @@ const I18N = {
     ph_owd_agreed: "OWD (합의된 근무요일)", ph_not_owd_agreed: "OWD 아님 (합의된 근무요일 아님)",
     ph_policy_rules_html: "<b>OWD (Otherwise Working Day)</b><br>• 합의된 근무요일이 있으면 그 요일이 OWD<br>• 없으면(캐주얼 포함) 직전 13주 중 같은 요일에 50% 이상 근무(또는 리브)했으면 OWD<br><br><b>지급</b><br>• OWD+근무: 1.5배 + 대체휴일(일한 시간 1:1)<br>• OWD+쉼: 하루치 (캐주얼은 해당 없음)<br>• OWD 아님+근무: 1.0배 (가정값)",
     label_hire_date: "입사일",
-    opt_0h: "0시간", opt_5h: "5시간", opt_30h: "30시간", opt_40h: "40시간",
+    opt_0h: "0시간", opt_5h: "5시간", opt_20h: "20시간", opt_25h: "25시간", opt_35h: "35시간", opt_30h: "30시간", opt_40h: "40시간",
     modal_training_added_title: "Training 인원이 등록되었습니다",
     modal_employee_added_title: "등록 완료", modal_employee_added_msg: "직원이 추가되었습니다.",
     emp_limit_exceeded_title: "등록 가능 인원 초과",
@@ -1206,6 +1219,7 @@ const I18N = {
     rules_day_block: "Weekday-specific blocked shifts (hard)", rules_day_block_desc: "E.g. can't work closing on Wednesdays because of another job. Selected shift types are never auto-assigned on that weekday.", rules_day_block_closing: "All closing", crew_warn_day_blocked: "is set as unavailable for this employee on that weekday",
     summary_day_block: "{n} weekday restriction(s)",
     crew_warn_no_senior_closing: "Some days have no senior on the closing shift",
+    msd_none: "None selected",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -1215,7 +1229,7 @@ const I18N = {
     ph_owd_agreed: "OWD (agreed working day)", ph_not_owd_agreed: "Not an OWD (not an agreed day)",
     ph_policy_rules_html: "<b>OWD (Otherwise Working Day)</b><br>• If agreed working days exist, those weekdays are OWDs<br>• Otherwise (incl. casuals): OWD if worked (or on leave) on that weekday in at least 50% of the preceding 13 weeks<br><br><b>Pay</b><br>• OWD + worked: 1.5x + Alternative Holiday (hours worked, 1:1)<br>• OWD + off: daily pay (not for casuals)<br>• Not an OWD + worked: 1.0x (assumption)",
     label_hire_date: "Hire Date",
-    opt_0h: "0 hours", opt_5h: "5 hours", opt_30h: "30 hours", opt_40h: "40 hours",
+    opt_0h: "0 hours", opt_5h: "5 hours", opt_20h: "20 hours", opt_25h: "25 hours", opt_35h: "35 hours", opt_30h: "30 hours", opt_40h: "40 hours",
     modal_training_added_title: "Training employee registered",
     modal_employee_added_title: "Added", modal_employee_added_msg: "Employee has been added.",
     emp_limit_exceeded_title: "Employee Limit Reached",
@@ -1606,7 +1620,6 @@ function updatePayTypeFields() {
   document.getElementById("emp-salary-field").style.display = isSalary ? "block" : "none";
   // 신법: 캐주얼은 표준시간·합의 근무요일이 없습니다(적립 대신 모든 시간에 LCP 12.5%).
   const isCasual = document.getElementById("emp-employment-type").value === "casual";
-  document.getElementById("emp-contract-hours-field").style.display = isCasual ? "none" : "block";
   document.getElementById("emp-agreed-days-field").style.display = isCasual ? "none" : "block";
   // 연봉제일 때는 "주당 최소시간"이 스케줄용 최소시간이자, 공휴일 추가수당 계산의
   // 기준이 되는 "주당 계약시간"으로도 같이 쓰인다는 걸 알려주기 위해 라벨을 바꿔줍니다.
@@ -1740,6 +1753,7 @@ function setLanguage(lang) {
   Object.assign(DAY_LABEL, DAY_LABEL_I18N[lang]);
   applyI18nStatic();
   updateAuthLangButtonsUI();
+  if (typeof refreshMultiDropdowns === "function") refreshMultiDropdowns();
   // 직원으로 로그인한 상태에서는 사장/매니저 전용 화면(직원목록, 근무요건, 캘린더)을
   // 다시 그리면 안 됩니다 — 직원 권한으로는 그 API들에 접근이 안 되어서, 그대로
   // 두면 "로그인 필요" 응답을 받고 로그인 화면으로 튕겨나가버립니다. 지금 어느
@@ -5037,6 +5051,32 @@ async function loadDepartmentsAndShiftTypes() {
   renderDeptManagementUI();
 }
 
+
+// ---- 다중 선택 드롭다운(.msd): 체크박스 목록이 펼쳐지고, 닫으면 선택 항목이 요약으로 표시됩니다 ----
+function refreshMultiDropdowns() {
+  document.querySelectorAll(".msd").forEach(root => {
+    const btn = root.querySelector(".msd-btn");
+    const names = Array.from(root.querySelectorAll(".msd-panel input:checked")).map(cb => {
+      if (cb.classList.contains("emp-agreed-day") && typeof DAY_LABEL !== "undefined") return DAY_LABEL[cb.value] || cb.value;
+      const lab = cb.closest("label");
+      return lab ? lab.textContent.trim() : cb.value;
+    });
+    btn.innerHTML = "";
+    const span = document.createElement("span");
+    if (names.length) span.textContent = names.join(", ");
+    else { span.className = "msd-empty"; span.textContent = t(root.dataset.emptyKey || "msd_none"); }
+    btn.appendChild(span);
+  });
+}
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest && ev.target.closest(".msd-btn");
+  document.querySelectorAll(".msd.open").forEach(r => { if (!btn || r !== btn.parentElement) r.classList.remove("open"); });
+  if (btn) { btn.parentElement.classList.toggle("open"); return; }
+  if (ev.target.closest && ev.target.closest(".msd-panel")) return;
+});
+document.addEventListener("change", (ev) => { if (ev.target.closest && ev.target.closest(".msd-panel")) refreshMultiDropdowns(); });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") document.querySelectorAll(".msd.open").forEach(r => r.classList.remove("open")); });
+
 function renderExtraDeptChecks(selected) {
   const box = document.getElementById("emp-extra-depts");
   if (!box) return;
@@ -5050,6 +5090,7 @@ function renderExtraDeptChecks(selected) {
     lab.appendChild(document.createTextNode(DEPARTMENT_LABEL[dept] || dept));
     box.appendChild(lab);
   });
+  refreshMultiDropdowns();
 }
 
 function ensureDepartmentSelectOptions() {
@@ -5984,8 +6025,8 @@ function startEditEmployee(e) {
   renderExtraDeptChecks(e.extra_departments || []);
   document.getElementById("emp-max-consec").value = e.max_consecutive_days != null ? String(e.max_consecutive_days) : "";
   document.getElementById("emp-employment-type").value = e.employment_type === "casual" ? "casual" : "standard";
-  document.getElementById("emp-contract-hours").value = e.contract_hours_per_week != null ? e.contract_hours_per_week : "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = (e.agreed_days || []).includes(cb.value); });
+  refreshMultiDropdowns();
   document.getElementById("emp-hire-date").setValue(e.hire_date || "");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
@@ -6011,8 +6052,8 @@ function cancelEditEmployee() {
   renderExtraDeptChecks([]);
   document.getElementById("emp-max-consec").value = "";
   document.getElementById("emp-employment-type").value = "standard";
-  document.getElementById("emp-contract-hours").value = "";
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = false; });
+  refreshMultiDropdowns();
   document.getElementById("emp-hire-date").setValue("");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = "30";
@@ -6038,8 +6079,8 @@ async function submitEmployee() {
   const skillRaw = document.getElementById("emp-skill-level").value;
   const skill_level = skillRaw === "" ? null : Number(skillRaw);
   const employment_type = document.getElementById("emp-employment-type").value === "casual" ? "casual" : "standard";
-  const contractRaw = document.getElementById("emp-contract-hours").value.trim();
-  const contract_hours_per_week = (employment_type === "casual" || contractRaw === "") ? null : Number(contractRaw);
+  // 계약 주당 표준시간 칸은 없앴습니다 — 주당 최소시간이 곧 계약 표준시간입니다(null이면 서버가 최소시간을 씀).
+  const contract_hours_per_week = null;
   const agreed_days = employment_type === "casual" ? [] : Array.from(document.querySelectorAll(".emp-agreed-day")).filter(cb => cb.checked).map(cb => cb.value);
   const hire_date = document.getElementById("emp-hire-date").getValue() || null;
   const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
