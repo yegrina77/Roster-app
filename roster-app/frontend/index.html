@@ -135,14 +135,18 @@
   .field { display: flex; flex-direction: column; gap: 5px; }
   /* 다중 선택 드롭다운(지원 가능 부서, 합의된 근무요일) */
   .msd { position: relative; }
-  .msd-btn { width: 100%; min-width: 150px; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    background: var(--panel-solid); color: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; font: inherit; cursor: pointer; }
-  .msd-btn::after { content: "▾"; color: var(--text-muted); }
+  .msd-btn { width: 100%; min-width: 100px; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    font-size: 13px; line-height: normal; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 7px;
+    background: rgba(10, 14, 20, 0.55); color: var(--text); font-family: inherit; cursor: pointer; font-weight: 400; letter-spacing: normal; }
+  .msd-btn:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(79, 216, 224, 0.16); }
+  .msd-btn span { font-size: 13px; }
+  .msd-btn::after { content: "▾"; color: var(--text-muted); font-size: 11px; }
   .msd-btn .msd-empty { color: var(--text-muted); }
   .msd-panel { display: none; position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; min-width: 100%;
     background: var(--panel-solid); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
   .msd.open .msd-panel { display: block; }
-  .msd-panel label { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; font-size: 13px; }
+  .msd-panel label { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; font-size: 13px; color: var(--text); font-weight: 400; letter-spacing: normal; }
+  .msd-panel input[type=checkbox] { min-width: 0; width: auto; padding: 0; }
   .msd-panel label:hover { background: rgba(255,255,255,0.06); }
 
   .field label { font-size: 11px; color: var(--text-muted); font-weight: 500; letter-spacing: 0.02em; }
