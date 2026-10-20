@@ -72,6 +72,9 @@ if not HAS_ORTOOLS:
         max_hours_per_week: Optional[float] = None
         preferred_max_hours: Optional[float] = None
         is_senior: bool = False
+        max_consecutive_days: Optional[int] = None
+        day_blocked_shifts: Optional[dict] = None
+        extra_departments: Optional[list] = None
         skill_level: Optional[int] = None
 
     @dataclass
@@ -1009,7 +1012,7 @@ def _t_crew_warnings():
     ]}
     w = H._crew_rule_warnings(st, "2026-01-05", {
         "mon": [("b1", "opening"), ("b2", "helper")],           # 같은 조 초보 2명 + 시니어 없음
-        "tue": [("b1", "opening"), ("b2", "closing"), ("s", "opening"), ("n", "helper")],  # OK
+        "tue": [("b1", "opening"), ("b2", "closing"), ("s", "closing"), ("n", "helper")],  # OK
     })
     types = sorted((x["type"], x["day"]) for x in w)
     assert types == [("beginner_pair", "mon"), ("no_senior", "mon")], types
@@ -1043,6 +1046,43 @@ def _t_help_rule():
         assert k in src, k
 
 
+@test("직원별 최대 연속 근무일: 1~6만 허용 + 수동배치 경고(전주 이어진 일수 포함)")
+def _t_max_consec():
+    f = H._sanitize_max_consecutive_days
+    assert f("3") == 3 and f(6) == 6 and f(7) is None and f(0) is None and f("") is None
+    st = {"employees": [{"id": "a", "name": "A", "max_consecutive_days": 3}], "shift_types": []}
+    mk = lambda days: {d: [("a", "x")] for d in days}
+    assert H._crew_rule_warnings(st, "w", mk(["mon", "tue", "wed"])) == []
+    w = H._crew_rule_warnings(st, "w", mk(["mon", "tue", "wed", "thu"]))
+    assert [(x["type"], x["day"]) for x in w] == [("consecutive_limit", "thu")], w
+    w = H._crew_rule_warnings(st, "w", mk(["mon", "tue"]), carry_in={"a": 2})
+    assert [(x["type"], x["day"]) for x in w] == [("consecutive_limit", "tue")], w
+
+
+@test("요일별 배정 불가 근무유형: 정리 + 수동배치 경고")
+def _t_day_blocked():
+    f = H._sanitize_day_blocked_shifts
+    assert f({"wed": ["closing1", "closing1", "zzz", 5], "xxx": ["a"], "mon": []}, {"closing1", "opening"}) == {"wed": ["closing1"]}
+    assert f(None) == {} and f("x") == {}
+    st = {"employees": [{"id": "a", "name": "A", "day_blocked_shifts": {"wed": ["closing1"]}}], "shift_types": []}
+    w = H._crew_rule_warnings(st, "w", {"wed": [("a", "closing1")], "thu": [("a", "closing1")]})
+    assert [(x["type"], x["day"]) for x in w] == [("day_blocked", "wed")], w
+
+
+@test("마감조 시니어 경고: 마감 근무가 있는데 시니어가 마감에 없으면 경고")
+def _t_senior_closing():
+    st = {"employees": [
+        {"id": "s", "name": "S", "is_senior": True}, {"id": "n", "name": "N"}],
+        "shift_types": [{"id": "op", "department_id": "k", "is_closing": False},
+                        {"id": "cl", "department_id": "k", "is_closing": True}]}
+    w = H._crew_rule_warnings(st, "w", {
+        "mon": [("s", "op"), ("n", "cl")],   # 시니어가 오프닝에만 → 경고
+        "tue": [("s", "cl"), ("n", "op")],   # OK
+        "wed": [("s", "op"), ("n", "op")],   # 마감 자체가 없음 → 경고 없음
+    })
+    assert [(x["type"], x["day"]) for x in w] == [("no_senior_closing", "mon")], w
+
+
 @test("6개 파일 전부 문법이 유효하다")
 def _():
     import ast
@@ -1050,10 +1090,10 @@ def _():
         ast.parse(open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read())
 
 
-@test("전체 앱 임포트 성공 + 등록된 라우트가 105개(=103개 + 계약시간 초과 조회 / 대체휴일 조정 2개)")
+@test("전체 앱 임포트 성공 + 등록된 라우트가 106개(=105개 + 저장 스케줄 보관 조회 1개)")
 def _():
     rules = list(A.app.url_map.iter_rules())
-    assert len(rules) == 105, f"실제 라우트 개수: {len(rules)}"
+    assert len(rules) == 106, f"실제 라우트 개수: {len(rules)}"
 
 
 @test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
@@ -1124,6 +1164,37 @@ def _():
             if a in deps.get(b, set()):
                 cycles.append((a, b))
     assert not cycles, f"순환참조 발견: {cycles}"
+
+
+@test("퇴사일 - 날짜 정리, 퇴사 다음 주부터 목록 이동, 주 단위 강제 휴무/제외")
+def _t_resign():
+    from datetime import date as D
+    assert H._sanitize_last_work_date("2026-10-14") == "2026-10-14"
+    assert H._sanitize_last_work_date("abc") is None and H._sanitize_last_work_date("") is None
+    emp = {"last_work_date": "2026-10-14"}  # 수요일
+    assert H._resign_forced_days(emp, "2026-10-12") == ["thu", "fri", "sat", "sun"]
+    assert H._resign_forced_days(emp, "2026-10-19") == [] or H._fully_resigned_for_week(emp, "2026-10-19")
+    assert not H._fully_resigned_for_week(emp, "2026-10-12")
+    assert H._fully_resigned_for_week(emp, "2026-10-19")
+    assert not H._is_resigned_listed(emp, D(2026, 10, 16))   # 같은 주 -> 아직 목록에 있음
+    assert H._is_resigned_listed(emp, D(2026, 10, 20))       # 다음 주 -> 퇴사자 구역
+    assert not H._is_account_inactive(emp, D(2026, 10, 14)) and H._is_account_inactive(emp, D(2026, 10, 15))
+    assert not H._is_resigned_listed({}, D(2026, 10, 20))
+
+
+@test("저장 스케줄 보관 - 10개 제한, 같은 내용 중복 제외, 지난 주 자동 삭제")
+def _t_history():
+    import schedule as S
+    st = {"weeks": {"2099-01-05": {}, "2020-01-06": {"schedule_history": [{"id": "x", "assignments": [1]}]}}}
+    for i in range(12):
+        S._snapshot_schedule(st, "2099-01-05", [{"employee_id": "a", "day": "mon", "shift_type": str(i)}], "save")
+    S._snapshot_schedule(st, "2099-01-05", [{"employee_id": "a", "day": "mon", "shift_type": "11"}], "save")
+    hist = st["weeks"]["2099-01-05"]["schedule_history"]
+    assert len(hist) == 10, len(hist)
+    assert hist[-1]["assignments"][0]["shift_type"] == "11" and hist[0]["assignments"][0]["shift_type"] == "2"
+    assert st["weeks"]["2020-01-06"]["schedule_history"] == []
+    S._snapshot_schedule(st, "2099-01-05", [], "before_reset")
+    assert len(st["weeks"]["2099-01-05"]["schedule_history"]) == 10
 
 
 if __name__ == "__main__":
