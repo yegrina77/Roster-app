@@ -604,6 +604,7 @@
         </div></div>
       </div>
       <div class="field"><label data-i18n="label_hire_date">입사일</label><span id="emp-hire-date-slot" style="display:inline-flex; width:140px;"></span></div>
+      <div class="field"><label data-i18n="label_last_work_date">마지막 근무일(퇴사일)</label><span id="emp-last-work-slot" style="display:inline-flex; width:140px;"></span></div>
       <div class="field"><label data-i18n="label_min_hours">주당 최소시간</label>
         <select id="emp-min-hours">
           <option value="0" data-i18n="opt_0h">0시간</option>
@@ -706,7 +707,7 @@
       <button class="btn-ghost" id="ph-detail-btn" onclick="showPublicHolidayDetail()" style="display:none;" data-i18n="btn_ph_detail">🎌 Public Holiday 확인</button>
       <button class="btn-primary" id="publish-btn" onclick="publishWeek()" style="display:none; background:var(--cyan);" data-i18n="btn_publish">📤 퍼블리시</button>
       <button class="btn-ghost" id="agreements-btn" onclick="showAgreementsPage()" style="display:none;" data-i18n="btn_agreements">✅ 확인 현황</button>
-      <button class="btn-ghost" id="pattern-suggest-btn" onclick="checkPatternSuggestions()" style="margin-left:auto;" data-i18n="btn_pattern">📊 지난 수정 패턴에서 규칙 제안 보기</button>
+      <button class="btn-ghost" id="history-btn" onclick="openScheduleHistory()" style="margin-left:auto;" data-i18n="btn_history">📂 저장했던 스케줄 불러오기</button>
     </div>
     <div id="schedule-output" style="margin-top:20px;"></div>
   </section>
@@ -800,6 +801,15 @@ const I18N = {
     summary_day_block: "요일별 불가 {n}건",
     crew_warn_no_senior_closing: "마감 근무에 시니어가 배치되지 않은 날이 있습니다",
     msd_none: "선택 안 함",
+    label_last_work_date: "마지막 근무일(퇴사일)", resigned_label: "Resigned", resigned_section: "퇴사자 ({n})",
+    resigned_tip: "퇴사한 직원입니다 (기록은 보관됩니다)", resigned_last_day: "마지막 근무일",
+    crew_warn_resigned: "퇴사일 이후 날짜에 배치되어 있습니다",
+    btn_history: "📂 저장했던 스케줄 불러오기", history_title: "저장했던 스케줄", history_empty: "이 주에 보관된 스케줄이 아직 없습니다.",
+    history_hint: "주당 최대 {n}개까지 보관되며, 지난 주의 보관본은 자동으로 삭제됩니다. 불러온 뒤 '저장'을 눌러야 확정됩니다.",
+    history_src_save: "저장", history_src_before_reset: "초기화 전", history_src_before_regenerate: "다시 생성 전",
+    history_count: "{n}건 배치", history_load: "불러오기",
+    history_loaded: "불러왔습니다. 확정하려면 '저장'을 눌러주세요.", history_dropped: "퇴사했거나 삭제된 직원의 배치 {n}건은 제외했습니다.",
+    history_confirm: "현재 화면의 스케줄이 이 보관본으로 바뀝니다. 계속할까요?",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1218,6 +1228,15 @@ const I18N = {
     summary_day_block: "{n} weekday restriction(s)",
     crew_warn_no_senior_closing: "Some days have no senior on the closing shift",
     msd_none: "None selected",
+    label_last_work_date: "Last Working Day (Resignation)", resigned_label: "Resigned", resigned_section: "Resigned ({n})",
+    resigned_tip: "This employee has resigned (records are kept)", resigned_last_day: "Last working day",
+    crew_warn_resigned: "is scheduled after their last working day",
+    btn_history: "📂 Load Saved Schedules", history_title: "Saved Schedules", history_empty: "No saved schedules for this week yet.",
+    history_hint: "Up to {n} are kept per week; versions of past weeks are deleted automatically. Press Save after loading to confirm.",
+    history_src_save: "Saved", history_src_before_reset: "Before reset", history_src_before_regenerate: "Before regenerate",
+    history_count: "{n} shifts", history_load: "Load",
+    history_loaded: "Loaded. Press Save to confirm.", history_dropped: "{n} shift(s) for resigned or deleted employees were left out.",
+    history_confirm: "The schedule on screen will be replaced with this saved version. Continue?",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -1803,8 +1822,6 @@ function applyFeatureToggles() {
     if (el) el.style.display = isFeatureEnabled(feature) ? "" : "none";
   });
 
-  const patternBtn = document.getElementById("pattern-suggest-btn");
-  if (patternBtn) patternBtn.style.display = isFeatureEnabled("pattern_suggestions") ? "" : "none";
 }
 
 function switchAuthMode(mode) {
@@ -4872,6 +4889,21 @@ async function loadEmployees() {
   renderCalendarArea();
 }
 
+// ---- 퇴사자 ----
+let resignedExpanded = false;
+function isResignedListed(e) {
+  // 마지막 근무일이 속한 주가 지나갔으면(= 퇴사 다음 주부터) 재직자 목록에서 빠집니다.
+  return !!e.last_work_date && e.last_work_date < mondayKeyFromDate(new Date());
+}
+function isFullyResignedThisWeek(e) {
+  return !!e.last_work_date && !!currentWeekKey && e.last_work_date < currentWeekKey;
+}
+function isResignedOnDay(e, day) {
+  if (!e || !e.last_work_date) return false;
+  const i = DAYS.indexOf(day);
+  return i >= 0 && addDaysToKey(currentWeekKey, i) > e.last_work_date;
+}
+
 function sortEmployeesByDepartment(list) {
   // 부서 순서(관리 화면에 설정된 순서)대로 묶어서 보여줍니다. 같은 부서 안에서는 등록 순서를
   // 유지하므로(안정 정렬), 새 직원은 "자기 부서 그룹의 맨 끝"에 들어갑니다.
@@ -4882,7 +4914,8 @@ function sortEmployeesByDepartment(list) {
 }
 
 function renderEmployeeTable() {
-  const employees = sortEmployeesByDepartment(window._employees || []);
+  const resignedList = sortEmployeesByDepartment((window._employees || []).filter(isResignedListed));
+  const employees = sortEmployeesByDepartment((window._employees || []).filter(e => !isResignedListed(e)));
   ensureDepartmentSelectOptions();
   const tbody = document.querySelector("#employee-table tbody");
   tbody.innerHTML = "";
@@ -4991,6 +5024,36 @@ function renderEmployeeTable() {
     toggleTd.appendChild(toggleBtn);
     toggleTr.appendChild(toggleTd);
     tbody.appendChild(toggleTr);
+  }
+
+  // 퇴사자 구역: 없으면 아예 안 보이고, 있으면 접힌 한 줄로 시작합니다.
+  if (resignedList.length) {
+    const headTr = document.createElement("tr");
+    const headTd = document.createElement("td");
+    headTd.colSpan = 7;
+    headTd.style.cssText = "background:var(--panel-solid); font-weight:700; font-size:12px; padding:8px; color:var(--text-muted); cursor:pointer; border-top:2px solid var(--border);";
+    headTd.textContent = `${resignedExpanded ? "▾" : "▸"} ${tf("resigned_section", {n: resignedList.length})}`;
+    headTd.onclick = () => { resignedExpanded = !resignedExpanded; renderEmployeeTable(); };
+    headTr.appendChild(headTd);
+    tbody.appendChild(headTr);
+    if (resignedExpanded) {
+      resignedList.forEach(e => {
+        const tr = document.createElement("tr");
+        tr.style.opacity = "0.65";
+        tr.innerHTML = `
+          <td>${escapeHtml(e.id)}</td>
+          <td>${escapeHtml(e.name)}</td>
+          <td>${escapeHtml(DEPARTMENT_LABEL[e.department || "kitchen"] || e.department || "")}</td>
+          <td colspan="3" style="font-size:12px; color:var(--text-muted);">${escapeHtml(t("resigned_last_day"))}: ${escapeHtml(e.last_work_date)}</td>
+          <td>
+            <button class="btn-ghost btn-sm" data-action="edit">${t("btn_edit")}</button>
+            <button class="btn-danger btn-sm" data-action="delete">${t("btn_delete")}</button>
+          </td>`;
+        tr.querySelector('[data-action="edit"]').onclick = () => startEditEmployee(e);
+        tr.querySelector('[data-action="delete"]').onclick = () => deleteEmployee(e.id);
+        tbody.appendChild(tr);
+      });
+    }
   }
 }
 
@@ -6028,6 +6091,7 @@ function startEditEmployee(e) {
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = (e.agreed_days || []).includes(cb.value); });
   refreshMultiDropdowns();
   document.getElementById("emp-hire-date").setValue(e.hire_date || "");
+  document.getElementById("emp-last-work-date").setValue(e.last_work_date || "");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = String(e.min_hours_per_week);
   const isAny = e.target_days_per_week == null;
@@ -6055,6 +6119,7 @@ function cancelEditEmployee() {
   document.querySelectorAll(".emp-agreed-day").forEach(cb => { cb.checked = false; });
   refreshMultiDropdowns();
   document.getElementById("emp-hire-date").setValue("");
+  document.getElementById("emp-last-work-date").setValue("");
   updatePayTypeFields();
   document.getElementById("emp-min-hours").value = "30";
   document.getElementById("emp-target-days").value = "";
@@ -6083,6 +6148,7 @@ async function submitEmployee() {
   const contract_hours_per_week = null;
   const agreed_days = employment_type === "casual" ? [] : Array.from(document.querySelectorAll(".emp-agreed-day")).filter(cb => cb.checked).map(cb => cb.value);
   const hire_date = document.getElementById("emp-hire-date").getValue() || null;
+  const last_work_date = document.getElementById("emp-last-work-date").getValue() || null;
   const min_hours_per_week = Number(document.getElementById("emp-min-hours").value);
   const isAny = document.getElementById("emp-target-days-any").checked;
   const targetDaysRaw = document.getElementById("emp-target-days").value;
@@ -6095,7 +6161,7 @@ async function submitEmployee() {
     await api(`/api/employees/${editingEmployeeId}`, {
       method: "PUT",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, max_consecutive_days, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week})
+      body: JSON.stringify({name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, max_consecutive_days, employment_type, contract_hours_per_week, agreed_days, hire_date, last_work_date, min_hours_per_week, target_days_per_week})
     });
   } else {
     // 직원수 상한 초과 시(error_code: employee_limit_exceeded)에는 일반 에러 모달 대신
@@ -6104,7 +6170,7 @@ async function submitEmployee() {
     const res = await fetch("/api/employees", {
       method: "POST", credentials: "same-origin",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, max_consecutive_days, employment_type, contract_hours_per_week, agreed_days, hire_date, min_hours_per_week, target_days_per_week}),
+      body: JSON.stringify({id, name, department, pay_type, hourly_wage, annual_salary, skill_level, extra_departments, max_consecutive_days, employment_type, contract_hours_per_week, agreed_days, hire_date, last_work_date, min_hours_per_week, target_days_per_week}),
     });
     if (res.status === 401) { showAuthScreen(); return; }
     const data = await res.json().catch(() => ({}));
@@ -7448,7 +7514,11 @@ async function copyPreviousWeekSchedule(prevAssignments) {
   const output = document.getElementById("schedule-output");
   output.innerHTML = `<p class="empty-hint">${t("modal_copying")}</p>`;
   // 복사해온 배치는 원래 자동/수동이었던 표시를 그대로 유지합니다 (없으면 자동으로 간주).
-  const copied = prevAssignments.map(a => ({...a, source: a.source || "auto"}));
+  const _empMap = {};
+  (window._employees || []).forEach(e => { _empMap[e.id] = e; });
+  const copied = prevAssignments
+    .filter(a => { const e = _empMap[a.employee_id]; return !e || !(isFullyResignedThisWeek(e) || isResignedOnDay(e, a.day)); })
+    .map(a => ({...a, source: a.source || "auto"}));
   const result = await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -7619,6 +7689,64 @@ async function regenerateSchedule() {
   if (_resultHasAnyIssue(result)) {
     showDiagnosticsModal(result);
   }
+}
+
+async function openScheduleHistory() {
+  const data = await api(`/api/weeks/${currentWeekKey}/schedule-history`);
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  const box = document.createElement("div");
+  box.className = "modal-box info";
+  const h = document.createElement("h3");
+  h.textContent = t("history_title");
+  box.appendChild(h);
+  const sub = document.createElement("div");
+  sub.className = "modal-sub";
+  sub.textContent = tf("history_hint", {n: data.limit || 10});
+  box.appendChild(sub);
+  const items = data.history || [];
+  if (!items.length) {
+    const p = document.createElement("p");
+    p.className = "empty-hint";
+    p.textContent = t("history_empty");
+    box.appendChild(p);
+  }
+  items.forEach(it => {
+    const row = document.createElement("div");
+    row.className = "modal-item";
+    row.style.cssText = "display:flex; align-items:center; gap:10px; cursor:default;";
+    const when = new Date(it.saved_at);
+    const whenTxt = isNaN(when) ? it.saved_at : when.toLocaleString(undefined, {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit", timeZone:"Pacific/Auckland"});
+    const info = document.createElement("div");
+    info.style.flex = "1";
+    info.innerHTML = `<div class="modal-item-title">${escapeHtml(whenTxt)} · ${escapeHtml(t("history_src_" + it.source))}</div><div class="modal-item-detail">${escapeHtml(tf("history_count", {n: it.count}))}</div>`;
+    const btn = document.createElement("button");
+    btn.className = "btn-ghost btn-sm";
+    btn.textContent = t("history_load");
+    btn.onclick = async () => {
+      if (weekLocked) return;
+      if (currentAssignments.length) {
+        const ok = await showConfirmModal(t("history_title"), t("history_confirm"), t("history_load"), t("btn_cancel"));
+        if (!ok) return;
+      }
+      const empMap = {};
+      (window._employees || []).forEach(e => { empMap[e.id] = e; });
+      const kept = it.assignments.filter(a => { const e = empMap[a.employee_id]; return e && !(isFullyResignedThisWeek(e) || isResignedOnDay(e, a.day)); });
+      const dropped = it.assignments.length - kept.length;
+      currentAssignments = kept.map(a => ({...a}));
+      scheduleGenerated = true;
+      overlay.remove();
+      renderCalendarArea();
+      updateLockButtonUI();
+      showMessageModal(t("history_title"), t("history_loaded") + (dropped ? "\n" + tf("history_dropped", {n: dropped}) : ""), false);
+    };
+    row.appendChild(info);
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
 }
 
 async function checkPatternSuggestions() {
@@ -7974,7 +8102,9 @@ function buildCalendarGrid() {
   DAYS.forEach(d => grid.appendChild(makeDayHeaderCell(d)));
 
   const allEmployees = window._employees || [];
-  const empIds = [...new Set([...allEmployees.map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
+  // 이 주 전체가 퇴사일 이후인 직원은 (이 주에 기록된 배치가 없으면) 표에서 뺍니다.
+  const _hasAssign = new Set(currentAssignments.map(a => a.employee_id));
+  const empIds = [...new Set([...allEmployees.filter(e => !isFullyResignedThisWeek(e) || _hasAssign.has(e.id)).map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
   const empNames = {};
   const empById = {};
   const empDeptById = {};
@@ -8024,8 +8154,17 @@ function buildCalendarGrid() {
       const isWeekOff = ((window._weekOffDays || {})[empId] || []).includes(day);
       const isLeaveOff = !isWeekOff && isLeaveDay(emp, day);
       const isForcedOff = isWeekOff || isLeaveOff;
+      const isResignedDay = isResignedOnDay(emp, day);
 
-      if (isLeaveOff) {
+      if (isResignedDay) {
+        const rb = document.createElement("div");
+        rb.className = "off-block";
+        rb.style.cursor = "default";
+        rb.style.fontStyle = "italic";
+        rb.textContent = t("resigned_label");
+        rb.title = t("resigned_tip");
+        cell.appendChild(rb);
+      } else if (isLeaveOff) {
         const leaveBlock = document.createElement("div");
         leaveBlock.className = "off-block";
         leaveBlock.style.background = "var(--closing2-bg)";
@@ -8417,6 +8556,8 @@ async function saveManualAdjustments() {
       ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior")}`
       : w.type === "no_senior_closing"
       ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior_closing")}`
+      : w.type === "resigned"
+      ? `• ${dayName(w.day)}: ${w.name} — ${t("crew_warn_resigned")}`
       : w.type === "day_blocked"
       ? `• ${dayName(w.day)}: ${w.name} — ${SHIFT_LABEL[w.shift_type] || w.shift_type} ${t("crew_warn_day_blocked")}`
       : w.type === "consecutive_limit"
@@ -8690,6 +8831,9 @@ function showAlertsModal() {
   const hireDateField = createNZDateField("");
   hireDateField.id = "emp-hire-date";
   document.getElementById("emp-hire-date-slot").replaceWith(hireDateField);
+  const lastWorkField = createNZDateField("");
+  lastWorkField.id = "emp-last-work-date";
+  document.getElementById("emp-last-work-slot").replaceWith(lastWorkField);
 
   const phDateField = createNZDateField("");
   phDateField.id = "ph-date";
