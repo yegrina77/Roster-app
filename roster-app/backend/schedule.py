@@ -21,6 +21,7 @@ from helpers import (
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
     _weekly_hour_cap, BEGINNER_MAX_LEVEL, _crew_rule_warnings, _assignment_duration_hours, PAYROLL_BREAK_HOURS,
+    _fully_resigned_for_week, _resign_forced_days, _nz_today,
     REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
 from payroll import _credit_alt_holidays_for_week, _accrue_leave_for_week
@@ -468,6 +469,65 @@ def set_week_off_days(company_id, week_key):
     save_state(company_id, state)
     return jsonify(state["weeks"][week_key]["off_days"])
 
+# ---- 저장했던 스케줄 보관(주당 최대 10개) ----
+SCHEDULE_HISTORY_LIMIT = 10
+
+def _assign_key(assignments):
+    return sorted((a.get("employee_id"), a.get("day"), a.get("shift_type")) for a in assignments or [])
+
+def _purge_past_history(state):
+    """이미 지나간 주(일요일이 오늘보다 이전)의 보관본은 자동으로 지웁니다."""
+    today = _nz_today()
+    for wk, w in state.get("weeks", {}).items():
+        if not w.get("schedule_history"):
+            continue
+        try:
+            y, m, d = map(int, wk.split("-"))
+            if date(y, m, d) + timedelta(days=6) < today:
+                w["schedule_history"] = []
+        except Exception:
+            pass
+
+def _snapshot_schedule(state, week_key, assignments, source):
+    """assignments를 이 주의 보관 목록에 추가. 직전 보관본과 같으면 건너뜀. 10개 초과 시 가장 오래된 것 삭제."""
+    _purge_past_history(state)
+    if not assignments:
+        return
+    week = state["weeks"].get(week_key)
+    if week is None:
+        return
+    hist = week.setdefault("schedule_history", [])
+    if hist and _assign_key(hist[-1].get("assignments")) == _assign_key(assignments):
+        return
+    now = datetime.now(NZ_TZ)
+    hist.append({
+        "id": now.strftime("%Y%m%d%H%M%S%f"),
+        "saved_at": now.isoformat(timespec="seconds"),
+        "source": source,
+        "count": len(assignments),
+        "assignments": [dict(a) for a in assignments],
+    })
+    del hist[:-SCHEDULE_HISTORY_LIMIT]
+
+def _current_assignments(week):
+    sch = (week or {}).get("schedule") or {}
+    return sch.get("assignments") or []
+
+@schedule_bp.route("/api/weeks/<week_key>/schedule-history", methods=["GET"])
+@require_login
+def get_schedule_history(company_id, week_key):
+    state = load_state(company_id)
+    week = state["weeks"].get(week_key) or {}
+    names = {e["id"]: e["name"] for e in state["employees"]}
+    items = []
+    for h in reversed(week.get("schedule_history") or []):
+        items.append({
+            "id": h["id"], "saved_at": h["saved_at"], "source": h["source"],
+            "count": h.get("count", len(h.get("assignments", []))),
+            "assignments": h.get("assignments", []),
+        })
+    return jsonify({"history": items, "limit": SCHEDULE_HISTORY_LIMIT, "names": names})
+
 @schedule_bp.route("/api/weeks/<week_key>/generate-schedule", methods=["POST"])
 @require_login
 def generate_week_schedule(company_id, week_key):
@@ -487,6 +547,8 @@ def generate_week_schedule(company_id, week_key):
 
     employees = []
     for e in state["employees"]:
+        if _fully_resigned_for_week(e, week_key):
+            continue  # 퇴사일 이후 주는 자동 배정 대상에서 제외
         night_count, weekend_count = _recent_shift_counts(state, e["id"], week_key)
         employees.append(Employee(
             id=e["id"],
@@ -495,7 +557,7 @@ def generate_week_schedule(company_id, week_key):
             min_hours_per_week=e.get("min_hours_per_week", 30),
             target_days_per_week=e.get("target_days_per_week"),
             forced_off_days=list(set(
-                off_days_map.get(e["id"], []) + _leave_forced_days(e, week_key)
+                off_days_map.get(e["id"], []) + _leave_forced_days(e, week_key) + _resign_forced_days(e, week_key)
             )),
             blocked_shift_types=e.get("blocked_shift_types", []),
             day_off_pattern=e.get("day_off_pattern"),
@@ -815,6 +877,7 @@ def generate_week_schedule(company_id, week_key):
         "consecutive_issues": result.consecutive_issues,
     }
 
+    _snapshot_schedule(state, week_key, _current_assignments(state["weeks"][week_key]), "before_regenerate")
     state["weeks"][week_key]["schedule"] = result_dict
     # auto_assignments는 "자동 생성 직후"의 원본 스냅샷입니다. 이후 수동 조정(manual-adjust)이
     # 있어도 이 값은 덮어쓰지 않아서, 나중에 "사람이 뭘 얼마나 고쳤는지" 비교할 수 있습니다.
@@ -861,6 +924,7 @@ def manual_adjust_week(company_id, week_key):
     schedule["status"] = "MANUAL"
     schedule["diagnostics"] = ["This schedule was manually rearranged."]
     state["weeks"][week_key]["schedule"] = schedule
+    _snapshot_schedule(state, week_key, schedule["assignments"], "save")
     _log_audit(state, "schedule_manual_adjust", f"{week_key} 주 스케줄 수동 조정",
                {"week_key": week_key, "assignment_count": len(schedule["assignments"])})
     save_state(company_id, state)
@@ -879,6 +943,7 @@ def reset_week_schedule(company_id, week_key):
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     else:
+        _snapshot_schedule(state, week_key, _current_assignments(state["weeks"][week_key]), "before_reset")
         state["weeks"][week_key]["schedule"] = None
         state["weeks"][week_key]["auto_assignments"] = []
     _log_audit(state, "schedule_reset", f"{week_key} 주 스케줄 초기화", {"week_key": week_key})

@@ -375,7 +375,7 @@ def require_employee_login(f):
             return jsonify({"error": "Login required."}), 401
         state = load_state(company_id)
         employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
-        if not employee:
+        if not employee or _is_account_inactive(employee):
             session.clear()
             return jsonify({"error": "Login required."}), 401
         return f(company_id, employee, *args, **kwargs)
@@ -745,6 +745,55 @@ def _sanitize_max_hours(value):
         return None
     return round(v, 2) if 0 < v <= 168 else None
 
+# ---- 퇴사(마지막 근무일) ----
+_DAYS_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+def _sanitize_last_work_date(value):
+    """마지막 근무일(퇴사일): YYYY-MM-DD 형식이면 그대로, 아니면 None(= 재직 중). 미래 날짜도 허용."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except (TypeError, ValueError):
+        return None
+
+def _nz_today():
+    return datetime.now(NZ_TZ).date()
+
+def _monday_of(d):
+    return d - timedelta(days=d.weekday())
+
+def _last_work_date_obj(emp):
+    v = _sanitize_last_work_date(emp.get("last_work_date"))
+    return date.fromisoformat(v) if v else None
+
+def _is_resigned_listed(emp, today=None):
+    """퇴사일이 속한 주가 지나갔는가(= 퇴사 다음 주부터) — 재직자 목록에서 '퇴사자' 구역으로 옮겨지는 시점."""
+    lw = _last_work_date_obj(emp)
+    return bool(lw) and lw < _monday_of(today or _nz_today())
+
+def _is_account_inactive(emp, today=None):
+    """마지막 근무일이 지났는가 — 직원 본인 로그인(PIN)을 막는 기준."""
+    lw = _last_work_date_obj(emp)
+    return bool(lw) and lw < (today or _nz_today())
+
+def _fully_resigned_for_week(emp, week_key):
+    """이 주 전체가 퇴사일 이후인가(마지막 근무일이 이 주 월요일보다 앞)."""
+    lw = _last_work_date_obj(emp)
+    if not lw:
+        return False
+    y, m, d = map(int, week_key.split("-"))
+    return lw < date(y, m, d)
+
+def _resign_forced_days(emp, week_key):
+    """이 주에서 마지막 근무일 '이후'에 해당하는 요일들(자동 배정 금지 + 화면에 Resigned 표시)."""
+    lw = _last_work_date_obj(emp)
+    if not lw:
+        return []
+    y, m, d = map(int, week_key.split("-"))
+    monday = date(y, m, d)
+    return [_DAYS_ORDER[i] for i in range(7) if monday + timedelta(days=i) > lw]
+
 def _sanitize_day_blocked_shifts(value, valid_shift_ids=None):
     """요일별 배정 불가 근무유형 {day: [shift_id,...]} 정리 — 유효한 요일/문자열 id만, 중복 제거,
     빈 요일은 생략. valid_shift_ids가 주어지면 존재하는 근무유형만 남김."""
@@ -829,6 +878,12 @@ def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None, carry
             if len(names) >= 2:
                 warnings.append({"type": "beginner_pair", "day": day, "department": dept,
                                  "closing": closing, "names": names})
+    # 퇴사일 이후 날짜에 배정된 경우 경고
+    for day, items in assignments_by_day.items():
+        for emp_id, _st in items:
+            e = emps.get(emp_id) or {}
+            if day in _resign_forced_days(e, week_key):
+                warnings.append({"type": "resigned", "day": day, "name": e.get("name", emp_id)})
     # 요일별 배정 불가 근무유형 — 수동 배치에서는 막지 않고 경고
     for day, items in assignments_by_day.items():
         for emp_id, st in items:

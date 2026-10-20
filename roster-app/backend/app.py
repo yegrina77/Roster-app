@@ -54,7 +54,7 @@ from helpers import (
     _raw_delete, _raw_get, _raw_set, _send_account_deleted_email, _send_email,
     _send_employee_limit_request_email, _send_password_reset_email, _send_signup_approved_email,
     _send_signup_rejected_email, _send_signup_request_email, _send_support_request_email,
-    _valid_email, _verify_password, load_auth, load_state, require_admin,
+    _valid_email, _verify_password, _is_resigned_listed, _is_account_inactive, load_auth, load_state, require_admin,
     require_employee_login, require_login, require_owner, save_auth, save_state,
 )
 
@@ -85,7 +85,7 @@ def list_admin_companies():
     for c in auth["companies"].values():
         try:
             state = load_state(c["id"])
-            employee_count = len(state.get("employees", []))
+            employee_count = len([x for x in state.get("employees", []) if not _is_resigned_listed(x)])
             week_count = len(state.get("weeks", {}))
         except Exception:
             employee_count = 0
@@ -671,6 +671,8 @@ def employee_login():
         employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
         if employee is None:
             continue
+        if _is_account_inactive(employee):
+            return jsonify({"error": "This account is no longer active."}), 403
 
         locked_until = employee.get("pin_locked_until")
         if locked_until:
@@ -882,7 +884,7 @@ def request_employee_limit_increase(company_id):
         return jsonify({"error": "Company not found."}), 404
 
     state = load_state(company_id)
-    current_count = len(state.get("employees", []))
+    current_count = len([x for x in state.get("employees", []) if not _is_resigned_listed(x)])
     current_limit = _ensure_employee_limit(auth, company, current_count)
     save_auth(auth)
 
