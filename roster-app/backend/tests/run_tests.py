@@ -1197,6 +1197,16 @@ def _t_history():
     assert len(st["weeks"]["2099-01-05"]["schedule_history"]) == 10
 
 
+@test("입사일 - 입사 전 주는 제외, 입사 주는 입사일 이전 요일만 강제 휴무")
+def _t_hire():
+    emp = {"hire_date": "2026-10-14"}  # 수요일 입사
+    assert H._prestart_forced_days(emp, "2026-10-12") == ["mon", "tue"]
+    assert not H._not_started_for_week(emp, "2026-10-12")
+    assert H._not_started_for_week(emp, "2026-10-05")
+    assert H._prestart_forced_days(emp, "2026-10-19") == []
+    assert not H._not_started_for_week({}, "2026-10-05") and H._prestart_forced_days({"hire_date": "bad"}, "2026-10-12") == []
+
+
 if __name__ == "__main__":
     print(f"RosterFlow 회귀 테스트 실행 중... (OR-Tools 설치됨: {HAS_ORTOOLS})\n")
     ok = run_all()
