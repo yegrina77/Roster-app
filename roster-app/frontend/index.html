@@ -915,7 +915,7 @@ const I18N = {
     leave_type_annual_leave: "애뉴얼 리브", leave_type_alt_holiday: "대체휴일",
     balance_alt_leave: "대체휴일 잔액: {h}시간", balance_annual_leave: "애뉴얼 리브 잔액: {h}시간",
     balance_sick_leave: "병가 잔액: {h}시간 (상한 160)",
-    tenure_days_display: "입사 {n}일째", tenure_no_hire_date: "입사일이 등록되어 있지 않습니다.",
+    tenure_upcoming: "입사 예정 ({n}일 후)", tenure_days_display: "입사 {n}일째", tenure_no_hire_date: "입사일이 등록되어 있지 않습니다.",
     export_payroll_csv_btn: "📄 급여 기록 CSV", export_leave_history_csv_btn: "📄 리브 이력 CSV",
     balance_adjust_sick_btn: "병가 조정", balance_adjust_sick_title: "{name}님의 병가 잔액 조정",
     balance_adjust_sick_sub: "새 잔액(시간)을 직접 입력해주세요. 최대 160시간까지 누적 가능합니다.",
@@ -1343,7 +1343,7 @@ const I18N = {
     leave_type_annual_leave: "Annual Leave", leave_type_alt_holiday: "Alternative Holiday",
     balance_alt_leave: "Alternative Holiday balance: {h}h", balance_annual_leave: "Annual Leave balance: {h}h",
     balance_sick_leave: "Sick Leave balance: {h}h (cap 160)",
-    tenure_days_display: "Day {n} since hire", tenure_no_hire_date: "Hire date not set.",
+    tenure_upcoming: "Starts in {n} day(s)", tenure_days_display: "Day {n} since hire", tenure_no_hire_date: "Hire date not set.",
     export_payroll_csv_btn: "📄 Payroll CSV", export_leave_history_csv_btn: "📄 Leave History CSV",
     balance_adjust_sick_btn: "Adjust Sick", balance_adjust_sick_title: "Adjust {name}'s Sick Leave Balance",
     balance_adjust_sick_sub: "Enter the new balance (hours). Max 160 hours can be accumulated.",
@@ -5601,7 +5601,7 @@ function buildRulesPanel(e) {
     const hireDate = new Date(e.hire_date + "T00:00:00");
     const daysSince = Math.floor((new Date().setHours(0,0,0,0) - hireDate.getTime()) / 86400000);
     const tenureSpan = document.createElement("span");
-    tenureSpan.textContent = tf("tenure_days_display", {n: daysSince});
+    tenureSpan.textContent = daysSince < 0 ? tf("tenure_upcoming", {n: -daysSince}) : tf("tenure_days_display", {n: daysSince});
     tenureRow.appendChild(tenureSpan);
   } else {
     const noHireSpan = document.createElement("span");
