@@ -21,7 +21,7 @@ from helpers import (
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
     _weekly_hour_cap, BEGINNER_MAX_LEVEL, _crew_rule_warnings, _assignment_duration_hours, PAYROLL_BREAK_HOURS,
-    _fully_resigned_for_week, _resign_forced_days, _nz_today,
+    _fully_resigned_for_week, _resign_forced_days, _not_started_for_week, _prestart_forced_days, _nz_today,
     REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
 from payroll import _credit_alt_holidays_for_week, _accrue_leave_for_week
@@ -547,8 +547,8 @@ def generate_week_schedule(company_id, week_key):
 
     employees = []
     for e in state["employees"]:
-        if _fully_resigned_for_week(e, week_key):
-            continue  # 퇴사일 이후 주는 자동 배정 대상에서 제외
+        if _fully_resigned_for_week(e, week_key) or _not_started_for_week(e, week_key):
+            continue  # 퇴사 후/입사 전 주는 자동 배정 대상에서 제외
         night_count, weekend_count = _recent_shift_counts(state, e["id"], week_key)
         employees.append(Employee(
             id=e["id"],
@@ -557,7 +557,7 @@ def generate_week_schedule(company_id, week_key):
             min_hours_per_week=e.get("min_hours_per_week", 30),
             target_days_per_week=e.get("target_days_per_week"),
             forced_off_days=list(set(
-                off_days_map.get(e["id"], []) + _leave_forced_days(e, week_key) + _resign_forced_days(e, week_key)
+                off_days_map.get(e["id"], []) + _leave_forced_days(e, week_key) + _resign_forced_days(e, week_key) + _prestart_forced_days(e, week_key)
             )),
             blocked_shift_types=e.get("blocked_shift_types", []),
             day_off_pattern=e.get("day_off_pattern"),

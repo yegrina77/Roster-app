@@ -785,6 +785,32 @@ def _fully_resigned_for_week(emp, week_key):
     y, m, d = map(int, week_key.split("-"))
     return lw < date(y, m, d)
 
+def _hire_date_obj(emp):
+    v = emp.get("hire_date")
+    if not v:
+        return None
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except (TypeError, ValueError):
+        return None
+
+def _not_started_for_week(emp, week_key):
+    """이 주 전체가 입사일보다 앞인가(입사일이 이 주 일요일보다 뒤)."""
+    hd = _hire_date_obj(emp)
+    if not hd:
+        return False
+    y, m, d = map(int, week_key.split("-"))
+    return hd > date(y, m, d) + timedelta(days=6)
+
+def _prestart_forced_days(emp, week_key):
+    """이 주에서 입사일 '이전'에 해당하는 요일들(자동 배정 금지 + 화면에 Not started 표시)."""
+    hd = _hire_date_obj(emp)
+    if not hd:
+        return []
+    y, m, d = map(int, week_key.split("-"))
+    monday = date(y, m, d)
+    return [_DAYS_ORDER[i] for i in range(7) if monday + timedelta(days=i) < hd]
+
 def _resign_forced_days(emp, week_key):
     """이 주에서 마지막 근무일 '이후'에 해당하는 요일들(자동 배정 금지 + 화면에 Resigned 표시)."""
     lw = _last_work_date_obj(emp)
@@ -884,6 +910,8 @@ def _crew_rule_warnings(state, week_key, assignments_by_day, name_of=None, carry
             e = emps.get(emp_id) or {}
             if day in _resign_forced_days(e, week_key):
                 warnings.append({"type": "resigned", "day": day, "name": e.get("name", emp_id)})
+            elif day in _prestart_forced_days(e, week_key):
+                warnings.append({"type": "not_started", "day": day, "name": e.get("name", emp_id)})
     # 요일별 배정 불가 근무유형 — 수동 배치에서는 막지 않고 경고
     for day, items in assignments_by_day.items():
         for emp_id, st in items:
