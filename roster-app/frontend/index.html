@@ -8117,9 +8117,9 @@ function buildCalendarGrid() {
   DAYS.forEach(d => grid.appendChild(makeDayHeaderCell(d)));
 
   const allEmployees = window._employees || [];
-  // 이 주 전체가 퇴사일 이후인 직원은 (이 주에 기록된 배치가 없으면) 표에서 뺍니다.
+  // 이 주 전체가 퇴사일 이후인 직원은 (이 주에 기록된 배치가 없으면) 표에서 뺍니다. 입사 전 주는 이름을 남기고 전부 'Not started'로 표시합니다.
   const _hasAssign = new Set(currentAssignments.map(a => a.employee_id));
-  const empIds = [...new Set([...allEmployees.filter(e => !isInactiveThisWeek(e) || _hasAssign.has(e.id)).map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
+  const empIds = [...new Set([...allEmployees.filter(e => !isFullyResignedThisWeek(e) || _hasAssign.has(e.id)).map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
   const empNames = {};
   const empById = {};
   const empDeptById = {};
