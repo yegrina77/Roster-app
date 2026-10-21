@@ -1207,6 +1207,13 @@ def _t_hire():
     assert not H._not_started_for_week({}, "2026-10-05") and H._prestart_forced_days({"hire_date": "bad"}, "2026-10-12") == []
 
 
+@test("입사일 - 미래 날짜(입사 예정)도 저장된다, 잘못된 형식은 거부")
+def _t_hire_future():
+    assert H._sanitize_date("2099-01-05") == "2099-01-05"
+    assert H._sanitize_date("2026-10-14") == "2026-10-14"
+    assert H._sanitize_date("nope") is None and H._sanitize_date(None) is None
+
+
 if __name__ == "__main__":
     print(f"RosterFlow 회귀 테스트 실행 중... (OR-Tools 설치됨: {HAS_ORTOOLS})\n")
     ok = run_all()
