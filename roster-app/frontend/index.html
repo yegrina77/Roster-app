@@ -812,6 +812,7 @@ const I18N = {
     history_count: "{n}건 배치", history_load: "불러오기",
     history_loaded: "불러왔습니다. 확정하려면 '저장'을 눌러주세요.", history_dropped: "퇴사했거나 삭제된 직원의 배치 {n}건은 제외했습니다.",
     history_confirm: "현재 화면의 스케줄이 이 보관본으로 바뀝니다. 계속할까요?",
+    not_started_label: "Not started", not_started_tip: "아직 입사 전입니다", crew_warn_not_started: "입사일 이전 날짜에 배치되어 있습니다",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1239,6 +1240,7 @@ const I18N = {
     history_count: "{n} shifts", history_load: "Load",
     history_loaded: "Loaded. Press Save to confirm.", history_dropped: "{n} shift(s) for resigned or deleted employees were left out.",
     history_confirm: "The schedule on screen will be replaced with this saved version. Continue?",
+    not_started_label: "Not started", not_started_tip: "This employee has not started yet", crew_warn_not_started: "is scheduled before their start date",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -4900,6 +4902,17 @@ function isResignedListed(e) {
 function isFullyResignedThisWeek(e) {
   return !!e.last_work_date && !!currentWeekKey && e.last_work_date < currentWeekKey;
 }
+// 입사 전: 이 주 일요일보다 입사일이 뒤면 이 주 전체가 입사 전입니다.
+function isNotStartedThisWeek(e) {
+  return !!e.hire_date && !!currentWeekKey && e.hire_date > addDaysToKey(currentWeekKey, 6);
+}
+function isBeforeStartOnDay(e, day) {
+  if (!e || !e.hire_date) return false;
+  const i = DAYS.indexOf(day);
+  return i >= 0 && addDaysToKey(currentWeekKey, i) < e.hire_date;
+}
+function isInactiveOnDay(e, day) { return isResignedOnDay(e, day) || isBeforeStartOnDay(e, day); }
+function isInactiveThisWeek(e) { return isFullyResignedThisWeek(e) || isNotStartedThisWeek(e); }
 function isResignedOnDay(e, day) {
   if (!e || !e.last_work_date) return false;
   const i = DAYS.indexOf(day);
@@ -7519,7 +7532,7 @@ async function copyPreviousWeekSchedule(prevAssignments) {
   const _empMap = {};
   (window._employees || []).forEach(e => { _empMap[e.id] = e; });
   const copied = prevAssignments
-    .filter(a => { const e = _empMap[a.employee_id]; return !e || !(isFullyResignedThisWeek(e) || isResignedOnDay(e, a.day)); })
+    .filter(a => { const e = _empMap[a.employee_id]; return !e || !(isInactiveThisWeek(e) || isInactiveOnDay(e, a.day)); })
     .map(a => ({...a, source: a.source || "auto"}));
   const result = await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
     method: "POST",
@@ -7734,7 +7747,7 @@ async function openScheduleHistory() {
       }
       const empMap = {};
       (window._employees || []).forEach(e => { empMap[e.id] = e; });
-      const kept = it.assignments.filter(a => { const e = empMap[a.employee_id]; return e && !(isFullyResignedThisWeek(e) || isResignedOnDay(e, a.day)); });
+      const kept = it.assignments.filter(a => { const e = empMap[a.employee_id]; return e && !(isInactiveThisWeek(e) || isInactiveOnDay(e, a.day)); });
       const dropped = it.assignments.length - kept.length;
       currentAssignments = kept.map(a => ({...a}));
       scheduleGenerated = true;
@@ -8106,7 +8119,7 @@ function buildCalendarGrid() {
   const allEmployees = window._employees || [];
   // 이 주 전체가 퇴사일 이후인 직원은 (이 주에 기록된 배치가 없으면) 표에서 뺍니다.
   const _hasAssign = new Set(currentAssignments.map(a => a.employee_id));
-  const empIds = [...new Set([...allEmployees.filter(e => !isFullyResignedThisWeek(e) || _hasAssign.has(e.id)).map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
+  const empIds = [...new Set([...allEmployees.filter(e => !isInactiveThisWeek(e) || _hasAssign.has(e.id)).map(e => e.id), ...currentAssignments.map(a => a.employee_id)])];
   const empNames = {};
   const empById = {};
   const empDeptById = {};
@@ -8157,8 +8170,17 @@ function buildCalendarGrid() {
       const isLeaveOff = !isWeekOff && isLeaveDay(emp, day);
       const isForcedOff = isWeekOff || isLeaveOff;
       const isResignedDay = isResignedOnDay(emp, day);
+      const isPrestartDay = !isResignedDay && isBeforeStartOnDay(emp, day);
 
-      if (isResignedDay) {
+      if (isPrestartDay) {
+        const nb = document.createElement("div");
+        nb.className = "off-block";
+        nb.style.cursor = "default";
+        nb.style.fontStyle = "italic";
+        nb.textContent = t("not_started_label");
+        nb.title = t("not_started_tip");
+        cell.appendChild(nb);
+      } else if (isResignedDay) {
         const rb = document.createElement("div");
         rb.className = "off-block";
         rb.style.cursor = "default";
@@ -8558,6 +8580,8 @@ async function saveManualAdjustments() {
       ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior")}`
       : w.type === "no_senior_closing"
       ? `• ${dayName(w.day)}: ${t("crew_warn_no_senior_closing")}`
+      : w.type === "not_started"
+      ? `• ${dayName(w.day)}: ${w.name} — ${t("crew_warn_not_started")}`
       : w.type === "resigned"
       ? `• ${dayName(w.day)}: ${w.name} — ${t("crew_warn_resigned")}`
       : w.type === "day_blocked"
