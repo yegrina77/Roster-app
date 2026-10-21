@@ -980,13 +980,11 @@ def _weekly_hour_cap(employee_dict, week_key):
     return min(finite) if finite else None
 
 def _sanitize_date(value):
-    """날짜 입력값(YYYY-MM-DD)을 검증합니다. 형식이 잘못됐거나 미래 날짜(입사일이
-    미래일 수는 없으므로)면 None으로 취급합니다."""
+    """날짜 입력값(YYYY-MM-DD)을 검증합니다. 형식이 잘못되면 None.
+    미래 날짜도 허용합니다(입사 예정일을 미리 넣어두면 그 주부터 스케줄표에 나타남)."""
     try:
         d = date.fromisoformat(value)
     except (TypeError, ValueError):
-        return None
-    if d > date.today():
         return None
     return d.isoformat()
 
