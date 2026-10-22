@@ -442,6 +442,11 @@
 
     <div id="auth-employee-fields" style="display:none;">
       <div class="field" style="margin-bottom:10px; width:100%;">
+        <label data-i18n="auth_company_code">회사 코드</label>
+        <input id="auth-company-code" style="width:100%; text-transform:uppercase;" placeholder="SUSHI-4K7" autocomplete="off">
+        <div id="auth-company-code-name" style="font-size:12px; color:var(--cyan); margin-top:4px; min-height:14px;"></div>
+      </div>
+      <div class="field" style="margin-bottom:10px; width:100%;">
         <label data-i18n="auth_employee_id">직원 ID</label>
         <input id="auth-employee-id" style="width:100%;" placeholder="e001">
       </div>
@@ -552,6 +557,12 @@
 
   <section>
     <h2 data-i18n="emp_title">직원 등록</h2>
+    <div id="company-code-box" style="display:none; margin:0 0 12px; padding:8px 12px; background:var(--panel-solid); border:1px solid var(--border); border-radius:8px; font-size:12px; align-items:center; gap:10px; flex-wrap:wrap;">
+      <span style="color:var(--text-muted);" data-i18n="company_code_title">직원 로그인 회사 코드</span>
+      <b id="company-code-value" style="font-family:'JetBrains Mono',monospace; letter-spacing:1px;"></b>
+      <button class="btn-ghost btn-sm" onclick="copyEmployeeLoginLink()" data-i18n="company_code_copy_link">직원 로그인 링크 복사</button>
+      <span style="color:var(--text-muted); font-size:11px;" data-i18n="company_code_hint">직원은 이 코드(또는 아래 전용 링크)로 직원 로그인을 합니다.</span>
+    </div>
     <p class="desc" data-i18n="emp_desc">이름, 주당 최소 근무시간, 주간 목표 근무일수를 등록하고 "규칙"에서 개인별 제약을 설정하세요.</p>
 
     <div class="row-form">
@@ -813,6 +824,9 @@ const I18N = {
     history_loaded: "불러왔습니다. 확정하려면 '저장'을 눌러주세요.", history_dropped: "퇴사했거나 삭제된 직원의 배치 {n}건은 제외했습니다.",
     history_confirm: "현재 화면의 스케줄이 이 보관본으로 바뀝니다. 계속할까요?",
     not_started_label: "Not started", not_started_tip: "아직 입사 전입니다", crew_warn_not_started: "입사일 이전 날짜에 배치되어 있습니다",
+    auth_company_code: "회사 코드", company_code_title: "직원 로그인 회사 코드", company_code_hint: "직원은 이 코드(또는 아래 전용 링크)로 직원 로그인을 합니다.",
+    company_code_copy_link: "직원 로그인 링크 복사", company_code_copied: "복사되었습니다",
+    admin_col_code: "회사 코드", admin_code_invalid: "회사 코드는 영문/숫자/하이픈 3~20자여야 합니다.",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1241,6 +1255,9 @@ const I18N = {
     history_loaded: "Loaded. Press Save to confirm.", history_dropped: "{n} shift(s) for resigned or deleted employees were left out.",
     history_confirm: "The schedule on screen will be replaced with this saved version. Continue?",
     not_started_label: "Not started", not_started_tip: "This employee has not started yet", crew_warn_not_started: "is scheduled before their start date",
+    auth_company_code: "Company Code", company_code_title: "Employee login company code", company_code_hint: "Employees log in with this code (or the dedicated link below).",
+    company_code_copy_link: "Copy employee login link", company_code_copied: "Copied",
+    admin_col_code: "Company Code", admin_code_invalid: "Company code must be 3-20 characters: letters, numbers or hyphen.",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -1828,6 +1845,21 @@ function applyFeatureToggles() {
 
 }
 
+function updateCompanyCodeBox() {
+  const box = document.getElementById("company-code-box");
+  if (!box) return;
+  const code = currentCompany && currentCompany.company_code;
+  box.style.display = code ? "flex" : "none";
+  if (code) document.getElementById("company-code-value").textContent = code;
+}
+async function copyEmployeeLoginLink() {
+  const code = currentCompany && currentCompany.company_code;
+  if (!code) return;
+  const link = `${window.location.origin}/?c=${encodeURIComponent(code)}`;
+  try { await navigator.clipboard.writeText(link); showMessageModal(t("company_code_copy_link"), `${t("company_code_copied")}\n${link}`, false); }
+  catch (e) { showMessageModal(t("company_code_copy_link"), link, false); }
+}
+
 function switchAuthMode(mode) {
   authMode = mode;
   document.getElementById("auth-tab-login").classList.toggle("active", mode === "login");
@@ -1865,8 +1897,26 @@ function hideAuthScreen() {
   document.getElementById("auth-company-info").style.display = "flex";
 }
 
+async function prefillCompanyCode(params) {
+  // 전용 링크(?c=코드)로 들어왔거나, 이전에 로그인한 회사 코드가 있으면 코드 칸을 미리 채웁니다.
+  let code = (params.get("c") || "").trim();
+  const fromLink = !!code;
+  if (!code) { try { code = localStorage.getItem("rf_company_code") || ""; } catch (e) { code = ""; } }
+  if (!code) return;
+  const input = document.getElementById("auth-company-code");
+  input.value = code.toUpperCase();
+  try {
+    const r = await fetch("/api/employee-auth/company?code=" + encodeURIComponent(code), {credentials: "same-origin"});
+    const d = await r.json();
+    document.getElementById("auth-company-code-name").textContent = d.found ? d.name : "";
+    if (!d.found && !fromLink) input.value = "";
+  } catch (e) {}
+  if (fromLink) switchAuthMode("employee");
+}
+
 async function checkAuthAndInit() {
   const params = new URLSearchParams(window.location.search);
+  prefillCompanyCode(params);
   if (params.get("reset_token")) {
     // 비밀번호 재설정 링크로 들어온 경우 - 로그인 여부와 상관없이 재설정 화면부터 보여줍니다.
     showAuthScreen();
@@ -1883,6 +1933,7 @@ async function checkAuthAndInit() {
   }
   if (me) {
     currentCompany = me;
+    updateCompanyCodeBox();
     document.getElementById("auth-company-name").textContent = me.name + (me.role === "manager" ? ` ${t("manager_badge")}` : "");
     document.getElementById("admin-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = me.is_admin ? "inline-block" : "none";
@@ -1980,6 +2031,7 @@ async function submitAuth() {
     return;
   }
     currentCompany = data;
+    updateCompanyCodeBox();
     document.getElementById("auth-company-name").textContent = data.name + (data.role === "manager" ? ` ${t("manager_badge")}` : "");
     document.getElementById("admin-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
     document.getElementById("admin-pending-nav-btn").style.display = data.is_admin ? "inline-block" : "none";
@@ -2009,6 +2061,7 @@ async function submitEmployeeAuth() {
   errBox.style.display = "none";
   const employee_id = document.getElementById("auth-employee-id").value.trim();
   const pin = document.getElementById("auth-employee-pin").value.trim();
+  const company_code = document.getElementById("auth-company-code").value.trim();
   if (!employee_id || !pin) {
     errBox.textContent = t("auth_fill_all");
     errBox.style.display = "block";
@@ -2017,7 +2070,7 @@ async function submitEmployeeAuth() {
   const res = await fetch("/api/employee-auth/login", {
     method: "POST", credentials: "same-origin",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({employee_id, pin}),
+    body: JSON.stringify({employee_id, pin, company_code}),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -2025,6 +2078,7 @@ async function submitEmployeeAuth() {
     errBox.style.display = "block";
     return;
   }
+  try { if (company_code) localStorage.setItem("rf_company_code", company_code.toUpperCase()); } catch (e) {}
   document.getElementById("auth-employee-id").value = "";
   document.getElementById("auth-employee-pin").value = "";
   await showEmployeeView(data);
@@ -2673,6 +2727,7 @@ async function showAdminPage() {
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_online")}</th>
       <th style="padding:6px 8px;">${t("admin_col_name")}</th>
       <th style="padding:6px 8px;">${t("admin_col_email")}</th>
+      <th style="padding:6px 8px;">${t("admin_col_code")}</th>
       <th style="padding:6px 8px;">${t("admin_col_signup_date")}</th>
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_employees")}</th>
       <th style="padding:6px 8px; text-align:center;">${t("admin_col_employee_limit")}</th>
@@ -2703,6 +2758,10 @@ async function showAdminPage() {
       </td>
       <td style="padding:6px 8px;">${escapeHtml(c.name)}${adminBadge}${contactLine}</td>
       <td style="padding:6px 8px; color:var(--text-muted);">${escapeHtml(c.email)}</td>
+      <td style="padding:6px 8px;" data-code-cell>
+        <input value="${escapeHtml(c.company_code || "")}" maxlength="20" style="width:110px; text-transform:uppercase; font-family:'JetBrains Mono',monospace;" data-code-input>
+        <button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px;" data-action="save-code">${t("btn_save")}</button>
+      </td>
       <td style="padding:6px 8px; color:var(--text-muted);">${escapeHtml(c.created_at || "-")}</td>
       <td style="padding:6px 8px; text-align:center;">${c.employee_count}</td>
       <td style="padding:6px 8px; text-align:center;" data-limit-cell>
@@ -2715,6 +2774,26 @@ async function showAdminPage() {
         ${c.is_admin ? "" : `<button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px; color:#ef4444;" data-action="force-delete">${t("admin_force_delete_btn")}</button>`}
       </td>
     `;
+    const codeCell = tr.querySelector("[data-code-cell]");
+    codeCell.addEventListener("click", (ev) => ev.stopPropagation());
+    const codeInput = tr.querySelector("[data-code-input]");
+    const saveCodeBtn = tr.querySelector('[data-action="save-code"]');
+    saveCodeBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      saveCodeBtn.disabled = true;
+      try {
+        const r = await api(`/api/admin/companies/${c.id}/company-code`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({company_code: codeInput.value}),
+        });
+        codeInput.value = r.company_code;
+        saveCodeBtn.textContent = t("btn_saved_check");
+        setTimeout(() => { saveCodeBtn.textContent = t("btn_save"); saveCodeBtn.disabled = false; }, 1200);
+      } catch (e) {
+        saveCodeBtn.disabled = false;
+      }
+    });
     const limitCell = tr.querySelector("[data-limit-cell]");
     limitCell.addEventListener("click", (ev) => ev.stopPropagation());
     const limitInput = tr.querySelector("[data-limit-input]");
