@@ -48,11 +48,8 @@ def add_employee(company_id):
     if any(e["id"] == payload["id"] for e in state["employees"]):
         return jsonify({"error": f"An employee with this id already exists: {payload['id']}"}), 400
 
-    # 직원 로그인이 ID+PIN만으로 이루어지기 때문에, 직원 ID는 전체 시스템에서 고유해야
-    # 합니다(다른 회사가 먼저 쓴 ID는 못 씀).
+    # 직원 ID는 이 회사 안에서만 고유하면 됩니다(직원 로그인은 회사 코드로 회사를 구분).
     auth = load_auth()
-    if _employee_id_in_use_globally(auth, payload["id"], exclude_company_id=company_id):
-        return jsonify({"error": f"This employee ID is already in use by another company: {payload['id']}. Please choose a different ID."}), 400
 
     # 가입할 때 신고한 예상 직원 수를 넘어서 등록하지 못하도록 막습니다.
     company = auth["companies"].get(company_id)

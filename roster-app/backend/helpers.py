@@ -1049,6 +1049,49 @@ def _generate_pin():
     """6자리 숫자 PIN을 무작위로 생성합니다(직원 로그인용)."""
     return f"{secrets.randbelow(10 ** PIN_LENGTH):0{PIN_LENGTH}d}"
 
+# ---- 회사 코드 (직원 로그인용) ----
+import re as _re_cc
+
+def _sanitize_company_code(value):
+    """회사 코드: 영문/숫자/하이픈 3~20자, 대문자로 통일. 형식이 맞지 않으면 None."""
+    v = (value or "").strip().upper()
+    return v if _re_cc.fullmatch(r"[A-Z0-9][A-Z0-9-]{2,19}", v) else None
+
+def _company_code_taken(auth, code, exclude_company_id=None):
+    for c in auth["companies"].values():
+        if exclude_company_id is not None and c["id"] == exclude_company_id:
+            continue
+        if (c.get("company_code") or "").upper() == code:
+            return True
+    return False
+
+def _generate_company_code(auth, name):
+    base = _re_cc.sub(r"[^A-Z0-9]", "", (name or "").upper())[:8] or "SHOP"
+    for _ in range(50):
+        suffix = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(3))
+        code = f"{base}-{suffix}"
+        if _sanitize_company_code(code) and not _company_code_taken(auth, code):
+            return code
+    return f"{base}-{secrets.token_hex(3).upper()}"
+
+def _ensure_company_codes(auth):
+    """코드가 없는 회사에 자동으로 코드를 붙입니다. 하나라도 붙였으면 True(저장 필요)."""
+    dirty = False
+    for c in auth["companies"].values():
+        if not _sanitize_company_code(c.get("company_code")):
+            c["company_code"] = _generate_company_code(auth, c.get("name"))
+            dirty = True
+    return dirty
+
+def _find_company_by_code(auth, code):
+    code = _sanitize_company_code(code)
+    if not code:
+        return None
+    for c in auth["companies"].values():
+        if (c.get("company_code") or "").upper() == code:
+            return c
+    return None
+
 def _employee_id_in_use_globally(auth, employee_id, exclude_company_id=None):
     """직원 로그인이 '회사 선택' 없이 직원 ID + PIN만으로 이루어지기 때문에, 직원 ID는
     이제 전체 시스템에서 고유해야 합니다. 모든 회사의 직원 목록을 뒤져서 이미 쓰이고

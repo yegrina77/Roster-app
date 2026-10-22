@@ -54,7 +54,7 @@ from helpers import (
     _raw_delete, _raw_get, _raw_set, _send_account_deleted_email, _send_email,
     _send_employee_limit_request_email, _send_password_reset_email, _send_signup_approved_email,
     _send_signup_rejected_email, _send_signup_request_email, _send_support_request_email,
-    _valid_email, _verify_password, _is_resigned_listed, _is_account_inactive, load_auth, load_state, require_admin,
+    _valid_email, _verify_password, _is_resigned_listed, _is_account_inactive, _sanitize_company_code, _company_code_taken, _ensure_company_codes, _find_company_by_code, load_auth, load_state, require_admin,
     require_employee_login, require_login, require_owner, save_auth, save_state,
 )
 
@@ -78,7 +78,7 @@ def list_admin_companies():
     """관리자 전용: 지금까지 가입한 회사(매장) 목록과, 각 회사의 등록 직원 수를 보여줍니다.
     다른 회사의 직원/스케줄 데이터 자체는 절대 보여주지 않고, 딱 '몇 명 등록되어 있는지'
     개수만 보여줍니다 (다른 회사의 개인정보를 침해하지 않기 위함)."""
-    auth = load_auth()
+    auth = _load_auth_with_codes()
     now = time.time()
     companies = []
     auth_dirty = False
@@ -102,6 +102,7 @@ def list_admin_companies():
             "email": c["email"],
             "created_at": c.get("created_at"),
             "is_admin": bool(c.get("is_admin")),
+            "company_code": c.get("company_code"),
             "employee_count": employee_count,
             "employee_limit": c.get("employee_limit"),
             "week_count": week_count,
@@ -112,6 +113,24 @@ def list_admin_companies():
         save_auth(auth)
     companies.sort(key=lambda c: c.get("created_at") or "", reverse=True)
     return jsonify({"total": len(companies), "companies": companies, "online_threshold_seconds": ONLINE_THRESHOLD_SECONDS})
+
+@app.route("/api/admin/companies/<company_id>/company-code", methods=["POST"])
+@require_admin
+def set_company_code(company_id):
+    """관리자 전용: 회사의 직원 로그인용 회사 코드를 직접 지정합니다(영문/숫자/하이픈 3~20자, 전체에서 고유)."""
+    payload = request.get_json(silent=True) or {}
+    code = _sanitize_company_code(payload.get("company_code"))
+    if not code:
+        return jsonify({"error": "Company code must be 3-20 characters: letters, numbers or hyphen."}), 400
+    auth = _load_auth_with_codes()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    if _company_code_taken(auth, code, exclude_company_id=company_id):
+        return jsonify({"error": "This company code is already in use."}), 400
+    company["company_code"] = code
+    save_auth(auth)
+    return jsonify({"id": company_id, "company_code": code})
 
 @app.route("/api/admin/companies/<company_id>/employee-limit", methods=["POST"])
 @require_admin
@@ -405,6 +424,13 @@ def register():
         "message": "Your request has been submitted for approval. You'll receive an email once it's reviewed.",
     }), 202
 
+def _load_auth_with_codes():
+    """회사 코드가 없는 회사에 자동으로 코드를 붙여서(저장 포함) auth를 돌려줍니다."""
+    auth = load_auth()
+    if _ensure_company_codes(auth):
+        save_auth(auth)
+    return auth
+
 def _session_payload(company, role, user=None):
     """login()/me()에서 공통으로 쓰는, 로그인한 사용자 정보를 응답 JSON으로 만드는 헬퍼입니다.
     role이 'manager'면 user(그 매니저의 레코드)의 이름/이메일을 쓰고, 'owner'면 회사(사장)
@@ -424,6 +450,7 @@ def _session_payload(company, role, user=None):
         "is_admin": bool(company.get("is_admin")) and role == "owner",
         "enabled_features": company.get("enabled_features") or _default_features(),
         "employee_limit": company.get("employee_limit"),
+        "company_code": company.get("company_code"),
     }
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -432,7 +459,7 @@ def login():
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
 
-    auth = load_auth()
+    auth = _load_auth_with_codes()
 
     # 먼저 사장(owner) 계정으로 매칭을 시도합니다 — company 레코드 자체의 이메일입니다.
     for c in auth["companies"].values():
@@ -468,7 +495,7 @@ def me():
     company_id = session.get("company_id")
     if not company_id:
         return jsonify(None)
-    auth = load_auth()
+    auth = _load_auth_with_codes()
     company = auth["companies"].get(company_id)
     if not company:
         session.clear()
@@ -665,8 +692,28 @@ def employee_login():
     if not employee_id or not pin:
         return jsonify({"error": "직원 ID와 PIN을 입력해주세요."}), 400
 
-    auth = load_auth()
-    for c in auth["companies"].values():
+    auth = _load_auth_with_codes()
+    code = (payload.get("company_code") or "").strip()
+    if code:
+        # 회사 코드가 있으면 그 회사 안에서만 직원 ID를 찾습니다(ID는 회사 안에서만 고유하면 됨).
+        company = _find_company_by_code(auth, code)
+        if not company:
+            return jsonify({"error": "회사 코드, 직원 ID 또는 PIN이 올바르지 않습니다."}), 401
+        candidates = [company]
+    else:
+        # 코드 없이 로그인하는 기존 방식(전환 기간): 같은 ID가 여러 회사에 있으면 구분할 수 없습니다.
+        candidates = list(auth["companies"].values())
+        holders = []
+        for c in candidates:
+            try:
+                if any(e["id"] == employee_id for e in load_state(c["id"]).get("employees", [])):
+                    holders.append(c)
+            except Exception:
+                continue
+        if len(holders) > 1:
+            return jsonify({"error": "같은 ID를 쓰는 회사가 여러 곳입니다. 회사 코드를 함께 입력해주세요."}), 400
+        candidates = holders
+    for c in candidates:
         state = load_state(c["id"])
         employee = next((e for e in state["employees"] if e["id"] == employee_id), None)
         if employee is None:
@@ -709,6 +756,15 @@ def employee_login():
         return jsonify({"error": "직원 ID 또는 PIN이 올바르지 않습니다."}), 401
 
     return jsonify({"error": "직원 ID 또는 PIN이 올바르지 않습니다."}), 401
+
+@app.route("/api/employee-auth/company", methods=["GET"])
+def employee_login_company():
+    """직원 로그인 화면에서 회사 코드가 맞는지 확인하고 회사 이름만 알려줍니다(링크로 들어왔을 때 표시용)."""
+    auth = _load_auth_with_codes()
+    company = _find_company_by_code(auth, request.args.get("code", ""))
+    if not company:
+        return jsonify({"found": False})
+    return jsonify({"found": True, "name": company["name"], "company_code": company["company_code"]})
 
 @app.route("/api/employee-auth/logout", methods=["POST"])
 def employee_logout():
