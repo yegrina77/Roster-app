@@ -1090,10 +1090,10 @@ def _():
         ast.parse(open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read())
 
 
-@test("전체 앱 임포트 성공 + 등록된 라우트가 106개(=105개 + 저장 스케줄 보관 조회 1개)")
+@test("전체 앱 임포트 성공 + 등록된 라우트가 108개(=106개 + 회사 코드 수정 1개 + 직원 로그인 회사 확인 1개)")
 def _():
     rules = list(A.app.url_map.iter_rules())
-    assert len(rules) == 106, f"실제 라우트 개수: {len(rules)}"
+    assert len(rules) == 108, f"실제 라우트 개수: {len(rules)}"
 
 
 @test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
@@ -1212,6 +1212,63 @@ def _t_hire_future():
     assert H._sanitize_date("2099-01-05") == "2099-01-05"
     assert H._sanitize_date("2026-10-14") == "2026-10-14"
     assert H._sanitize_date("nope") is None and H._sanitize_date(None) is None
+
+
+@test("회사 코드 - 형식 정리, 자동 생성(중복 없음), 코드 조회")
+def _t_company_code():
+    assert H._sanitize_company_code("4auckland") == "4AUCKLAND"
+    assert H._sanitize_company_code("ab") is None and H._sanitize_company_code("a b c") is None
+    assert H._sanitize_company_code("") is None and H._sanitize_company_code(None) is None
+    auth = {"companies": {
+        "a": {"id": "a", "name": "The Sushiplatter"},
+        "b": {"id": "b", "name": "The Sushiplatter"},
+        "c": {"id": "c", "name": "한글가게", "company_code": "4AUCKLAND"},
+    }}
+    assert H._ensure_company_codes(auth) is True
+    codes = [c["company_code"] for c in auth["companies"].values()]
+    assert len(set(codes)) == 3 and all(H._sanitize_company_code(x) for x in codes), codes
+    assert auth["companies"]["c"]["company_code"] == "4AUCKLAND"
+    assert H._ensure_company_codes(auth) is False
+    assert H._find_company_by_code(auth, "4auckland")["id"] == "c"
+    assert H._find_company_by_code(auth, "zzz-nope") is None
+    assert H._company_code_taken(auth, "4AUCKLAND") and not H._company_code_taken(auth, "4AUCKLAND", exclude_company_id="c")
+
+
+@test("직원 로그인 - 회사 코드로 같은 ID(001)를 쓰는 두 회사가 구분된다 / 코드 없이는 모호하면 거부 / 기존 고유 ID는 코드 없이도 로그인")
+def _t_employee_login_code():
+    import tempfile, json as _json
+    old_dir = H.DATA_DIR
+    H.DATA_DIR = tempfile.mkdtemp()
+    try:
+        auth = {"companies": {
+            "ca": {"id": "ca", "name": "Alpha Cafe", "email": "a@x.com", "company_code": "ALPHA-1"},
+            "cb": {"id": "cb", "name": "Beta Bar", "email": "b@x.com", "company_code": "4AUCKLAND"},
+        }}
+        H.save_auth(auth)
+        def mk(cid, emps):
+            st = H.load_state(cid)
+            st["employees"] = emps
+            H.save_state(cid, st)
+        mk("ca", [{"id": "001", "name": "Ann", "pin": "111111"}, {"id": "uniq", "name": "Only", "pin": "999999"}])
+        mk("cb", [{"id": "001", "name": "Bob", "pin": "222222"}])
+        c = A.app.test_client()
+        r = c.post("/api/employee-auth/login", json={"employee_id": "001", "pin": "222222", "company_code": "4auckland"})
+        assert r.status_code == 200 and r.get_json()["name"] == "Bob", r.get_json()
+        r = c.post("/api/employee-auth/login", json={"employee_id": "001", "pin": "111111", "company_code": "ALPHA-1"})
+        assert r.status_code == 200 and r.get_json()["name"] == "Ann", r.get_json()
+        r = c.post("/api/employee-auth/login", json={"employee_id": "001", "pin": "111111", "company_code": "4AUCKLAND"})
+        assert r.status_code == 401
+        r = c.post("/api/employee-auth/login", json={"employee_id": "001", "pin": "111111"})
+        assert r.status_code == 400 and "회사 코드" in r.get_json()["error"]
+        r = c.post("/api/employee-auth/login", json={"employee_id": "uniq", "pin": "999999"})
+        assert r.status_code == 200 and r.get_json()["name"] == "Only"
+        r = c.post("/api/employee-auth/login", json={"employee_id": "001", "pin": "1", "company_code": "NOPE-NOPE"})
+        assert r.status_code == 401
+        r = c.get("/api/employee-auth/company?code=4auckland")
+        assert r.get_json() == {"found": True, "name": "Beta Bar", "company_code": "4AUCKLAND"}
+        assert c.get("/api/employee-auth/company?code=zzzz").get_json() == {"found": False}
+    finally:
+        H.DATA_DIR = old_dir
 
 
 if __name__ == "__main__":
