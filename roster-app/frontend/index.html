@@ -303,6 +303,7 @@
     background: var(--void-soft); color: var(--cyan); font-weight: 600; text-align: center; padding: 11px 6px;
     cursor: default; font-size: 11px; letter-spacing: 0.08em; font-family: "JetBrains Mono", monospace;
   }
+  .cal-head-date { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
   .cal-head-hours { display: block; margin-top: 3px; font-size: 10px; color: var(--text-muted); font-weight: 500; letter-spacing: 0; }
   .cal-emp-cell {
     background: var(--void-soft); display: flex; align-items: center; font-weight: 600; padding: 8px 10px;
@@ -8182,7 +8183,14 @@ function makeDayHeaderCell(day) {
   const div = document.createElement("div");
   div.className = "cal-head";
   const hours = totalHoursForDay(day);
-  div.innerHTML = `${DAY_LABEL[day]}<span class="cal-head-hours">${hours.toFixed(1)}h</span>`;
+  // 요일 옆에 날짜(일/월)를 같이 표시합니다. 예: 월 27/10
+  let dateTxt = "";
+  try {
+    const iso = addDaysToKey(currentWeekKey, DAYS.indexOf(day));
+    const [, mm, dd] = iso.split("-");
+    dateTxt = ` <span class="cal-head-date">${Number(dd)}/${Number(mm)}</span>`;
+  } catch (e) { dateTxt = ""; }
+  div.innerHTML = `${DAY_LABEL[day]}${dateTxt}<span class="cal-head-hours">${hours.toFixed(1)}h</span>`;
   return div;
 }
 
