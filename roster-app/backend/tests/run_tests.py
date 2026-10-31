@@ -1271,6 +1271,13 @@ def _t_employee_login_code():
         H.DATA_DIR = old_dir
 
 
+@test("scheduler.py에 '쉼-하루 근무-쉼' 피하기 소프트 규칙이 목적함수에 들어 있다 (하드 규칙 아님)")
+def _t_isolated_rule():
+    src = open(os.path.join(BACKEND_DIR, "scheduler.py"), encoding="utf-8").read()
+    assert "ISOLATED_DAY_PENALTY" in src and "total_isolated_days * ISOLATED_DAY_PENALTY" in src
+    assert "model.Add(iso >= work_expr[day] - prev_worked - nxt)" in src  # 부등식(소프트) — 등식/하드 아님
+
+
 if __name__ == "__main__":
     print(f"RosterFlow 회귀 테스트 실행 중... (OR-Tools 설치됨: {HAS_ORTOOLS})\n")
     ok = run_all()
