@@ -149,6 +149,7 @@ class ScheduleResult:
     consecutive_issues: list[dict] = field(default_factory=list)
 
 
+ISOLATED_DAY_PENALTY = 10  # '쉼-하루만 근무-쉼' 모양 1건당 페널티 (소프트: 인원/시간이 안 맞으면 허용)
 HELP_SHIFT_PENALTY = 20  # 지원 근무 1회당 페널티 (선호/공정성보다 크게 — 부족하지 않으면 지원 보내지 않음)
 
 
@@ -490,6 +491,26 @@ def solve_schedule(
 
             pattern_violation_by_employee[e.id] = emp_pattern_vars
 
+    # ---- 소프트: '하루만 일하고 앞뒤가 모두 휴무'인 모양(쉼-근무-쉼) 피하기 ----
+    # 직원들이 싫어하는 분산 휴무 모양이라, 가능하면 최소 이틀 이상 이어서 근무하게 합니다.
+    # 하드 규칙이 아니므로 필요 인원이나 시간 때문에 어쩔 수 없으면 생길 수 있습니다.
+    # 월요일은 전주 마지막 근무 기록(carry_in_streak)으로 앞날을 판단하고,
+    # 일요일은 다음 주를 알 수 없어 제외합니다.
+    isolated_vars = []
+    for e in employees:
+        work_expr = {d: sum(x[(e.id, d, s)] for s in shift_types) for d in DAYS}
+        for i in range(0, len(DAYS) - 1):
+            day = DAYS[i]
+            if i == 0:
+                prev_worked = 1 if (e.carry_in_streak or 0) > 0 else 0
+            else:
+                prev_worked = work_expr[DAYS[i - 1]]
+            nxt = work_expr[DAYS[i + 1]]
+            iso = model.NewBoolVar(f"isoday_{e.id}_{day}")
+            model.Add(iso >= work_expr[day] - prev_worked - nxt)
+            isolated_vars.append(iso)
+    total_isolated_days = sum(isolated_vars) if isolated_vars else 0
+
     # ---- 소프트: 직원이 원하는 최대시간 초과분(시간 단위, 올림) ----
     pref_max_over_vars = {}
     for e in employees:
@@ -602,6 +623,7 @@ def solve_schedule(
         + total_help_shifts * HELP_SHIFT_PENALTY  # 타 부서 지원 근무는 최소화 (소프트)
         + total_pref_max_over * 3  # 희망 최대시간을 1시간 넘길 때마다 페널티 (소프트)
         + total_pattern_penalty * pattern_weight
+        + total_isolated_days * ISOLATED_DAY_PENALTY  # 쉼-하루 근무-쉼 피하기 (소프트)
         - total_preference * preference_weight
         + total_fairness_penalty * fairness_weight
     )
