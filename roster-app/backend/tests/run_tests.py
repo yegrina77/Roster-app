@@ -1090,10 +1090,10 @@ def _():
         ast.parse(open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read())
 
 
-@test("전체 앱 임포트 성공 + 등록된 라우트가 108개(=106개 + 회사 코드 수정 1개 + 직원 로그인 회사 확인 1개)")
+@test("전체 앱 임포트 성공 + 등록된 라우트가 110개(=106개 + 회사 코드 수정 1개 + 직원 로그인 회사 확인 1개 + 인건비 주 매출/설정 저장 2개)")
 def _():
     rules = list(A.app.url_map.iter_rules())
-    assert len(rules) == 108, f"실제 라우트 개수: {len(rules)}"
+    assert len(rules) == 110, f"실제 라우트 개수: {len(rules)}"
 
 
 @test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
@@ -1312,6 +1312,61 @@ def _t_weekday_badge():
         assert j["counts"]["e1"]["tue"] == {"hit": 0, "denom": 12}
         e2 = j["counts"]["e2"]["mon"]  # 2026-09-14 입사: 그 주(9/14)부터 분모에 포함 -> 직전 7주(9/14~10/26)
         assert e2["denom"] == 7, e2
+    finally:
+        H.DATA_DIR = old
+
+
+@test("인건비 목표 비율 - 필요 매출/비율 계산, 입력값 정리(음수/문자 거부)")
+def _t_labour_math():
+    import payroll as P
+    m = P._labour_metrics(6000, 20000, 30, 0)
+    assert m == {"cost": 6000.0, "required_sales": 20000.0, "labour_pct": 30.0}, m
+    assert P._labour_metrics(6000, 0, 25, 0)["required_sales"] == 24000.0
+    assert P._labour_metrics(6000, 0, 25, 0)["labour_pct"] is None      # 매출 0이면 비율 없음
+    assert P._labour_metrics(1000, None, 30, 10)["cost"] == 1100.0       # 추가 비용 10%
+    assert P._labour_metrics(1000, 4000, 30, 0)["labour_pct"] == 25.0
+    assert P._sanitize_money("1234.567") == 1234.57 and P._sanitize_money("-5") is None
+    assert P._sanitize_money("abc") is None and P._sanitize_money("") is None and P._sanitize_money(1e9) is None
+    assert P._sanitize_pct("30", 1, 100) == 30.0 and P._sanitize_pct("0", 1, 100) is None and P._sanitize_pct("101", 1, 100) is None
+
+
+@test("인건비 목표 비율 - 요일별 매출 저장/집계, 이번 주 목표 덮어쓰기, 회사 기본값 설정")
+def _t_labour_endpoints():
+    import tempfile
+    old = H.DATA_DIR
+    H.DATA_DIR = tempfile.mkdtemp()
+    try:
+        H.save_auth({"companies": {"c1": {"id": "c1", "name": "T", "email": "t@x.com", "company_code": "TEST-1"}}})
+        st = H.load_state("c1")
+        st["employees"] = [{"id": "e1", "name": "A", "hourly_wage": 30.0}]
+        wk = "2026-11-02"
+        w = H.empty_week()
+        w["schedule"] = {"assignments": [{"employee_id": "e1", "day": "mon", "shift_type": "foh_opening"}]}
+        st["weeks"][wk] = w
+        H.save_state("c1", st)
+        c = A.app.test_client()
+        with c.session_transaction() as sess:
+            sess["company_id"] = "c1"
+        r = c.get(f"/api/weeks/{wk}/payroll")
+        assert r.status_code == 200, r.get_data(as_text=True)
+        lab = r.get_json()["labour"]
+        assert lab["target_pct"] == 30.0 and lab["sales_total"] is None and lab["scheduled"]["labour_pct"] is None
+        # 설정(기본 목표 25%, 추가 비용 10%)
+        assert c.post("/api/labour-settings", json={"target_pct": 25, "oncost_pct": 10}).status_code == 200
+        assert c.post("/api/labour-settings", json={"target_pct": 0, "oncost_pct": 10}).status_code == 400
+        # 요일별 매출 저장 + 이번 주 목표 덮어쓰기
+        r = c.post(f"/api/weeks/{wk}/labour", json={"days": {"mon": 1000, "tue": "2000", "wed": "bad"}, "total": 99999, "target_pct": 20})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        lab = r.get_json()
+        assert lab["sales_total"] == 3000.0 and lab["sales_from_days"] is True      # 요일별 합계가 우선
+        assert lab["target_pct"] == 20.0 and lab["week_target_override"] == 20.0 and lab["default_target_pct"] == 25.0
+        assert lab["days"]["wed"]["sales"] is None and lab["days"]["mon"]["sales"] == 1000.0
+        # 요일별 매출을 지우면 직접 입력한 주 합계를 쓴다
+        r = c.post(f"/api/weeks/{wk}/labour", json={"days": {}, "total": 5000, "target_pct": None})
+        lab = r.get_json()
+        assert lab["sales_total"] == 5000.0 and lab["sales_from_days"] is False and lab["week_target_override"] is None and lab["target_pct"] == 25.0
+        # 존재하지 않던 주도 저장된다
+        assert c.post("/api/weeks/2030-01-07/labour", json={"total": 1}).status_code == 200
     finally:
         H.DATA_DIR = old
 
