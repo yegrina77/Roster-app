@@ -304,8 +304,153 @@ def get_week_payroll(company_id, week_key):
         return jsonify({"error": "이 페이지는 사장 또는 매니저만 볼 수 있습니다."}), 403
     state = load_state(company_id)
     payroll = _compute_week_payroll(state, week_key)
+    payroll["labour"] = _labour_block(state, week_key, payroll)
     save_state(company_id, state)
     return jsonify(payroll)
+
+
+@payroll_bp.route("/api/weeks/<week_key>/labour", methods=["POST"])
+@require_login
+def set_week_labour(company_id, week_key):
+    """사장/매니저: 이 주의 매출(요일별 및/또는 주 합계)과 '이번 주 목표 인건비율'(비우면 기본값 사용)을 저장합니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 기능은 사장 또는 매니저만 쓸 수 있습니다."}), 403
+    try:
+        _week_dates(week_key)
+    except Exception:
+        return jsonify({"error": "Invalid week."}), 400
+    payload = request.get_json(silent=True) or {}
+    state = load_state(company_id)
+    week = state["weeks"].setdefault(week_key, empty_week())
+    days_in = payload.get("days") or {}
+    days = {}
+    for d in DAYS:
+        v = _sanitize_money(days_in.get(d))
+        if v is not None:
+            days[d] = v
+    week["sales"] = {"total": _sanitize_money(payload.get("total")), "days": days}
+    if "target_pct" in payload:
+        week["labour_target_pct"] = _sanitize_pct(payload.get("target_pct"), 1, 100)
+    _log_audit(state, "week_sales_saved", f"{week_key} 주 매출/목표 인건비율 저장", {"week": week_key})
+    save_state(company_id, state)
+    payroll = _compute_week_payroll(state, week_key)
+    return jsonify(_labour_block(state, week_key, payroll))
+
+
+@payroll_bp.route("/api/labour-settings", methods=["POST"])
+@require_login
+def set_labour_settings(company_id):
+    """사장/매니저: 회사 기본 목표 인건비율(1~100%)과 추가 비용 %(0~100%)를 저장합니다."""
+    if g.role not in ("owner", "manager"):
+        return jsonify({"error": "이 기능은 사장 또는 매니저만 쓸 수 있습니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    target = _sanitize_pct(payload.get("target_pct"), 1, 100)
+    oncost = _sanitize_pct(payload.get("oncost_pct"), 0, 100)
+    if target is None or oncost is None:
+        return jsonify({"error": "target_pct must be 1-100 and oncost_pct 0-100."}), 400
+    state = load_state(company_id)
+    state["labour_settings"] = {"target_pct": target, "oncost_pct": oncost}
+    _log_audit(state, "labour_settings_changed", f"목표 인건비율 {target}%, 추가 비용 {oncost}%로 변경", {"target_pct": target, "oncost_pct": oncost})
+    save_state(company_id, state)
+    return jsonify(state["labour_settings"])
+
+
+# ---------------------------------------------------------------------------
+# 인건비 목표 비율(Labour cost %) — 매출 입력, 목표 비율, 추가 비용 %
+# ---------------------------------------------------------------------------
+DEFAULT_LABOUR_TARGET_PCT = 30.0
+MAX_SALES_AMOUNT = 10_000_000.0
+
+
+def _sanitize_money(value):
+    """매출 금액: 0 이상 천만 이하 숫자, 소수 둘째 자리까지. 비었거나 잘못되면 None."""
+    if value is None or value == "":
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v < 0 or v > MAX_SALES_AMOUNT:  # NaN / 음수 / 너무 큼
+        return None
+    return round(v, 2)
+
+
+def _sanitize_pct(value, lo, hi):
+    """퍼센트(목표 비율, 추가 비용): lo~hi 범위 숫자. 비었거나 범위 밖이면 None."""
+    if value is None or value == "":
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if v != v or v < lo or v > hi:
+        return None
+    return round(v, 2)
+
+
+def _labour_settings(state):
+    s = state.get("labour_settings") or {}
+    target = _sanitize_pct(s.get("target_pct"), 1, 100)
+    oncost = _sanitize_pct(s.get("oncost_pct"), 0, 100)
+    return {
+        "target_pct": target if target is not None else DEFAULT_LABOUR_TARGET_PCT,
+        "oncost_pct": oncost if oncost is not None else 0.0,
+    }
+
+
+def _labour_metrics(cost, sales, target_pct, oncost_pct):
+    """인건비(cost)에 추가 비용 %를 더한 뒤, 매출(sales)이 있으면 인건비 비율을,
+    목표 비율(target_pct)로 '필요한 매출'을 계산합니다. 매출이 없거나 0이면 비율은 None."""
+    total_cost = round(float(cost or 0) * (1 + (oncost_pct or 0) / 100.0), 2)
+    required = round(total_cost / (target_pct / 100.0), 2) if target_pct else None
+    pct = round(total_cost / sales * 100.0, 1) if sales else None
+    return {"cost": total_cost, "required_sales": required, "labour_pct": pct}
+
+
+def _week_sales(week):
+    """주의 매출 입력값: {"total": float|None, "days": {요일: float}}."""
+    raw = (week or {}).get("sales") or {}
+    days = {}
+    for d in DAYS:
+        v = _sanitize_money((raw.get("days") or {}).get(d))
+        if v is not None:
+            days[d] = v
+    return {"total": _sanitize_money(raw.get("total")), "days": days}
+
+
+def _labour_block(state, week_key, payroll):
+    """급여 응답에 붙일 인건비 목표 정보(설정, 이번 주 매출, 비율/필요 매출 계산 결과)."""
+    settings = _labour_settings(state)
+    week = state["weeks"].get(week_key) or {}
+    override = _sanitize_pct(week.get("labour_target_pct"), 1, 100)
+    target = override if override is not None else settings["target_pct"]
+    sales = _week_sales(week)
+    day_sales_sum = round(sum(sales["days"].values()), 2) if sales["days"] else None
+    # 요일별 매출이 하나라도 있으면 그 합계가 주 매출, 없으면 직접 입력한 주 합계를 씁니다.
+    effective_total = day_sales_sum if day_sales_sum is not None else sales["total"]
+    oncost = settings["oncost_pct"]
+    sched = payroll["total_scheduled_cost"]
+    actual = payroll["total_actual_cost"]
+    by_day = {}
+    for d in DAYS:
+        dd = payroll["days"][d]
+        by_day[d] = {
+            "sales": sales["days"].get(d),
+            "scheduled": _labour_metrics(dd["scheduled_cost"], sales["days"].get(d), target, oncost),
+            "actual": _labour_metrics(dd["actual_cost"], sales["days"].get(d), target, oncost),
+        }
+    return {
+        "default_target_pct": settings["target_pct"],
+        "week_target_override": override,
+        "target_pct": target,
+        "oncost_pct": oncost,
+        "sales_total_input": sales["total"],
+        "sales_total": effective_total,
+        "sales_from_days": day_sales_sum is not None,
+        "scheduled": _labour_metrics(sched, effective_total, target, oncost),
+        "actual": _labour_metrics(actual, effective_total, target, oncost),
+        "days": by_day,
+    }
 
 
 def _build_payroll_export_rows(state, employee_id, start, end):
