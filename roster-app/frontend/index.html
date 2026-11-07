@@ -355,6 +355,20 @@
   .legend span { display: inline-flex; align-items: center; gap: 6px; }
   .legend i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
 
+  /* 전체 화면 페이지(급여/인건비): 모달 위에 모달을 띄울 수 있도록 z-index를 모달(2500)보다 낮게 둡니다 */
+  .page-overlay { position: fixed; inset: 0; z-index: 1800; overflow-y: auto; background: var(--void); padding: 22px 18px 70px; }
+  .page-box { max-width: 1120px; margin: 0 auto; }
+  .page-box h3 { margin: 0; font-size: 20px; font-weight: 700; color: var(--danger); }
+  .labour-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 10px 0 12px; }
+  .labour-card { background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 10px; padding: 12px 14px; }
+  .labour-card .lc-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .labour-card .lc-value { font-size: 20px; font-weight: 700; }
+  .labour-card .lc-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  .labour-settings { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+  .labour-settings label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 3px; }
+  .labour-settings input, .labour-day-input { width: 92px; text-align: right; }
+  .labour-ok { color: #22c55e; font-weight: 700; }
+  .labour-over { color: var(--danger, #ef4444); font-weight: 700; }
   .modal-overlay { position: fixed; inset: 0; background: rgba(5, 8, 12, 0.72); display: flex; align-items: center; justify-content: center; z-index: 2500; backdrop-filter: blur(3px); }
   .modal-box {
     background: var(--panel-solid); border-radius: 12px; padding: 26px 30px; max-width: 560px; width: 90%;
@@ -829,6 +843,17 @@ const I18N = {
     auth_company_code: "회사 코드", company_code_title: "직원 로그인 회사 코드", company_code_hint: "직원은 이 코드(또는 아래 전용 링크)로 직원 로그인을 합니다.",
     company_code_copy_link: "직원 로그인 링크 복사", company_code_copied: "복사되었습니다",
     admin_col_code: "회사 코드", admin_code_invalid: "회사 코드는 영문/숫자/하이픈 3~20자여야 합니다.",
+    labour_back: "← 돌아가기", labour_settings_title: "인건비 목표 설정", labour_default_target: "기본 목표 인건비율 (%)",
+    labour_week_target: "이번 주 목표 (%, 비우면 기본값)", labour_oncost: "추가 비용 (%)",
+    labour_oncost_hint: "휴가 적립, KiwiSaver 고용주 부담, ACC 등을 인건비에 더해서 계산할 비율입니다. 모르면 0으로 두세요.",
+    labour_save: "매출/목표 저장", labour_saved: "저장되었습니다.", labour_unsaved: "저장하지 않은 변경이 있습니다.", labour_save_failed: "저장에 실패했습니다. 입력값(0 이상 숫자, 목표 1~100%)을 확인해 주세요.",
+    labour_card_cost: "예상 인건비 (추가 비용 포함)", labour_card_required: "목표 달성에 필요한 매출", labour_card_required_sub: "인건비 ÷ 목표 {pct}%",
+    labour_card_sales: "이번 주 매출", labour_card_sales_days: "요일별 매출의 합계", labour_card_sales_input: "주 합계 직접 입력",
+    labour_card_pct_sched: "예상 인건비율 (스케줄 기준)", labour_card_pct_actual: "실제 인건비율 (클락인 기준)",
+    labour_enter_sales: "매출을 입력하면 계산됩니다", labour_target_word: "목표 {pct}%", labour_within: "목표 이내", labour_over: "목표 초과",
+    labour_col_sales: "매출 ($)", labour_col_pct_sched: "예상 %", labour_col_pct_actual: "실제 %", labour_col_required: "필요 매출",
+    labour_by_dept: "부서별 비용", labour_col_dept: "부서", labour_col_share: "비중", labour_dept_note: "부서별 매출은 따로 입력하지 않으므로, 부서별로는 금액과 전체 중 비중만 보여줍니다.",
+    labour_leave_note: "※ 유급 리브 지급분이 포함됩니다 (리브는 일한 시간이 0이어도 지급액이 잡힙니다).",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1261,6 +1286,17 @@ const I18N = {
     auth_company_code: "Company Code", company_code_title: "Employee login company code", company_code_hint: "Employees log in with this code (or the dedicated link below).",
     company_code_copy_link: "Copy employee login link", company_code_copied: "Copied",
     admin_col_code: "Company Code", admin_code_invalid: "Company code must be 3-20 characters: letters, numbers or hyphen.",
+    labour_back: "← Back", labour_settings_title: "Labour Cost Target Settings", labour_default_target: "Default target labour % ",
+    labour_week_target: "This week's target (%, blank = default)", labour_oncost: "On-costs (%)",
+    labour_oncost_hint: "Percentage added on top of wages for leave accrual, employer KiwiSaver, ACC, etc. Leave at 0 if unsure.",
+    labour_save: "Save sales & targets", labour_saved: "Saved.", labour_unsaved: "You have unsaved changes.", labour_save_failed: "Save failed. Check the numbers (sales 0 or more, target 1-100%).",
+    labour_card_cost: "Estimated labour cost (incl. on-costs)", labour_card_required: "Sales needed to hit the target", labour_card_required_sub: "Labour cost / target {pct}%",
+    labour_card_sales: "Sales this week", labour_card_sales_days: "Sum of daily sales", labour_card_sales_input: "Enter weekly total",
+    labour_card_pct_sched: "Estimated labour % (scheduled)", labour_card_pct_actual: "Actual labour % (clock-ins)",
+    labour_enter_sales: "Enter sales to calculate", labour_target_word: "Target {pct}%", labour_within: "Within target", labour_over: "Over target",
+    labour_col_sales: "Sales ($)", labour_col_pct_sched: "Est. %", labour_col_pct_actual: "Actual %", labour_col_required: "Sales needed",
+    labour_by_dept: "Cost by Department", labour_col_dept: "Department", labour_col_share: "Share", labour_dept_note: "Sales are not entered per department, so only the amount and its share of the total are shown.",
+    labour_leave_note: "* Includes paid leave pay (leave is paid even when worked hours are 0).",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -1946,6 +1982,10 @@ async function checkAuthAndInit() {
     document.getElementById("manager-menu-btn").style.display = (me.role === "owner" || me.role === "manager") ? "inline-block" : "none";
     hideAuthScreen();
     await initAppData();
+    // #/payroll/<주> 주소로 들어오면(새로고침/즐겨찾기) 급여 페이지를 바로 엽니다.
+    if (location.hash.startsWith("#/payroll") && (me.role === "owner" || me.role === "manager")) {
+      showPayrollPage(location.hash.split("/")[2] || undefined);
+    }
     return;
   }
 
@@ -3823,6 +3863,246 @@ async function showEmployeePinsPage() {
   document.body.appendChild(overlay);
 }
 
+function closePayrollPage() {
+  const el = document.getElementById("payroll-page");
+  if (el) el.remove();
+  try {
+    if (location.hash.startsWith("#/payroll")) history.replaceState(null, "", location.pathname + location.search);
+  } catch (e) {}
+}
+window.addEventListener("popstate", () => {
+  // 브라우저 뒤로 가기/앞으로 가기: 주소에 맞게 급여 페이지를 닫거나 엽니다.
+  const el = document.getElementById("payroll-page");
+  if (location.hash.startsWith("#/payroll")) {
+    if (!el && currentCompany) showPayrollPage(location.hash.split("/")[2] || undefined);
+  } else if (el) {
+    el.remove();
+  }
+});
+
+// ---- 인건비 목표 비율 섹션 ----
+function fmtMoney(v) { return v == null ? "—" : "$" + Number(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+function fmtPct(v) { return v == null ? "—" : v.toFixed(1) + "%"; }
+
+function buildLabourSection(box, data, weekKey) {
+  const lab = data.labour || {default_target_pct: 30, week_target_override: null, oncost_pct: 0, sales_total_input: null, days: {}};
+  const ctx = {
+    defaultTarget: lab.default_target_pct,
+    weekTarget: lab.week_target_override,        // null이면 기본값 사용
+    oncost: lab.oncost_pct,
+    totalInput: lab.sales_total_input,
+    days: {},
+    dirty: false,
+  };
+  DAYS.forEach(d => { ctx.days[d] = (lab.days && lab.days[d] && lab.days[d].sales != null) ? lab.days[d].sales : null; });
+
+  const target = () => (ctx.weekTarget != null ? ctx.weekTarget : ctx.defaultTarget);
+  const withOncost = (cost) => (cost || 0) * (1 + (ctx.oncost || 0) / 100);
+  const daySum = () => { const vals = DAYS.map(d => ctx.days[d]).filter(v => v != null); return vals.length ? vals.reduce((a, b) => a + b, 0) : null; };
+  const salesTotal = () => { const s = daySum(); return s != null ? s : ctx.totalInput; };
+  const pctOf = (cost, sales) => (sales ? withOncost(cost) / sales * 100 : null);
+  const requiredOf = (cost) => (target() ? withOncost(cost) / (target() / 100) : null);
+  const colorClass = (pct) => (pct == null ? "" : (pct <= target() ? "labour-ok" : "labour-over"));
+
+  // 요약 카드
+  const cards = document.createElement("div");
+  cards.className = "labour-cards";
+  box.appendChild(cards);
+
+  // 설정 줄
+  const settings = document.createElement("div");
+  settings.className = "labour-settings";
+  settings.innerHTML = `
+    <div><label>${escapeHtml(t("labour_default_target"))}</label><input id="lab-default-target" type="number" min="1" max="100" step="0.5"></div>
+    <div><label>${escapeHtml(t("labour_week_target"))}</label><input id="lab-week-target" type="number" min="1" max="100" step="0.5" style="width:120px;"></div>
+    <div><label>${escapeHtml(t("labour_oncost"))}</label><input id="lab-oncost" type="number" min="0" max="100" step="0.5"></div>
+    <div style="flex:1; min-width:200px; font-size:11px; color:var(--text-muted);">${escapeHtml(t("labour_oncost_hint"))}</div>
+    <div style="text-align:right;">
+      <button class="btn-ghost btn-sm" id="lab-save">${escapeHtml(t("labour_save"))}</button>
+      <div id="lab-status" style="font-size:11px; margin-top:4px; min-height:14px; color:var(--text-muted);"></div>
+    </div>`;
+  box.appendChild(settings);
+  const inDefault = settings.querySelector("#lab-default-target");
+  const inWeek = settings.querySelector("#lab-week-target");
+  const inOncost = settings.querySelector("#lab-oncost");
+  const status = settings.querySelector("#lab-status");
+  inDefault.value = ctx.defaultTarget;
+  inWeek.value = ctx.weekTarget != null ? ctx.weekTarget : "";
+  inWeek.placeholder = String(ctx.defaultTarget);
+  inOncost.value = ctx.oncost;
+
+  // 요일별 표
+  const dayTitle = document.createElement("div");
+  dayTitle.style.cssText = "font-weight:600; font-size:13px; margin-bottom:6px;";
+  dayTitle.textContent = t("payroll_by_day_title");
+  box.appendChild(dayTitle);
+  const dayTable = document.createElement("table");
+  dayTable.style.cssText = "width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:6px;";
+  dayTable.innerHTML = `
+    <thead><tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
+      <th style="padding:5px 6px;">${t("payroll_col_day")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_cost")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_hours")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_cost")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("labour_col_sales")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("labour_col_pct_sched")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("labour_col_pct_actual")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("labour_col_required")}</th>
+      <th style="padding:5px 6px;"></th>
+    </tr></thead>`;
+  const dayTbody = document.createElement("tbody");
+  const dayCells = {};
+  DAYS.forEach(day => {
+    const d = data.days[day];
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid var(--line)";
+    const extraTag = d.is_public_holiday ? `<span style="color:var(--closing2); font-weight:600;">${t("payroll_extra_badge")}</span>` : "";
+    tr.innerHTML = `
+      <td style="padding:5px 6px;">${DAY_LABEL[day]} <span style="font-size:10px; color:var(--text-muted);">${escapeHtml(formatDateNZ(addDaysToKey(weekKey, DAYS.indexOf(day))))}</span></td>
+      <td style="padding:5px 6px; text-align:right;">${d.scheduled_hours.toFixed(1)}h</td>
+      <td style="padding:5px 6px; text-align:right;">$${d.scheduled_cost.toFixed(2)}</td>
+      <td style="padding:5px 6px; text-align:right;">${d.actual_hours.toFixed(1)}h</td>
+      <td style="padding:5px 6px; text-align:right;">$${d.actual_cost.toFixed(2)}</td>
+      <td style="padding:5px 6px; text-align:right;"><input class="labour-day-input" type="number" min="0" step="0.01" data-day="${day}"></td>
+      <td style="padding:5px 6px; text-align:right;" data-cell="pct-sched"></td>
+      <td style="padding:5px 6px; text-align:right;" data-cell="pct-actual"></td>
+      <td style="padding:5px 6px; text-align:right; color:var(--text-muted);" data-cell="required"></td>
+      <td style="padding:5px 6px;">${extraTag}</td>`;
+    const input = tr.querySelector("input");
+    input.value = ctx.days[day] != null ? ctx.days[day] : "";
+    input.oninput = () => {
+      const v = input.value === "" ? null : parseFloat(input.value);
+      ctx.days[day] = (v == null || isNaN(v) || v < 0) ? null : v;
+      markDirty(); refresh();
+    };
+    dayCells[day] = {
+      pctSched: tr.querySelector('[data-cell="pct-sched"]'),
+      pctActual: tr.querySelector('[data-cell="pct-actual"]'),
+      required: tr.querySelector('[data-cell="required"]'),
+    };
+    dayTbody.appendChild(tr);
+  });
+  dayTable.appendChild(dayTbody);
+  box.appendChild(dayTable);
+  const leaveNote = document.createElement("div");
+  leaveNote.style.cssText = "font-size:11px; color:var(--text-muted); margin-bottom:16px;";
+  leaveNote.textContent = t("labour_leave_note");
+  box.appendChild(leaveNote);
+
+  // 부서별 비용
+  const empDept = {};
+  (window._employees || []).forEach(e => { empDept[e.id] = e.department || ""; });
+  const deptRows = {};
+  data.employees.forEach(r => {
+    const dp = empDept[r.employee_id] || "";
+    deptRows[dp] = deptRows[dp] || {sched: 0, actual: 0};
+    deptRows[dp].sched += r.weekly_pay || 0;
+    deptRows[dp].actual += r.weekly_actual_pay || 0;
+  });
+  const deptKeys = Object.keys(deptRows).sort((a, b) => (deptRows[b].sched - deptRows[a].sched));
+  if (deptKeys.length) {
+    const dt = document.createElement("div");
+    dt.style.cssText = "font-weight:600; font-size:13px; margin-bottom:6px;";
+    dt.textContent = t("labour_by_dept");
+    box.appendChild(dt);
+    const deptTable = document.createElement("table");
+    deptTable.style.cssText = "width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:6px;";
+    deptTable.innerHTML = `<thead><tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
+      <th style="padding:5px 6px;">${t("labour_col_dept")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_cost")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("labour_col_share")}</th>
+      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_cost")}</th></tr></thead>`;
+    const dtb = document.createElement("tbody");
+    const schedTotal = deptKeys.reduce((a, k) => a + deptRows[k].sched, 0);
+    deptKeys.forEach(k => {
+      const r = deptRows[k];
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid var(--line)";
+      tr.innerHTML = `<td style="padding:5px 6px;">${escapeHtml(DEPARTMENT_LABEL[k] || k || "—")}</td>
+        <td style="padding:5px 6px; text-align:right;">${fmtMoney(r.sched)}</td>
+        <td style="padding:5px 6px; text-align:right; color:var(--text-muted);">${schedTotal ? (r.sched / schedTotal * 100).toFixed(1) + "%" : "—"}</td>
+        <td style="padding:5px 6px; text-align:right;">${fmtMoney(r.actual)}</td>`;
+      dtb.appendChild(tr);
+    });
+    deptTable.appendChild(dtb);
+    box.appendChild(deptTable);
+    const dn = document.createElement("div");
+    dn.style.cssText = "font-size:11px; color:var(--text-muted); margin-bottom:16px;";
+    dn.textContent = t("labour_dept_note");
+    box.appendChild(dn);
+  }
+
+  function markDirty() { ctx.dirty = true; status.textContent = t("labour_unsaved"); status.style.color = "#f59e0b"; }
+
+  function refresh() {
+    const schedCost = data.total_scheduled_cost, actualCost = data.total_actual_cost;
+    const total = salesTotal();
+    const pSched = pctOf(schedCost, total), pActual = pctOf(actualCost, total);
+    const actualAvailable = actualCost > 0;
+    const hasDaySales = daySum() != null;
+    const cardSales = `
+      <div class="labour-card"><div class="lc-label">${escapeHtml(t("labour_card_sales"))}</div>
+        <div class="lc-value">${total != null ? fmtMoney(total) : "—"}</div>
+        <div class="lc-sub">${hasDaySales ? escapeHtml(t("labour_card_sales_days")) : ""}</div>
+        <div style="margin-top:6px;"><input id="lab-total-input" type="number" min="0" step="0.01" style="width:130px; text-align:right;" placeholder="${escapeHtml(t("labour_card_sales_input"))}" ${hasDaySales ? "disabled" : ""} value="${!hasDaySales && ctx.totalInput != null ? ctx.totalInput : ""}"></div></div>`;
+    const tgt = target();
+    cards.innerHTML = `
+      <div class="labour-card"><div class="lc-label">${escapeHtml(t("labour_card_cost"))}</div>
+        <div class="lc-value">${fmtMoney(withOncost(schedCost))}</div>
+        <div class="lc-sub">${escapeHtml(t("labour_target_word").replace("{pct}", tgt))}</div></div>
+      <div class="labour-card"><div class="lc-label">${escapeHtml(t("labour_card_required"))}</div>
+        <div class="lc-value">${fmtMoney(requiredOf(schedCost))}</div>
+        <div class="lc-sub">${escapeHtml(t("labour_card_required_sub").replace("{pct}", tgt))}</div></div>
+      ${cardSales}
+      <div class="labour-card"><div class="lc-label">${escapeHtml(t("labour_card_pct_sched"))}</div>
+        <div class="lc-value ${colorClass(pSched)}">${pSched == null ? "—" : fmtPct(pSched)}</div>
+        <div class="lc-sub">${pSched == null ? escapeHtml(t("labour_enter_sales")) : escapeHtml(pSched <= tgt ? t("labour_within") : t("labour_over"))}</div></div>
+      <div class="labour-card"><div class="lc-label">${escapeHtml(t("labour_card_pct_actual"))}</div>
+        <div class="lc-value ${colorClass(actualAvailable ? pActual : null)}">${actualAvailable && pActual != null ? fmtPct(pActual) : "—"}</div>
+        <div class="lc-sub">${escapeHtml(fmtMoney(withOncost(actualCost)))}</div></div>`;
+    const totalInput = cards.querySelector("#lab-total-input");
+    if (totalInput && !hasDaySales) {
+      totalInput.oninput = () => {
+        const v = totalInput.value === "" ? null : parseFloat(totalInput.value);
+        ctx.totalInput = (v == null || isNaN(v) || v < 0) ? null : v;
+        markDirty();
+        // 입력칸을 다시 그리지 않고 아래 카드 숫자만 갱신하기 위해 값만 반영하고 살짝 늦게 갱신
+        clearTimeout(totalInput._t); totalInput._t = setTimeout(refresh, 700);
+      };
+    }
+    DAYS.forEach(day => {
+      const dd = data.days[day];
+      const s = ctx.days[day];
+      const ps = pctOf(dd.scheduled_cost, s), pa = (dd.actual_cost > 0) ? pctOf(dd.actual_cost, s) : null;
+      dayCells[day].pctSched.innerHTML = ps == null ? "—" : `<span class="${colorClass(ps)}">${fmtPct(ps)}</span>`;
+      dayCells[day].pctActual.innerHTML = pa == null ? "—" : `<span class="${colorClass(pa)}">${fmtPct(pa)}</span>`;
+      dayCells[day].required.textContent = fmtMoney(requiredOf(dd.scheduled_cost));
+    });
+  }
+
+  inDefault.oninput = () => { const v = parseFloat(inDefault.value); if (!isNaN(v) && v >= 1 && v <= 100) { ctx.defaultTarget = v; inWeek.placeholder = String(v); markDirty(); refresh(); } };
+  inWeek.oninput = () => { const v = parseFloat(inWeek.value); ctx.weekTarget = (inWeek.value === "" || isNaN(v) || v < 1 || v > 100) ? null : v; markDirty(); refresh(); };
+  inOncost.oninput = () => { const v = parseFloat(inOncost.value); if (!isNaN(v) && v >= 0 && v <= 100) { ctx.oncost = v; markDirty(); refresh(); } };
+
+  settings.querySelector("#lab-save").onclick = async () => {
+    try {
+      await api("/api/labour-settings", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({target_pct: ctx.defaultTarget, oncost_pct: ctx.oncost})});
+      const days = {};
+      DAYS.forEach(d => { if (ctx.days[d] != null) days[d] = ctx.days[d]; });
+      await api(`/api/weeks/${weekKey}/labour`, {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({days, total: ctx.totalInput, target_pct: ctx.weekTarget})});
+      ctx.dirty = false;
+      status.textContent = t("labour_saved"); status.style.color = "#22c55e";
+    } catch (e) {
+      status.textContent = t("labour_save_failed"); status.style.color = "#ef4444";
+    }
+  };
+
+  refresh();
+}
+
 async function showPayrollPage(weekKey) {
   weekKey = weekKey || currentWeekKey;
   let data, shortfalls;
@@ -3838,13 +4118,23 @@ async function showPayrollPage(weekKey) {
   const shortfallByEmp = {};
   (shortfalls || []).forEach(s => { shortfallByEmp[s.employee_id] = s; });
 
+  // 전체 화면 페이지: 작은 창이 아니라 화면 전체를 쓰고, 주소(#/payroll/주)와 뒤로 가기를 지원합니다.
+  const hadPage = !!document.getElementById("payroll-page");
   const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+  overlay.id = "payroll-page";
+  overlay.className = "page-overlay";
 
   const box = document.createElement("div");
-  box.className = "modal-box";
-  box.style.maxWidth = "900px";
+  box.className = "page-box";
+
+  const backRow = document.createElement("div");
+  backRow.style.cssText = "margin-bottom:10px;";
+  const backBtn = document.createElement("button");
+  backBtn.className = "btn-ghost btn-sm";
+  backBtn.textContent = t("labour_back");
+  backBtn.onclick = () => closePayrollPage();
+  backRow.appendChild(backBtn);
+  box.appendChild(backRow);
 
   const titleRow = document.createElement("div");
   titleRow.style.cssText = "display:flex; justify-content:space-between; align-items:flex-start;";
@@ -3903,44 +4193,8 @@ async function showPayrollPage(weekKey) {
   noteLine.textContent = tf("payroll_rounding_note", {n: data.rounding_minutes});
   box.appendChild(noteLine);
 
-  // 요일별 표
-  const dayTitle = document.createElement("div");
-  dayTitle.style.cssText = "font-weight:600; font-size:13px; margin-bottom:6px;";
-  dayTitle.textContent = t("payroll_by_day_title");
-  box.appendChild(dayTitle);
-
-  const dayTable = document.createElement("table");
-  dayTable.style.cssText = "width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:16px;";
-  const dayThead = document.createElement("thead");
-  dayThead.innerHTML = `
-    <tr style="text-align:left; border-bottom:1px solid var(--line-strong);">
-      <th style="padding:5px 6px;">${t("payroll_col_day")}</th>
-      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_hours")}</th>
-      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_sched_cost")}</th>
-      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_hours")}</th>
-      <th style="padding:5px 6px; text-align:right;">${t("payroll_col_actual_cost")}</th>
-      <th style="padding:5px 6px;"></th>
-    </tr>
-  `;
-  dayTable.appendChild(dayThead);
-  const dayTbody = document.createElement("tbody");
-  DAYS.forEach(day => {
-    const d = data.days[day];
-    const tr = document.createElement("tr");
-    tr.style.borderBottom = "1px solid var(--line);";
-    const extraTag = d.is_public_holiday ? `<span style="color:var(--closing2); font-weight:600;">${t("payroll_extra_badge")}</span>` : "";
-    tr.innerHTML = `
-      <td style="padding:5px 6px;">${DAY_LABEL[day]}</td>
-      <td style="padding:5px 6px; text-align:right;">${d.scheduled_hours.toFixed(1)}h</td>
-      <td style="padding:5px 6px; text-align:right;">$${d.scheduled_cost.toFixed(2)}</td>
-      <td style="padding:5px 6px; text-align:right;">${d.actual_hours.toFixed(1)}h</td>
-      <td style="padding:5px 6px; text-align:right;">$${d.actual_cost.toFixed(2)}</td>
-      <td style="padding:5px 6px;">${extraTag}</td>
-    `;
-    dayTbody.appendChild(tr);
-  });
-  dayTable.appendChild(dayTbody);
-  box.appendChild(dayTable);
+  // 인건비 목표 비율 + 요일별 표(매출 입력 포함) + 부서별 비용
+  buildLabourSection(box, data, weekKey);
 
   // 직원별 표
   const empHeaderRow = document.createElement("div");
@@ -4037,12 +4291,18 @@ async function showPayrollPage(weekKey) {
   const closeBtn = document.createElement("button");
   closeBtn.className = "btn-ghost";
   closeBtn.textContent = t("btn_close");
-  closeBtn.onclick = () => overlay.remove();
+  closeBtn.onclick = () => closePayrollPage();
   closeRow.appendChild(closeBtn);
   box.appendChild(closeRow);
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+  // 주소 반영: 메뉴에서 처음 열면 새 기록으로(뒤로 가기 가능), 주를 넘길 때는 같은 기록을 덮어씁니다.
+  try {
+    const newHash = "#/payroll/" + weekKey;
+    if (hadPage || location.hash.startsWith("#/payroll")) history.replaceState(null, "", location.pathname + location.search + newHash);
+    else history.pushState(null, "", location.pathname + location.search + newHash);
+  } catch (e) {}
   return true;
 }
 
