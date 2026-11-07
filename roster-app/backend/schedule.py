@@ -21,7 +21,7 @@ from helpers import (
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
     _weekly_hour_cap, BEGINNER_MAX_LEVEL, _crew_rule_warnings, _assignment_duration_hours, PAYROLL_BREAK_HOURS,
-    _fully_resigned_for_week, _resign_forced_days, _not_started_for_week, _prestart_forced_days, _nz_today,
+    _fully_resigned_for_week, _resign_forced_days, _hire_date_obj, _leave_info_by_day, HOLIDAY_OWD_RATIO, _not_started_for_week, _prestart_forced_days, _nz_today,
     REGIONS, _national_holidays_for_year, _regional_anniversary_for_year,
 )
 from payroll import _credit_alt_holidays_for_week, _accrue_leave_for_week
@@ -1182,34 +1182,39 @@ def _recent_shift_counts(state, employee_id, week_key, window=RECENT_FAIRNESS_WI
 @schedule_bp.route("/api/weeks/<week_key>/weekday-frequency", methods=["GET"])
 @require_login
 def get_weekday_frequency(company_id, week_key):
-    """이 주(week_key)를 기준으로, 각 직원이 각 요일에 "몇 주 연속으로" 근무했는지
-    (근무유형은 상관없이) 셉니다. 이번 주부터 거슬러 올라가며 세다가, 그 요일에
-    근무하지 않은(쉬거나 배정이 없는) 주를 만나면 그 즉시 스트릭이 끊깁니다.
-    최대 13주(신법 OWD 판정 기간)까지만 셉니다. 순전히 참고용 정보이며, 스케줄 생성 로직에는 전혀
-    영향을 주지 않습니다(하드 규칙도 소프트 규칙도 아님 — 화면에 숫자로만 표시)."""
+    """각 직원이 각 요일에 '직전 12주(이번 주 제외)' 중 몇 주를 근무했는지(또는 승인된 리브였는지)를
+    셉니다. 신법 OWD 판정(직전 13주 중 같은 요일 50% 이상)과 같은 기준이며, 연속 여부는
+    따지지 않습니다. 이번 주 몫은 화면에서 현재 편집 중인 스케줄로 더해서(실시간) 13주 기준을
+    완성합니다. 입사 전 주는 분모에서 뺍니다. 순전히 참고용 표시이고 스케줄 생성에는 영향이 없습니다."""
     state = load_state(company_id)
     y, m, d = map(int, week_key.split("-"))
     base_monday = date(y, m, d)
 
-    this_week = state["weeks"].get(week_key)
-    this_week_assignments = (this_week.get("schedule") or {}).get("assignments") if this_week else None
-    pairs = set()
-    if this_week_assignments:
-        for a in this_week_assignments:
-            pairs.add((a["employee_id"], a["day"]))
+    # 주별 근무 집합을 한 번만 만들어 둡니다: {주 시작일: {(직원, 요일)}}
+    worked_by_week = {}
+    for i in range(1, FREQUENCY_WINDOW_WEEKS):
+        wk = (base_monday - timedelta(weeks=i)).isoformat()
+        week = state["weeks"].get(wk)
+        asg = ((week or {}).get("schedule") or {}).get("assignments") or []
+        worked_by_week[wk] = {(a["employee_id"], a["day"]) for a in asg}
 
-    counts = {}  # employee_id -> {day: streak}
-    for (emp_id, day) in pairs:
-        streak = 0
-        for i in range(FREQUENCY_WINDOW_WEEKS):
-            wk_key = (base_monday - timedelta(weeks=i)).isoformat()
-            if _worked_that_weekday(state, emp_id, day, wk_key):
-                streak += 1
-            else:
-                break
-        counts.setdefault(emp_id, {})[day] = streak
+    counts = {}
+    for e in state["employees"]:
+        hire = _hire_date_obj(e)
+        per_day = {day: {"hit": 0, "denom": 0} for day in DAYS}
+        for i in range(1, FREQUENCY_WINDOW_WEEKS):
+            monday = base_monday - timedelta(weeks=i)
+            if hire and monday + timedelta(days=6) < hire:
+                continue  # 입사 전 주는 분모에서 제외
+            wk = monday.isoformat()
+            leave_days = _leave_info_by_day(e, wk)
+            for day in DAYS:
+                per_day[day]["denom"] += 1
+                if (e["id"], day) in worked_by_week[wk] or day in leave_days:
+                    per_day[day]["hit"] += 1
+        counts[e["id"]] = per_day
 
-    return jsonify({"window": FREQUENCY_WINDOW_WEEKS, "highlight_at": FREQUENCY_HIGHLIGHT_THRESHOLD, "counts": counts})
+    return jsonify({"window": FREQUENCY_WINDOW_WEEKS, "min_ratio": HOLIDAY_OWD_RATIO, "counts": counts})
 
 @schedule_bp.route("/api/pattern-suggestions", methods=["GET"])
 @require_login
