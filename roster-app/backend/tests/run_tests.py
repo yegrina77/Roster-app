@@ -1278,6 +1278,44 @@ def _t_isolated_rule():
     assert "model.Add(iso >= work_expr[day] - prev_worked - nxt)" in src  # 부등식(소프트) — 등식/하드 아님
 
 
+@test("요일 배지(OWD 기준) - 직전 12주 근무/리브 수를 연속 여부와 무관하게 세고, 입사 전 주는 분모에서 뺀다")
+def _t_weekday_badge():
+    import schedule as S, tempfile
+    old = H.DATA_DIR
+    H.DATA_DIR = tempfile.mkdtemp()
+    try:
+        auth = {"companies": {"c1": {"id": "c1", "name": "T", "email": "t@x.com", "company_code": "TEST-1"}}}
+        H.save_auth(auth)
+        st = H.load_state("c1")
+        st["employees"] = [{"id": "e1", "name": "A"}, {"id": "e2", "name": "B", "hire_date": "2026-09-14"}]
+        base = date(2026, 11, 2)  # 조회 주(월요일)
+        st["weeks"] = {}
+        # e1: 직전 12주 중 1주(i=3)만 쉬고 나머지는 월요일 근무 -> 연속은 끊겼지만 11/12
+        for i in range(1, 13):
+            if i == 3:
+                continue
+            wk = (base - timedelta(weeks=i)).isoformat()
+            w = H.empty_week()
+            w["schedule"] = {"assignments": [{"employee_id": "e1", "day": "mon", "shift_type": "x"},
+                                              {"employee_id": "e2", "day": "mon", "shift_type": "x"}]}
+            st["weeks"][wk] = w
+        H.save_state("c1", st)
+        c = A.app.test_client()
+        with c.session_transaction() as sess:
+            sess["company_id"] = "c1"
+        r = c.get("/api/weeks/2026-11-02/weekday-frequency")
+        assert r.status_code == 200, r.get_data(as_text=True)
+        j = r.get_json()
+        assert j["window"] == 13 and j["min_ratio"] == 0.5
+        e1 = j["counts"]["e1"]["mon"]
+        assert e1 == {"hit": 11, "denom": 12}, e1
+        assert j["counts"]["e1"]["tue"] == {"hit": 0, "denom": 12}
+        e2 = j["counts"]["e2"]["mon"]  # 2026-09-14 입사: 그 주(9/14)부터 분모에 포함 -> 직전 7주(9/14~10/26)
+        assert e2["denom"] == 7, e2
+    finally:
+        H.DATA_DIR = old
+
+
 if __name__ == "__main__":
     print(f"RosterFlow 회귀 테스트 실행 중... (OR-Tools 설치됨: {HAS_ORTOOLS})\n")
     ok = run_all()
