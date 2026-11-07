@@ -342,7 +342,8 @@
     position: absolute; top: 3px; right: 4px; font-size: 9px; padding: 1px 5px; border-radius: 999px;
     background: rgba(255,255,255,0.12); color: var(--text-muted); font-family: "JetBrains Mono", monospace;
   }
-  .freq-badge.high { background: var(--danger); color: #fff; font-weight: 700; }
+  .freq-badge.low { background: rgba(245,158,11,0.25); color: #f59e0b; font-weight: 700; }
+  .freq-badge.corner { top: 2px; right: 3px; opacity: 0.8; pointer-events: auto; }
   .off-block {
     display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
     border-radius: 5px; padding: 6px; background: var(--off-bg); color: var(--off-text); cursor: pointer;
@@ -955,7 +956,8 @@ const I18N = {
     btn_leave_add: "추가", modal_leave_range_invalid: "종료일은 시작일보다 빠를 수 없습니다.",
     modal_leave_end_in_past: "종료일이 이미 지난 날짜입니다. 이미 끝난 휴가는 자동으로 목록에서 사라지니, 오늘 이후 날짜로 입력해주세요.",
     leave_label: "LEAVE",
-    freq_badge_tooltip: "이번 주를 포함해 연속으로 이 요일에 근무한 주 수 (중간에 쉰 주가 있으면 초기화됨 - 참고용, 강제 아님)",
+    freq_badge_tooltip: "최근 13주(이번 주 포함) 중 이 요일에 근무했거나 리브였던 주: {hit}/{denom}. 절반(50%) 미만이면 주황색 — 공휴일에 평소 근무일(OWD)로 인정되지 않을 수 있습니다. 참고용입니다.",
+    freq_badge_agreed: "계약", freq_badge_agreed_tip: "합의된 근무요일입니다 (평소 근무일 판정 불필요)",
     ph_title: "Public Holidays", btn_add_generic: "추가",
     ph_desc: "1년치 공휴일을 미리 등록해두면, 그 날짜가 포함된 주로 이동할 때 자동으로 알려드리고, 직원별로 뉴질랜드 노동법 기준 적용 항목을 확인할 수 있습니다.",
     ph_policy_btn: "⚙️ 판정 기준 설정",
@@ -1386,7 +1388,8 @@ const I18N = {
     btn_leave_add: "Add", modal_leave_range_invalid: "The end date cannot be before the start date.",
     modal_leave_end_in_past: "The end date is already in the past. Finished leave requests are automatically removed from the list, so please pick a date today or later.",
     leave_label: "LEAVE",
-    freq_badge_tooltip: "Consecutive weeks (including this one) worked on this weekday - resets if a week off breaks the streak. Informational only, not enforced.",
+    freq_badge_tooltip: "Weeks worked or on leave on this weekday in the last 13 weeks (including this one): {hit}/{denom}. Orange = under 50%, so a public holiday on this day may not count as an otherwise working day. Informational only.",
+    freq_badge_agreed: "Agreed", freq_badge_agreed_tip: "Agreed working day (no 13-week test needed)",
     ph_title: "Public Holidays", btn_add_generic: "Add",
     ph_desc: "Register a year's worth of public holidays in advance. When you navigate to a week containing one, you'll be notified automatically and can check which NZ labour law entitlement applies to each employee.",
     ph_policy_btn: "⚙️ Set Determination Rule",
@@ -7194,6 +7197,37 @@ async function showPublicHolidayPolicyModal() {
   document.body.appendChild(overlay);
 }
 
+// 요일 옆 'N/13' 배지: 최근 13주(이번 주 포함) 중 이 요일에 근무했거나 리브였던 주 수.
+// 서버가 직전 12주 분을 주고, 이번 주 분은 화면에서 현재 편집 중인 스케줄로 더합니다(실시간).
+// 신법 OWD 판정과 같은 기준이며, 50% 미만이면 다른 색으로 표시합니다. 참고용이라 배정을 막지 않습니다.
+function weekdayFreqBadgeHtml(emp, empId, day, positionClass) {
+  if (!isFeatureEnabled("weekday_frequency") || !emp) return "";
+  const agreed = (emp.agreed_days || []);
+  if (agreed.length && emp.employment_type !== "casual") {
+    // 합의된 근무요일이 있는 정규 직원은 그 요일이 곧 OWD라 13주 판정이 필요 없습니다.
+    return agreed.includes(day)
+      ? `<span class="freq-badge ${positionClass}" title="${escapeHtml(t("freq_badge_agreed_tip"))}">${escapeHtml(t("freq_badge_agreed"))}</span>`
+      : "";
+  }
+  const base = ((window._weekdayFrequency || {})[empId] || {})[day];
+  if (!base) return "";
+  let hit = base.hit, denom = base.denom;
+  if (!isBeforeStartOnDay(emp, day)) {
+    denom += 1;
+    const worked = currentAssignments.some(a => a.employee_id === empId && a.day === day);
+    const lr = (emp.leave_requests || []).find(l => {
+      const dt = addDaysToKey(currentWeekKey, DAYS.indexOf(day));
+      return (l.status === undefined || l.status === "approved") && dt >= l.start_date && dt <= l.end_date;
+    });
+    if (worked || lr) hit += 1;
+  }
+  if (denom <= 0) return "";
+  const minRatio = window._weekdayFrequencyMinRatio != null ? window._weekdayFrequencyMinRatio : 0.5;
+  const low = (hit / denom) < minRatio;
+  const tip = tf("freq_badge_tooltip", {hit, denom});
+  return `<span class="freq-badge ${positionClass}${low ? " low" : ""}" title="${escapeHtml(tip)}">${hit}/${denom}</span>`;
+}
+
 async function refreshWeekdayFrequency() {
   if (!isFeatureEnabled("weekday_frequency")) {
     window._weekdayFrequency = {};
@@ -7202,8 +7236,8 @@ async function refreshWeekdayFrequency() {
   try {
     const data = await api(`/api/weeks/${currentWeekKey}/weekday-frequency`);
     window._weekdayFrequency = data.counts || {};
-    window._weekdayFrequencyThreshold = data.highlight_at || 5;
-    window._weekdayFrequencyWindow = data.window || 8;
+    window._weekdayFrequencyWindow = data.window || 13;
+    window._weekdayFrequencyMinRatio = data.min_ratio != null ? data.min_ratio : 0.5;
   } catch (e) {
     window._weekdayFrequency = {};
   }
@@ -8338,12 +8372,7 @@ function buildCalendarGrid() {
             block.draggable = !weekLocked;
             const timeLabel = (a.custom_start && a.custom_end) ? `${a.custom_start}-${a.custom_end}` : getShiftTimeRange(a.shift_type);
             const sourceLabel = a.source === "manual" ? t("manual_placed") : t("auto_placed");
-            const freqWindow = window._weekdayFrequencyWindow || 8;
-            const freqCount = ((window._weekdayFrequency || {})[empId] || {})[day] || 0;
-            const freqHigh = freqCount >= (window._weekdayFrequencyThreshold || 5);
-            const freqBadgeHtml = isFeatureEnabled("weekday_frequency")
-              ? `<span class="freq-badge${freqHigh ? " high" : ""}" title="${t("freq_badge_tooltip")}">${freqCount}/${freqWindow}</span>`
-              : "";
+            const freqBadgeHtml = weekdayFreqBadgeHtml(emp, empId, day, "in-block");
             block.innerHTML = `
               ${freqBadgeHtml}
               ${(empDeptById[empId] && SHIFT_DEPT[a.shift_type] && SHIFT_DEPT[a.shift_type] !== empDeptById[empId]) ? `<span title="${escapeHtml(t("help_shift_tip"))}">↪ </span>` : ""}${SHIFT_LABEL[a.shift_type]}<span class="shift-time">${timeLabel}</span><span class="shift-source">${sourceLabel}</span>
@@ -8364,6 +8393,15 @@ function buildCalendarGrid() {
             cell.appendChild(block);
           }
         });
+      }
+
+      // 근무 블록이 없는 칸(휴무/빈 칸/리브)에도 작은 배지를 보여줘서, 쉬는 날에도 이 요일이 몇 주 근무였는지 알 수 있게 합니다.
+      if (!isResignedDay && !isPrestartDay && !cell.querySelector(".shift-block")) {
+        const badge = weekdayFreqBadgeHtml(emp, empId, day, "corner");
+        if (badge) {
+          cell.style.position = "relative";
+          cell.insertAdjacentHTML("beforeend", badge);
+        }
       }
 
       grid.appendChild(cell);
