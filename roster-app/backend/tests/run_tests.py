@@ -1182,7 +1182,7 @@ def _t_resign():
     assert not H._is_resigned_listed({}, D(2026, 10, 20))
 
 
-@test("저장 스케줄 보관 - 10개 제한, 같은 내용 중복 제외, 지난 주 자동 삭제")
+@test("저장 스케줄 보관 - 5개 제한, 같은 내용 중복 제외, 지난 주 자동 삭제")
 def _t_history():
     import schedule as S
     st = {"weeks": {"2099-01-05": {}, "2020-01-06": {"schedule_history": [{"id": "x", "assignments": [1]}]}}}
@@ -1190,11 +1190,66 @@ def _t_history():
         S._snapshot_schedule(st, "2099-01-05", [{"employee_id": "a", "day": "mon", "shift_type": str(i)}], "save")
     S._snapshot_schedule(st, "2099-01-05", [{"employee_id": "a", "day": "mon", "shift_type": "11"}], "save")
     hist = st["weeks"]["2099-01-05"]["schedule_history"]
-    assert len(hist) == 10, len(hist)
-    assert hist[-1]["assignments"][0]["shift_type"] == "11" and hist[0]["assignments"][0]["shift_type"] == "2"
+    assert len(hist) == 5, len(hist)
+    assert hist[-1]["assignments"][0]["shift_type"] == "11" and hist[0]["assignments"][0]["shift_type"] == "7"
     assert st["weeks"]["2020-01-06"]["schedule_history"] == []
     S._snapshot_schedule(st, "2099-01-05", [], "before_reset")
-    assert len(st["weeks"]["2099-01-05"]["schedule_history"]) == 10
+    assert len(st["weeks"]["2099-01-05"]["schedule_history"]) == 5
+
+
+@test("자동 저장 - 저장은 되지만 '저장했던 스케줄' 보관에는 안 쌓이고, 저장 버튼은 쌓인다")
+def _t_autosave_history():
+    import tempfile
+    old = H.DATA_DIR
+    H.DATA_DIR = tempfile.mkdtemp()
+    try:
+        c = A.app.test_client()
+        r = c.post("/api/auth/register", json={"name": "AS Co", "contact_name": "t", "email": "as@x.com",
+                   "password": "Passw0rd!x1", "employee_limit": 5})
+        assert r.status_code in (200, 201), r.get_data()
+        cid = r.get_json()["id"]
+        with c.session_transaction() as s:
+            s["company_id"] = cid
+        wk = "2099-01-05"
+        asg = [{"employee_id": "e1", "employee_name": "E", "day": "mon", "shift_type": "foh_opening"}]
+        r = c.post(f"/api/weeks/{wk}/manual-adjust", json={"assignments": asg, "autosave": True})
+        assert r.status_code == 200, r.get_data()
+        assert c.get(f"/api/weeks/{wk}/schedule-history").get_json()["history"] == []
+        wk_data = c.get(f"/api/weeks/{wk}").get_json()
+        assert len(wk_data["schedule"]["assignments"]) == 1          # 저장 자체는 됨
+        r = c.post(f"/api/weeks/{wk}/manual-adjust", json={"assignments": asg})
+        hist = c.get(f"/api/weeks/{wk}/schedule-history").get_json()
+        assert len(hist["history"]) == 1 and hist["limit"] == 5
+    finally:
+        H.DATA_DIR = old
+
+
+@test("로그인 제한 - 5번 틀리면 10분 차단, 맞는 비밀번호도 차단 중엔 거부, 다른 IP는 영향 없음, 성공하면 초기화")
+def _t_login_limit():
+    import tempfile
+    old = H.DATA_DIR
+    H.DATA_DIR = tempfile.mkdtemp()
+    try:
+        c = A.app.test_client()
+        c.post("/api/auth/register", json={"name": "LL Co", "contact_name": "t", "email": "ll@x.com",
+               "password": "Passw0rd!x1", "employee_limit": 5})
+        hdr = {"X-Forwarded-For": "1.2.3.4"}
+        for i in range(4):
+            r = c.post("/api/auth/login", json={"email": "ll@x.com", "password": "wrong"}, headers=hdr)
+            assert r.status_code == 401
+        r = c.post("/api/auth/login", json={"email": "ll@x.com", "password": "Passw0rd!x1"}, headers=hdr)
+        assert r.status_code == 200                                      # 4번 틀린 뒤 성공 → 초기화
+        for i in range(5):
+            r = c.post("/api/auth/login", json={"email": "ll@x.com", "password": "wrong"}, headers=hdr)
+        assert r.status_code == 401
+        r = c.post("/api/auth/login", json={"email": "ll@x.com", "password": "Passw0rd!x1"}, headers=hdr)
+        assert r.status_code == 429 and r.get_json()["error_code"] == "login_locked", r.get_data()
+        r = c.post("/api/auth/login", json={"email": "ll@x.com", "password": "Passw0rd!x1"}, headers={"X-Forwarded-For": "9.9.9.9"})
+        assert r.status_code == 200                                      # 다른 IP는 영향 없음
+        r = c.post("/api/auth/login", json={"email": "nobody@x.com", "password": "x"}, headers={"X-Forwarded-For": "5.5.5.5"})
+        assert r.status_code == 401                                      # 없는 이메일도 실패로 집계
+    finally:
+        H.DATA_DIR = old
 
 
 @test("입사일 - 입사 전 주는 제외, 입사 주는 입사일 이전 요일만 강제 휴무")
