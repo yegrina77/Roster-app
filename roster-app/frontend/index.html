@@ -732,6 +732,7 @@
       <button class="btn-primary" id="publish-btn" onclick="publishWeek()" style="display:none; background:var(--cyan, #06b6d4);" data-i18n="btn_publish">📢 퍼블리시</button>
       <button class="btn-ghost" id="agreements-btn" onclick="showAgreementsStatus()" style="display:none;" data-i18n="btn_agreements">✅ 확인 현황</button>
       <button class="btn-ghost" id="save-manual-btn" onclick="saveManualAdjustments()" style="display:none;" data-i18n="btn_save_changes">변경사항 저장</button>
+      <span id="autosave-status" style="font-size:11px; color:var(--text-muted); margin-left:6px; min-height:14px;"></span>
       <button class="btn-ghost" id="reset-schedule-btn" onclick="resetWeekSchedule()" style="display:none;" data-i18n="btn_reset_schedule">🗑️ 스케줄 초기화</button>
       <button class="btn-ghost" id="ph-detail-btn" onclick="showPublicHolidayDetail()" style="display:none;" data-i18n="btn_ph_detail">🎌 Public Holiday 확인</button>
       <button class="btn-primary" id="publish-btn" onclick="publishWeek()" style="display:none; background:var(--cyan);" data-i18n="btn_publish">📤 퍼블리시</button>
@@ -834,11 +835,11 @@ const I18N = {
     resigned_tip: "퇴사한 직원입니다 (기록은 보관됩니다)", resigned_last_day: "마지막 근무일",
     crew_warn_resigned: "퇴사일 이후 날짜에 배치되어 있습니다",
     btn_history: "📂 저장했던 스케줄 불러오기", history_title: "저장했던 스케줄", history_empty: "이 주에 보관된 스케줄이 아직 없습니다.",
-    history_hint: "주당 최대 {n}개까지 보관되며, 지난 주의 보관본은 자동으로 삭제됩니다. 불러온 뒤 '저장'을 눌러야 확정됩니다.",
+    history_hint: "'변경사항 저장' 버튼을 눌러 저장한 스케줄만 주당 최대 {n}개까지 보관됩니다(자동 저장은 보관되지 않습니다). 지난 주의 보관본은 자동으로 삭제됩니다.",
     history_src_save: "저장", history_src_before_reset: "초기화 전", history_src_before_regenerate: "다시 생성 전",
     history_count: "{n}건 배치", history_load: "불러오기",
-    history_loaded: "불러왔습니다. 확정하려면 '저장'을 눌러주세요.", history_dropped: "퇴사했거나 삭제된 직원의 배치 {n}건은 제외했습니다.",
-    history_confirm: "현재 화면의 스케줄이 이 보관본으로 바뀝니다. 계속할까요?",
+    history_loaded: "불러왔습니다. (자동 저장되었습니다)", history_dropped: "퇴사했거나 삭제된 직원의 배치 {n}건은 제외했습니다.",
+    history_confirm: "현재 스케줄이 이 보관본으로 바뀝니다. 현재 스케줄은 보관되지 않으니, 남기려면 먼저 '변경사항 저장'을 눌러주세요. 계속할까요?",
     not_started_label: "Not started", not_started_tip: "아직 입사 전입니다", crew_warn_not_started: "입사일 이전 날짜에 배치되어 있습니다",
     auth_company_code: "회사 코드", company_code_title: "직원 로그인 회사 코드", company_code_hint: "직원은 이 코드(또는 아래 전용 링크)로 직원 로그인을 합니다.",
     company_code_copy_link: "직원 로그인 링크 복사", company_code_copied: "복사되었습니다",
@@ -854,6 +855,7 @@ const I18N = {
     labour_col_sales: "매출 ($)", labour_col_pct_sched: "예상 %", labour_col_pct_actual: "실제 %", labour_col_required: "필요 매출",
     labour_by_dept: "부서별 비용", labour_col_dept: "부서", labour_col_share: "비중", labour_dept_note: "부서별 매출은 따로 입력하지 않으므로, 부서별로는 금액과 전체 중 비중만 보여줍니다.",
     labour_leave_note: "※ 유급 리브 지급분이 포함됩니다 (리브는 일한 시간이 0이어도 지급액이 잡힙니다).",
+    autosave_saved: "저장됨 ✓", autosave_saving: "저장 중…", autosave_failed: "자동 저장 실패", auth_login_locked: "로그인 실패가 너무 많아 잠시 차단되었습니다. {n}분 후 다시 시도해주세요.",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1277,11 +1279,11 @@ const I18N = {
     resigned_tip: "This employee has resigned (records are kept)", resigned_last_day: "Last working day",
     crew_warn_resigned: "is scheduled after their last working day",
     btn_history: "📂 Load Saved Schedules", history_title: "Saved Schedules", history_empty: "No saved schedules for this week yet.",
-    history_hint: "Up to {n} are kept per week; versions of past weeks are deleted automatically. Press Save after loading to confirm.",
+    history_hint: "Only schedules saved with the 'Save Changes' button are kept (up to {n} per week); auto-saves are not kept. Versions of past weeks are deleted automatically.",
     history_src_save: "Saved", history_src_before_reset: "Before reset", history_src_before_regenerate: "Before regenerate",
     history_count: "{n} shifts", history_load: "Load",
-    history_loaded: "Loaded. Press Save to confirm.", history_dropped: "{n} shift(s) for resigned or deleted employees were left out.",
-    history_confirm: "The schedule on screen will be replaced with this saved version. Continue?",
+    history_loaded: "Loaded. (Auto-saved)", history_dropped: "{n} shift(s) for resigned or deleted employees were left out.",
+    history_confirm: "The current schedule will be replaced with this saved version. The current one is NOT kept — press Save Changes first if you want to keep it. Continue?",
     not_started_label: "Not started", not_started_tip: "This employee has not started yet", crew_warn_not_started: "is scheduled before their start date",
     auth_company_code: "Company Code", company_code_title: "Employee login company code", company_code_hint: "Employees log in with this code (or the dedicated link below).",
     company_code_copy_link: "Copy employee login link", company_code_copied: "Copied",
@@ -1297,6 +1299,7 @@ const I18N = {
     labour_col_sales: "Sales ($)", labour_col_pct_sched: "Est. %", labour_col_pct_actual: "Actual %", labour_col_required: "Sales needed",
     labour_by_dept: "Cost by Department", labour_col_dept: "Department", labour_col_share: "Share", labour_dept_note: "Sales are not entered per department, so only the amount and its share of the total are shown.",
     labour_leave_note: "* Includes paid leave pay (leave is paid even when worked hours are 0).",
+    autosave_saved: "Saved ✓", autosave_saving: "Saving…", autosave_failed: "Auto-save failed", auth_login_locked: "Too many failed login attempts. Please try again in {n} minute(s).",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -2064,7 +2067,7 @@ async function submitAuth() {
     return;
   }
   if (!res.ok) {
-    errBox.textContent = data.error || t("modal_request_failed");
+    errBox.textContent = data.error_code === "login_locked" ? tf("auth_login_locked", {n: data.retry_minutes || 10}) : (data.error || t("modal_request_failed"));
     errBox.style.display = "block";
     return;
   }
@@ -4045,7 +4048,7 @@ function buildLabourSection(box, data, weekKey) {
       <div class="labour-card"><div class="lc-label">${escapeHtml(t("labour_card_sales"))}</div>
         <div class="lc-value">${total != null ? fmtMoney(total) : "—"}</div>
         <div class="lc-sub">${hasDaySales ? escapeHtml(t("labour_card_sales_days")) : ""}</div>
-        <div style="margin-top:6px;"><input id="lab-total-input" type="number" min="0" step="0.01" style="width:130px; text-align:right;" placeholder="${escapeHtml(t("labour_card_sales_input"))}" ${hasDaySales ? "disabled" : ""} value="${!hasDaySales && ctx.totalInput != null ? ctx.totalInput : ""}"></div></div>`;
+        <div style="margin-top:6px;"><input id="lab-total-input" type="number" min="0" step="0.01" style="width:100%; box-sizing:border-box; text-align:right;" placeholder="${escapeHtml(t("labour_card_sales_input"))}" ${hasDaySales ? "disabled" : ""} value="${!hasDaySales && ctx.totalInput != null ? ctx.totalInput : ""}"></div></div>`;
     const tgt = target();
     cards.innerHTML = `
       <div class="labour-card"><div class="lc-label">${escapeHtml(t("labour_card_cost"))}</div>
@@ -8092,7 +8095,7 @@ async function openScheduleHistory() {
   box.appendChild(h);
   const sub = document.createElement("div");
   sub.className = "modal-sub";
-  sub.textContent = tf("history_hint", {n: data.limit || 10});
+  sub.textContent = tf("history_hint", {n: data.limit || 5});
   box.appendChild(sub);
   const items = data.history || [];
   if (!items.length) {
@@ -8125,6 +8128,7 @@ async function openScheduleHistory() {
       const dropped = it.assignments.length - kept.length;
       currentAssignments = kept.map(a => ({...a}));
       scheduleGenerated = true;
+      scheduleAutoSave();
       overlay.remove();
       renderCalendarArea();
       updateLockButtonUI();
@@ -8719,6 +8723,7 @@ function openAddAssignmentModal(employeeId, employeeName, day) {
     item.onclick = () => {
       currentAssignments.push({employee_id: employeeId, employee_name: employeeName, day: day, shift_type: shift, source: "manual"});
       scheduleGenerated = true;
+      scheduleAutoSave();
       overlay.remove();
       renderCalendarArea();
       updateLockButtonUI();
@@ -8894,6 +8899,7 @@ function openEditTimeModal(idx) {
   deleteBtn.textContent = t("btn_delete_this");
   deleteBtn.onclick = () => {
     currentAssignments.splice(idx, 1);
+    scheduleAutoSave();
     overlay.remove();
     renderCalendarArea();
   };
@@ -8909,6 +8915,7 @@ function openEditTimeModal(idx) {
   saveBtn.textContent = t("btn_save");
   saveBtn.onclick = () => {
     currentAssignments[idx] = {...a, custom_start: startInput.value, custom_end: endInput.value, source: "manual"};
+    scheduleAutoSave();
     overlay.remove();
     renderCalendarArea();
   };
@@ -8944,11 +8951,61 @@ function swapAssignment(srcIdx, newEmployeeId, newDay) {
   const newEmpName = (window._employees.find(e => e.id === newEmployeeId) || {}).name || src.employee_name;
   currentAssignments[srcIdx] = {...src, employee_id: newEmployeeId, employee_name: newEmpName, day: newDay, source: "manual"};
 
+  scheduleAutoSave();
   renderCalendarArea();
+}
+
+// ---- 자동 저장: 칸을 고칠 때마다(잠시 모아서) 서버에 저장합니다. 화면에는 작게 "저장됨 ✓"만 표시합니다.
+// 자동 저장은 "저장했던 스케줄 불러오기"에 쌓이지 않습니다(서버가 autosave 표시를 보고 건너뜁니다).
+let _autoSaveTimer = null;
+let _autoSaveRunning = false;
+let _autoSaveQueued = null;
+function _setAutoSaveStatus(kind) {
+  const el = document.getElementById("autosave-status");
+  if (!el) return;
+  el.style.color = kind === "failed" ? "var(--danger)" : "var(--text-muted)";
+  el.textContent = kind === "saved" ? t("autosave_saved") : kind === "saving" ? t("autosave_saving") : kind === "failed" ? t("autosave_failed") : "";
+}
+function scheduleAutoSave() {
+  if (weekLocked) return;
+  // 편집 시점의 주·배치를 기억해 둡니다(저장 대기 중에 다른 주로 넘어가도 엉뚱한 주에 저장되지 않게).
+  _autoSaveQueued = {weekKey: currentWeekKey, assignments: currentAssignments.map(a => ({...a}))};
+  _setAutoSaveStatus("saving");
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(runAutoSave, 700);
+}
+async function runAutoSave() {
+  if (_autoSaveRunning) { _autoSaveTimer = setTimeout(runAutoSave, 400); return; }
+  const job = _autoSaveQueued;
+  if (!job) return;
+  _autoSaveQueued = null;
+  _autoSaveRunning = true;
+  try {
+    const res = await fetch(`/api/weeks/${job.weekKey}/manual-adjust`, {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({assignments: job.assignments, autosave: true})
+    });
+    if (res.status === 401) { showAuthScreen(); return; }
+    const el = document.getElementById("autosave-status");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      _setAutoSaveStatus("failed");
+      if (el && err.error) el.title = err.error;
+    } else if (!_autoSaveQueued) {
+      _setAutoSaveStatus("saved");
+      if (el) el.title = "";
+    }
+  } catch (e) {
+    _setAutoSaveStatus("failed");
+  } finally {
+    _autoSaveRunning = false;
+  }
 }
 
 async function saveManualAdjustments() {
   if (weekLocked) return;
+  clearTimeout(_autoSaveTimer); _autoSaveQueued = null;
   const adjustResult = await api(`/api/weeks/${currentWeekKey}/manual-adjust`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
