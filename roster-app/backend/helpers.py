@@ -1042,6 +1042,67 @@ def _geofence_check(state, lat, lng):
 
 PIN_LENGTH = 6
 PIN_MAX_FAILED_ATTEMPTS = 5
+
+# 사장/매니저 로그인 실패 제한: 같은 이메일+같은 접속 주소(IP)에서 5번 틀리면 10분간 차단합니다.
+# (이메일만 기준으로 하면 남이 내 이메일로 일부러 틀려서 나를 잠글 수 있어서, IP를 함께 봅니다.)
+LOGIN_MAX_FAILED_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 10
+_LOGIN_ATTEMPTS_KEY = "login_attempts"
+
+def _login_attempt_key(email, ip):
+    import hashlib
+    return hashlib.sha256(f"{(email or '').strip().lower()}|{ip or ''}".encode("utf-8")).hexdigest()[:32]
+
+def _load_login_attempts():
+    try:
+        raw = _raw_get(_LOGIN_ATTEMPTS_KEY)
+        data = json.loads(raw) if raw else {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def _prune_login_attempts(data, now_ts):
+    window = LOGIN_LOCKOUT_MINUTES * 60
+    for k in list(data.keys()):
+        rec = data[k] or {}
+        if now_ts - float(rec.get("last", 0)) > window and float(rec.get("locked_until", 0)) < now_ts:
+            del data[k]
+
+def login_lock_remaining_seconds(email, ip):
+    """차단 중이면 남은 초, 아니면 0."""
+    now_ts = time.time()
+    rec = _load_login_attempts().get(_login_attempt_key(email, ip)) or {}
+    return max(0, int(float(rec.get("locked_until", 0)) - now_ts))
+
+def register_login_failure(email, ip):
+    now_ts = time.time()
+    data = _load_login_attempts()
+    _prune_login_attempts(data, now_ts)
+    k = _login_attempt_key(email, ip)
+    rec = data.get(k) or {"count": 0, "last": now_ts, "locked_until": 0}
+    if float(rec.get("locked_until", 0)) < now_ts and now_ts - float(rec.get("last", 0)) > LOGIN_LOCKOUT_MINUTES * 60:
+        rec["count"] = 0
+    rec["count"] = int(rec.get("count", 0)) + 1
+    rec["last"] = now_ts
+    if rec["count"] >= LOGIN_MAX_FAILED_ATTEMPTS:
+        rec["locked_until"] = now_ts + LOGIN_LOCKOUT_MINUTES * 60
+        rec["count"] = 0
+    data[k] = rec
+    try:
+        _raw_set(_LOGIN_ATTEMPTS_KEY, json.dumps(data))
+    except Exception:
+        pass
+
+def clear_login_failures(email, ip):
+    data = _load_login_attempts()
+    k = _login_attempt_key(email, ip)
+    if k in data:
+        del data[k]
+        try:
+            _raw_set(_LOGIN_ATTEMPTS_KEY, json.dumps(data))
+        except Exception:
+            pass
+
 PIN_LOCKOUT_MINUTES = 15
 
 

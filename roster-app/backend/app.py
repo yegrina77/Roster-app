@@ -47,7 +47,7 @@ app.config.update(
 
 from helpers import (
     LEGACY_STATE_KEY, TOGGLABLE_FEATURES, _last_active, ONLINE_THRESHOLD_SECONDS,
-    FREQUENCY_WINDOW_WEEKS, DEFAULT_EMPLOYEE_LIMIT_BUFFER, PIN_LOCKOUT_MINUTES, PIN_MAX_FAILED_ATTEMPTS,
+    FREQUENCY_WINDOW_WEEKS, DEFAULT_EMPLOYEE_LIMIT_BUFFER, PIN_LOCKOUT_MINUTES, PIN_MAX_FAILED_ATTEMPTS, LOGIN_LOCKOUT_MINUTES, login_lock_remaining_seconds, register_login_failure, clear_login_failures,
     LEAVE_TYPES, _stamp_new_leave_requests, _prune_expired_leave_requests, _apply_leave_balance_diff,
     _consume_reset_token, _create_reset_token, _default_features, _effective_shift_times,
     _email_in_use, _ensure_employee_limit, _hash_password, _log_audit, _password_error,
@@ -453,11 +453,23 @@ def _session_payload(company, role, user=None):
         "company_code": company.get("company_code"),
     }
 
+def _client_ip():
+    # Render 같은 호스팅은 프록시 뒤에 있어서, 실제 접속자 주소는 X-Forwarded-For의 첫 번째 값입니다.
+    fwd = request.headers.get("X-Forwarded-For", "")
+    return (fwd.split(",")[0].strip() if fwd else request.remote_addr) or ""
+
 @app.route("/api/auth/login", methods=["POST"])
 def login():
     payload = request.get_json(silent=True) or {}
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
+    ip = _client_ip()
+
+    remaining = login_lock_remaining_seconds(email, ip)
+    if remaining > 0:
+        mins = max(1, (remaining + 59) // 60)
+        return jsonify({"error": f"Too many failed login attempts. Please try again in {mins} minute(s).",
+                        "error_code": "login_locked", "retry_minutes": mins}), 429
 
     auth = _load_auth_with_codes()
 
@@ -465,7 +477,9 @@ def login():
     for c in auth["companies"].values():
         if c["email"] == email:
             if not _verify_password(password, c["password_hash"]):
+                register_login_failure(email, ip)
                 return jsonify({"error": "Incorrect email or password."}), 401
+            clear_login_failures(email, ip)
             session.clear()
             session["company_id"] = c["id"]
             session.permanent = True
@@ -476,13 +490,17 @@ def login():
         for user_id, u in (c.get("users") or {}).items():
             if u["email"] == email:
                 if not _verify_password(password, u["password_hash"]):
+                    register_login_failure(email, ip)
                     return jsonify({"error": "Incorrect email or password."}), 401
+                clear_login_failures(email, ip)
                 session.clear()
                 session["company_id"] = c["id"]
                 session["user_id"] = user_id
                 session.permanent = True
                 return jsonify(_session_payload(c, "manager", u))
 
+    # 없는 이메일도 똑같이 실패로 셉니다(이메일이 등록돼 있는지 알아내는 시도도 막기 위해).
+    register_login_failure(email, ip)
     return jsonify({"error": "Incorrect email or password."}), 401
 
 @app.route("/api/auth/logout", methods=["POST"])

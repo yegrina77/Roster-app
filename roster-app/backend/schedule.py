@@ -469,8 +469,8 @@ def set_week_off_days(company_id, week_key):
     save_state(company_id, state)
     return jsonify(state["weeks"][week_key]["off_days"])
 
-# ---- 저장했던 스케줄 보관(주당 최대 10개) ----
-SCHEDULE_HISTORY_LIMIT = 10
+# ---- 저장했던 스케줄 보관(주당 최대 5개) — '변경사항 저장' 버튼을 눌렀을 때만 쌓입니다 ----
+SCHEDULE_HISTORY_LIMIT = 5
 
 def _assign_key(assignments):
     return sorted((a.get("employee_id"), a.get("day"), a.get("shift_type")) for a in assignments or [])
@@ -877,7 +877,6 @@ def generate_week_schedule(company_id, week_key):
         "consecutive_issues": result.consecutive_issues,
     }
 
-    _snapshot_schedule(state, week_key, _current_assignments(state["weeks"][week_key]), "before_regenerate")
     state["weeks"][week_key]["schedule"] = result_dict
     # auto_assignments는 "자동 생성 직후"의 원본 스냅샷입니다. 이후 수동 조정(manual-adjust)이
     # 있어도 이 값은 덮어쓰지 않아서, 나중에 "사람이 뭘 얼마나 고쳤는지" 비교할 수 있습니다.
@@ -924,9 +923,12 @@ def manual_adjust_week(company_id, week_key):
     schedule["status"] = "MANUAL"
     schedule["diagnostics"] = ["This schedule was manually rearranged."]
     state["weeks"][week_key]["schedule"] = schedule
-    _snapshot_schedule(state, week_key, schedule["assignments"], "save")
-    _log_audit(state, "schedule_manual_adjust", f"{week_key} 주 스케줄 수동 조정",
-               {"week_key": week_key, "assignment_count": len(schedule["assignments"])})
+    # autosave=true(칸을 고칠 때마다 자동 저장)는 보관 목록·변경 기록에 남기지 않습니다.
+    # '변경사항 저장' 버튼을 눌렀을 때만 "저장했던 스케줄 불러오기"에 쌓입니다.
+    if not payload.get("autosave"):
+        _snapshot_schedule(state, week_key, schedule["assignments"], "save")
+        _log_audit(state, "schedule_manual_adjust", f"{week_key} 주 스케줄 수동 조정",
+                   {"week_key": week_key, "assignment_count": len(schedule["assignments"])})
     save_state(company_id, state)
     return jsonify(schedule)
 
@@ -943,7 +945,6 @@ def reset_week_schedule(company_id, week_key):
     if week_key not in state["weeks"]:
         state["weeks"][week_key] = empty_week()
     else:
-        _snapshot_schedule(state, week_key, _current_assignments(state["weeks"][week_key]), "before_reset")
         state["weeks"][week_key]["schedule"] = None
         state["weeks"][week_key]["auto_assignments"] = []
     _log_audit(state, "schedule_reset", f"{week_key} 주 스케줄 초기화", {"week_key": week_key})
