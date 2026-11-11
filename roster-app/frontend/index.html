@@ -856,6 +856,8 @@ const I18N = {
     labour_by_dept: "부서별 비용", labour_col_dept: "부서", labour_col_share: "비중", labour_dept_note: "부서별 매출은 따로 입력하지 않으므로, 부서별로는 금액과 전체 중 비중만 보여줍니다.",
     labour_leave_note: "※ 유급 리브 지급분이 포함됩니다 (리브는 일한 시간이 0이어도 지급액이 잡힙니다).",
     autosave_saved: "저장됨 ✓", autosave_saving: "저장 중…", autosave_failed: "자동 저장 실패", auth_login_locked: "로그인 실패가 너무 많아 잠시 차단되었습니다. {n}분 후 다시 시도해주세요.",
+    admin_reset_pw_btn: "비밀번호 재설정", admin_reset_pw_title: "임시 비밀번호", admin_reset_pw_confirm: "{name} 계정({email})의 비밀번호를 새 임시 비밀번호로 바꿉니다. 기존 비밀번호는 더 이상 쓸 수 없습니다. 계속할까요?",
+    admin_reset_pw_done: "새 임시 비밀번호입니다. 이 창을 닫으면 다시 볼 수 없으니, 지금 복사해서 해당 사장님께 전달해주세요.", admin_reset_pw_copy: "복사", admin_reset_pw_copied: "복사됨 ✓",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1300,6 +1302,8 @@ const I18N = {
     labour_by_dept: "Cost by Department", labour_col_dept: "Department", labour_col_share: "Share", labour_dept_note: "Sales are not entered per department, so only the amount and its share of the total are shown.",
     labour_leave_note: "* Includes paid leave pay (leave is paid even when worked hours are 0).",
     autosave_saved: "Saved ✓", autosave_saving: "Saving…", autosave_failed: "Auto-save failed", auth_login_locked: "Too many failed login attempts. Please try again in {n} minute(s).",
+    admin_reset_pw_btn: "Reset password", admin_reset_pw_title: "Temporary password", admin_reset_pw_confirm: "This replaces the password for {name} ({email}) with a new temporary one. The old password will stop working. Continue?",
+    admin_reset_pw_done: "Here is the new temporary password. You cannot see it again after closing this window, so copy it now and pass it to the owner.", admin_reset_pw_copy: "Copy", admin_reset_pw_copied: "Copied ✓",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -2817,7 +2821,8 @@ async function showAdminPage() {
         <button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px;" data-action="save-limit">${t("btn_save")}</button>
       </td>
       <td style="padding:6px 8px; text-align:center;">${c.week_count}</td>
-      <td style="padding:6px 8px; text-align:center;" data-actions-cell>
+      <td style="padding:6px 8px; text-align:center; white-space:nowrap;" data-actions-cell>
+        <button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px;" data-action="reset-pw">${t("admin_reset_pw_btn")}</button>
         ${c.is_admin ? "" : `<button class="btn-ghost btn-sm" style="padding:2px 6px; font-size:11px; color:#ef4444;" data-action="force-delete">${t("admin_force_delete_btn")}</button>`}
       </td>
     `;
@@ -2864,6 +2869,37 @@ async function showAdminPage() {
     });
     const actionsCell = tr.querySelector("[data-actions-cell]");
     actionsCell.addEventListener("click", (ev) => ev.stopPropagation());
+    const resetPwBtn = tr.querySelector('[data-action="reset-pw"]');
+    resetPwBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const ok = await showConfirmModal(t("admin_reset_pw_title"), tf("admin_reset_pw_confirm", {name: c.name, email: c.email}), t("admin_reset_pw_btn"), t("btn_cancel"));
+      if (!ok) return;
+      try {
+        const r = await api(`/api/admin/companies/${c.id}/reset-password`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+        const overlay = document.createElement("div");
+        overlay.className = "modal-overlay";
+        const box = document.createElement("div");
+        box.className = "modal-box";
+        box.style.maxWidth = "440px";
+        box.innerHTML = `<h3 style="margin:0 0 8px;">${escapeHtml(t("admin_reset_pw_title"))}</h3>
+          <div class="modal-sub" style="margin-bottom:10px;">${escapeHtml(r.email)}</div>
+          <div style="font-size:13px; margin-bottom:10px;">${escapeHtml(t("admin_reset_pw_done"))}</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input readonly value="${escapeHtml(r.password)}" style="flex:1; font-family:'JetBrains Mono',monospace; font-size:16px; letter-spacing:1px;">
+            <button class="btn-ghost btn-sm" data-copy>${escapeHtml(t("admin_reset_pw_copy"))}</button>
+          </div>
+          <div class="modal-close-row"><button class="btn-primary" data-close>${escapeHtml(t("btn_close"))}</button></div>`;
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        const inp = box.querySelector("input");
+        inp.focus(); inp.select();
+        box.querySelector("[data-copy]").onclick = async (e2) => {
+          try { await navigator.clipboard.writeText(r.password); } catch (e3) { inp.select(); document.execCommand("copy"); }
+          e2.target.textContent = t("admin_reset_pw_copied");
+        };
+        box.querySelector("[data-close]").onclick = () => overlay.remove();
+      } catch (e) {}
+    });
     const forceDeleteBtn = tr.querySelector('[data-action="force-delete"]');
     if (forceDeleteBtn) {
       forceDeleteBtn.addEventListener("click", async (ev) => {
