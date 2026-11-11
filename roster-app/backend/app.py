@@ -132,6 +132,33 @@ def set_company_code(company_id):
     save_auth(auth)
     return jsonify({"id": company_id, "company_code": code})
 
+@app.route("/api/admin/companies/<company_id>/reset-password", methods=["POST"])
+@require_admin
+def admin_reset_company_password(company_id):
+    """관리자 전용: 비밀번호를 잊은 사장님(메일 발송이 안 될 때)을 위해 임시 비밀번호를 설정합니다.
+    body: {password(선택)} — 비워두면 규칙(8자 이상, 숫자, 특수문자)을 만족하는 임시 비밀번호를 자동 생성합니다.
+    새 비밀번호는 이 응답에서 딱 한 번만 보여주며, 서버에는 해시로만 저장됩니다."""
+    payload = request.get_json(silent=True) or {}
+    password = (payload.get("password") or "").strip()
+    if not password:
+        alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        password = "".join(secrets.choice(alphabet) for _ in range(9)) + secrets.choice("23456789") + secrets.choice("!@#$%")
+        password = "".join(secrets.SystemRandom().sample(password, len(password)))
+    pw_error = _password_error(password)
+    if pw_error:
+        return jsonify({"error": pw_error}), 400
+    auth = load_auth()
+    company = auth["companies"].get(company_id)
+    if not company:
+        return jsonify({"error": "Company not found."}), 404
+    company["password_hash"] = _hash_password(password)
+    # 이전에 발급된 비밀번호 재설정 링크가 남아 있으면 쓸 수 없게 정리합니다.
+    for tok, rec in list((auth.get("reset_tokens") or {}).items()):
+        if rec.get("company_id") == company_id:
+            del auth["reset_tokens"][tok]
+    save_auth(auth)
+    return jsonify({"id": company_id, "email": company["email"], "password": password})
+
 @app.route("/api/admin/companies/<company_id>/employee-limit", methods=["POST"])
 @require_admin
 def set_employee_limit(company_id):
