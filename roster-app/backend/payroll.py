@@ -17,7 +17,7 @@ from helpers import (
     FREQUENCY_WINDOW_WEEKS, HOLIDAY_OWD_RATIO, DEFAULT_PAYROLL_ROUNDING_MINUTES, ALLOWED_ROUNDING_MINUTES,
     ANNUAL_ACCRUAL_PER_HOUR, SICK_ACCRUAL_PER_HOUR, SICK_LEAVE_CAP_HOURS, LCP_RATE,
     PH_WORKED_OWD_MULTIPLIER, PH_WORKED_NON_OWD_MULTIPLIER,
-    _effective_shift_times, _actual_hours_for_entry, _assignment_duration_hours,
+    _effective_shift_times, _effective_shift_breaks, _actual_hours_for_entry, _assignment_duration_hours,
     _week_dates, _week_key_for_date, _is_paid_leave, _leave_info_by_day, _leave_hours_by_day,
     _leave_hours_explicit_by_day, _worked_that_weekday,
     _average_day_hours, _contract_hours, _lowest_hourly_rate, _weekly_salary,
@@ -45,6 +45,7 @@ def _compute_week_payroll(state, week_key):
     추정값입니다 — 정확한 금액은 회계/노무 담당자 확인을 권장합니다.
     """
     shift_times = _effective_shift_times(state)
+    shift_breaks = _effective_shift_breaks(state)
     y, m, d = map(int, week_key.split("-"))
     monday = date(y, m, d)
     week_dates = [monday + timedelta(days=i) for i in range(7)]
@@ -115,7 +116,7 @@ def _compute_week_payroll(state, week_key):
 
         for day in DAYS:
             day_assignments = assignments_by_emp_day.get((emp_id, day), [])
-            hours = sum(_assignment_duration_hours(a, shift_times) for a in day_assignments)
+            hours = sum(_assignment_duration_hours(a, shift_times, shift_breaks) for a in day_assignments)
             worked = len(day_assignments) > 0
             category = None
             leave_type = leave_info.get(day)
@@ -843,6 +844,7 @@ def _credit_alt_holidays_for_week(state, week_key):
         return
     week_dates = _week_dates(week_key)
     shift_times = _effective_shift_times(state)
+    shift_breaks = _effective_shift_breaks(state)
     holiday_by_day = {}
     for h in state["public_holidays"]:
         try:
@@ -859,7 +861,7 @@ def _credit_alt_holidays_for_week(state, week_key):
     for e in state["employees"]:
         for day, h in holiday_by_day.items():
             day_as = [a for a in assignments if a["employee_id"] == e["id"] and a["day"] == day]
-            hours = sum(_assignment_duration_hours(a, shift_times) for a in day_as)
+            hours = sum(_assignment_duration_hours(a, shift_times, shift_breaks) for a in day_as)
             category, _c, _o = _public_holiday_category(
                 state, policy, e["id"], day, week_key, bool(day_as), pair_date=h.get("pair_date"))
             new_h = round(hours, 2) if category == 1 else 0.0

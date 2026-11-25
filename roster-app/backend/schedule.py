@@ -17,7 +17,7 @@ from scheduler import (
 )
 from helpers import (
     NZ_TZ, load_state, save_state, require_login, _log_audit, FREQUENCY_WINDOW_WEEKS,
-    _effective_shift_times, _effective_shift_hours, _slugify_id, empty_week,
+    _effective_shift_times, _effective_shift_hours, _effective_shift_breaks, _sanitize_break_minutes, DEFAULT_BREAK_MINUTES, _slugify_id, empty_week,
     _scheduler_shift_defs, _week_key_for_date, _week_locked, _leave_forced_days,
     _credited_leave_hours, _default_departments, _default_shift_types, _worked_that_weekday,
     _weekly_hour_cap, BEGINNER_MAX_LEVEL, _crew_rule_warnings, _assignment_duration_hours, PAYROLL_BREAK_HOURS,
@@ -102,7 +102,9 @@ def delete_department(company_id, dept_id):
 @require_login
 def list_shift_types(company_id):
     state = load_state(company_id)
-    return jsonify(state["shift_types"])
+    # break_minutes가 없는 예전 근무유형도 화면에서 같은 값(60분)으로 보이도록 채워서 돌려줍니다.
+    return jsonify([{**st, "break_minutes": _sanitize_break_minutes(st.get("break_minutes"), DEFAULT_BREAK_MINUTES)}
+                    for st in state["shift_types"]])
 
 @schedule_bp.route("/api/shift-types", methods=["POST"])
 @require_login
@@ -115,6 +117,7 @@ def add_shift_type(company_id):
     end = payload.get("end") or "17:00"
     is_closing = bool(payload.get("is_closing", False))
     blocked_after_closing = bool(payload.get("blocked_after_closing", False))
+    break_minutes = _sanitize_break_minutes(payload.get("break_minutes"), DEFAULT_BREAK_MINUTES)
 
     if not name:
         return jsonify({"error": "Shift type name is required."}), 400
@@ -127,6 +130,7 @@ def add_shift_type(company_id):
     shift = {
         "id": _slugify_id(name, existing_ids), "name": name, "department_id": department_id,
         "start": start, "end": end, "is_closing": is_closing, "blocked_after_closing": blocked_after_closing,
+        "break_minutes": break_minutes,
     }
     state["shift_types"].append(shift)
     _log_audit(state, "shift_type_added", f"근무유형 추가: {name}", {"shift_type_id": shift["id"]})
@@ -150,6 +154,11 @@ def update_shift_type(company_id, shift_id):
                 s["is_closing"] = bool(payload["is_closing"])
             if "blocked_after_closing" in payload:
                 s["blocked_after_closing"] = bool(payload["blocked_after_closing"])
+            if "break_minutes" in payload:
+                bm = _sanitize_break_minutes(payload["break_minutes"])
+                if bm is None:
+                    return jsonify({"error": "Break must be between 0 and 240 minutes."}), 400
+                s["break_minutes"] = bm
             _log_audit(state, "shift_type_updated", f"근무유형 수정: {s['name']}", {"shift_type_id": shift_id})
             save_state(company_id, state)
             return jsonify(s)
@@ -648,8 +657,9 @@ def generate_week_schedule(company_id, week_key):
     # 수동 사전 배치(pin)만으로 이미 법적 주당 최대시간(예: 학생비자)을 넘으면 거부합니다.
     _pin_hours = {}
     _shift_hours_for_pins = _effective_shift_hours(state)
+    _pin_breaks = _effective_shift_breaks(state)
     for emp_id, day, shift in pinned:
-        _pin_hours[emp_id] = _pin_hours.get(emp_id, 0.0) + max(0.0, _shift_hours_for_pins.get(shift, 0) - PAYROLL_BREAK_HOURS)
+        _pin_hours[emp_id] = _pin_hours.get(emp_id, 0.0) + max(0.0, _shift_hours_for_pins.get(shift, 0) - _pin_breaks.get(shift, PAYROLL_BREAK_HOURS))
     for emp_id, hrs in _pin_hours.items():
         emp = emp_by_id.get(emp_id)
         if emp and emp.max_hours_per_week is not None and hrs > emp.max_hours_per_week + 0.01:
@@ -762,7 +772,7 @@ def generate_week_schedule(company_id, week_key):
         random_seed=random_seed,
         pinned=pinned or None,
         shift_hours=_effective_shift_hours(state),
-        break_hours=PAYROLL_BREAK_HOURS,
+        break_hours=_effective_shift_breaks(state),
         beginner_max_level=BEGINNER_MAX_LEVEL,
         shift_types=shift_types,
         shift_defs=shift_defs,
@@ -806,7 +816,7 @@ def generate_week_schedule(company_id, week_key):
                 random_seed=random_seed,
                 pinned=pinned or None,
                 shift_hours=_effective_shift_hours(state),
-                break_hours=PAYROLL_BREAK_HOURS,
+                break_hours=_effective_shift_breaks(state),
         beginner_max_level=BEGINNER_MAX_LEVEL,
                 shift_types=shift_types,
                 shift_defs=shift_defs,
@@ -835,7 +845,7 @@ def generate_week_schedule(company_id, week_key):
                     random_seed=random_seed,
                     pinned=pinned or None,
                     shift_hours=_effective_shift_hours(state),
-                    break_hours=PAYROLL_BREAK_HOURS,
+                    break_hours=_effective_shift_breaks(state),
         beginner_max_level=BEGINNER_MAX_LEVEL,
                     shift_types=shift_types,
                     shift_defs=shift_defs,
@@ -898,9 +908,10 @@ def manual_adjust_week(company_id, week_key):
     payload = request.get_json()
     # 법적 주당 최대시간(예: 학생비자)을 넘기는 수동 배치는 저장 자체를 막습니다(하드 규칙).
     shift_times = _effective_shift_times(state)
+    shift_breaks = _effective_shift_breaks(state)
     hours_by_emp = {}
     for a in payload.get("assignments", []):
-        hours_by_emp[a["employee_id"]] = hours_by_emp.get(a["employee_id"], 0.0) + _assignment_duration_hours(a, shift_times)
+        hours_by_emp[a["employee_id"]] = hours_by_emp.get(a["employee_id"], 0.0) + _assignment_duration_hours(a, shift_times, shift_breaks)
     over_msgs = []
     for e in state["employees"]:
         cap = _weekly_hour_cap(e, week_key)

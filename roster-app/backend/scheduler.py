@@ -203,7 +203,7 @@ def solve_schedule(
     relax: Optional[set] = None,
     relax_min_hours_employee_ids: Optional[set] = None,
     beginner_max_level: int = 2,
-    break_hours: float = 0.0,
+    break_hours=0.0,  # 숫자(모든 근무유형 공통) 또는 {근무유형id: 시간}
     time_limit_seconds: float = 10.0,
 ) -> ScheduleResult:
     """shift_types/shift_defs/departments를 안 넘기면 코드에 기본 내장된 구성(Kitchen/Sushi/...)을
@@ -240,6 +240,10 @@ def solve_schedule(
     model = cp_model.CpModel()
     pinned_set = set(pinned or [])
     hours_map = shift_hours or default_hours  # 관리자가 근무유형 기본 시간을 조정했으면 그 값을 사용
+    if isinstance(break_hours, dict):
+        net_hours_map = {s: max(0.0, hours_map[s] - float(break_hours.get(s, 0.0))) for s in hours_map}
+    else:
+        net_hours_map = {s: max(0.0, hours_map[s] - float(break_hours or 0.0)) for s in hours_map}
 
     x = {}
     for e in employees:
@@ -326,7 +330,7 @@ def solve_schedule(
         # 법적 근무시간 한도는 "실제로 일한 시간"(무급 휴게 제외) 기준입니다 — 9시간 근무유형이라도
         # 1시간 무급 휴게를 빼면 8시간으로 셉니다(break_hours).
         model.Add(
-            sum(x[(e.id, day, shift)] * round(max(0.0, hours_map[shift] - break_hours) * 1000)
+            sum(x[(e.id, day, shift)] * round(net_hours_map[shift] * 1000)
                 for day in DAYS for shift in shift_types) <= round(e.max_hours_per_week * 1000)
         )
 
@@ -517,7 +521,7 @@ def solve_schedule(
         if e.preferred_max_hours is None:
             continue
         over = model.NewIntVar(0, 168, f"premax_over_{e.id}")
-        total_x1000 = sum(x[(e.id, day, shift)] * round(max(0.0, hours_map[shift] - break_hours) * 1000)
+        total_x1000 = sum(x[(e.id, day, shift)] * round(net_hours_map[shift] * 1000)
                           for day in DAYS for shift in shift_types)
         model.Add(over * 1000 >= total_x1000 - round(e.preferred_max_hours * 1000))
         pref_max_over_vars[e.id] = over

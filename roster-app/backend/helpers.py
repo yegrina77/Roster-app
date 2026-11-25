@@ -619,8 +619,28 @@ def _actual_hours_for_entry(entry, rounding_minutes):
 
 PAYROLL_BREAK_HOURS = 1  # 프론트엔드 캘린더의 "요일별 총 근무시간" 표시와 반드시 같은 기준을
 
+# 근무유형별 무급 휴게(분). 값이 없는 예전 근무유형은 기존 동작과 같게 60분(=PAYROLL_BREAK_HOURS)으로 봅니다.
+DEFAULT_BREAK_MINUTES = int(PAYROLL_BREAK_HOURS * 60)
+MAX_BREAK_MINUTES = 240
 
-def _assignment_duration_hours(a, shift_times):
+def _sanitize_break_minutes(value, default=None):
+    """0~240 사이의 정수 분이면 그대로, 아니면 default."""
+    try:
+        v = int(round(float(value)))
+    except (TypeError, ValueError):
+        return default
+    return v if 0 <= v <= MAX_BREAK_MINUTES else default
+
+def _effective_shift_breaks(state):
+    """근무유형 id → 무급 휴게 시간(시간 단위). 스케줄 계산·급여·화면 합계가 모두 이 값을 씁니다."""
+    out = {}
+    for s in state.get("shift_types", []):
+        m = _sanitize_break_minutes(s.get("break_minutes"), DEFAULT_BREAK_MINUTES)
+        out[s["id"]] = m / 60.0
+    return out
+
+
+def _assignment_duration_hours(a, shift_times, breaks=None):
     """근무 배정(assignment) 하나의 실제 근무시간(휴게시간 차감)을 계산합니다.
     프론트엔드의 assignmentDurationHours()와 정확히 같은 로직이어야 합니다 — 캘린더
     상단에 뜨는 '요일별 총 근무시간'과 급여 계산의 기준 시간이 서로 다르면 안 되므로."""
@@ -632,7 +652,8 @@ def _assignment_duration_hours(a, shift_times):
     minutes = (eh * 60 + em) - (sh * 60 + sm)
     if minutes < 0:
         minutes += 24 * 60  # 자정을 넘어가는 근무 대비
-    return max(0.0, minutes / 60 - PAYROLL_BREAK_HOURS)
+    break_h = (breaks or {}).get(a["shift_type"], PAYROLL_BREAK_HOURS)
+    return max(0.0, minutes / 60 - break_h)
 
 def _scheduler_shift_defs(state):
     """이 회사가 만든 부서/근무유형(state["departments"], state["shift_types"])을,
