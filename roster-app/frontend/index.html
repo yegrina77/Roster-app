@@ -305,6 +305,8 @@
   }
   .cal-head-date { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 2px; }
   .cal-head-hours { display: block; margin-top: 3px; font-size: 10px; color: var(--text-muted); font-weight: 500; letter-spacing: 0; }
+  .cal-emp-name { display:block; }
+  .cal-emp-hours { display:block; margin-top:2px; font-size:10.5px; font-weight:500; color:var(--text-muted); font-family:'JetBrains Mono',monospace; }
   .cal-emp-cell {
     background: var(--void-soft); display: flex; align-items: center; font-weight: 600; padding: 8px 10px;
     cursor: default; font-size: 12.5px; border-right: 2px solid rgba(79,216,224,0.2); color: var(--text);
@@ -781,6 +783,8 @@ let DAY_LABEL = {mon:"월", tue:"화", wed:"수", thu:"목", fri:"금", sat:"토
 let SHIFT_TYPES = [];
 let SHIFT_LABEL = {};
 let SHIFT_TIME = {};
+let SHIFT_BREAK = {};   // 근무유형 id → 무급 휴게(시간)
+const BREAK_CHOICES_MIN = [0, 15, 30, 45, 60, 75, 90, 120];
 let DEPARTMENTS = [];
 let DEPARTMENT_LABEL = {};
 let DEPARTMENT_SHIFTS = {};
@@ -858,6 +862,7 @@ const I18N = {
     autosave_saved: "저장됨 ✓", autosave_saving: "저장 중…", autosave_failed: "자동 저장 실패", auth_login_locked: "로그인 실패가 너무 많아 잠시 차단되었습니다. {n}분 후 다시 시도해주세요.",
     admin_reset_pw_btn: "비밀번호 재설정", admin_reset_pw_title: "임시 비밀번호", admin_reset_pw_confirm: "{name} 계정({email})의 비밀번호를 새 임시 비밀번호로 바꿉니다. 기존 비밀번호는 더 이상 쓸 수 없습니다. 계속할까요?",
     admin_reset_pw_done: "새 임시 비밀번호입니다. 이 창을 닫으면 다시 볼 수 없으니, 지금 복사해서 해당 사장님께 전달해주세요.", admin_reset_pw_copy: "복사", admin_reset_pw_copied: "복사됨 ✓",
+    shift_break_label: "휴게", shift_break_none: "없음", shift_break_min: "{m}분", shift_break_hours: "{h}시간", emp_week_hours_tip: "이번 주 예상 근무시간 (휴게시간 제외)",
     label_employment_type: "고용 형태", opt_emp_standard: "표준시간 계약", opt_emp_casual: "캐주얼",
     label_contract_hours: "계약 주당 표준시간", label_agreed_days: "합의된 근무요일 (선택)",
     balance_adjust_alt_btn: "대체휴일 조정", balance_adjust_alt_title: "{name}님의 대체휴일 잔액 조정",
@@ -1304,6 +1309,7 @@ const I18N = {
     autosave_saved: "Saved ✓", autosave_saving: "Saving…", autosave_failed: "Auto-save failed", auth_login_locked: "Too many failed login attempts. Please try again in {n} minute(s).",
     admin_reset_pw_btn: "Reset password", admin_reset_pw_title: "Temporary password", admin_reset_pw_confirm: "This replaces the password for {name} ({email}) with a new temporary one. The old password will stop working. Continue?",
     admin_reset_pw_done: "Here is the new temporary password. You cannot see it again after closing this window, so copy it now and pass it to the owner.", admin_reset_pw_copy: "Copy", admin_reset_pw_copied: "Copied ✓",
+    shift_break_label: "Break", shift_break_none: "None", shift_break_min: "{m} min", shift_break_hours: "{h} h", emp_week_hours_tip: "Expected hours this week (excluding breaks)",
     label_employment_type: "Employment Type", opt_emp_standard: "Standard hours", opt_emp_casual: "Casual",
     label_contract_hours: "Contract standard hours/week", label_agreed_days: "Agreed working days (optional)",
     balance_adjust_alt_btn: "Adjust Alt. Holiday", balance_adjust_alt_title: "Adjust {name}'s Alternative Holiday Balance",
@@ -5493,11 +5499,13 @@ async function loadDepartmentsAndShiftTypes() {
   SHIFT_TYPES = customShiftTypes.map(s => s.id);
   SHIFT_LABEL = {};
   SHIFT_TIME = {};
+  SHIFT_BREAK = {};
   SHIFT_DEPT = {};
   customShiftTypes.forEach(s => {
     SHIFT_DEPT[s.id] = s.department_id;
     SHIFT_LABEL[s.id] = s.name;
     SHIFT_TIME[s.id] = `${s.start}-${s.end}`;
+    SHIFT_BREAK[s.id] = (s.break_minutes == null ? BREAK_HOURS * 60 : s.break_minutes) / 60;
   });
 
   DEPARTMENT_SHIFTS = {};
@@ -6840,6 +6848,23 @@ function renderDeptManagementUI() {
       enableClickToOpenDatePicker(endInput);
       row.appendChild(endInput);
 
+      const breakLabel = document.createElement("label");
+      breakLabel.style.cssText = "font-size:11.5px; display:flex; align-items:center; gap:4px; color:var(--text-muted);";
+      breakLabel.appendChild(document.createTextNode(t("shift_break_label")));
+      const breakSel = document.createElement("select");
+      breakSel.style.cssText = "font-size:12px; padding:3px 6px;";
+      const curBreak = draft.break_minutes !== undefined ? Number(draft.break_minutes) : (shift.break_minutes == null ? 60 : shift.break_minutes);
+      const breakChoices = BREAK_CHOICES_MIN.includes(curBreak) ? BREAK_CHOICES_MIN : [...BREAK_CHOICES_MIN, curBreak].sort((a, b) => a - b);
+      breakChoices.forEach(m => {
+        const o = document.createElement("option");
+        o.value = String(m);
+        o.textContent = m === 0 ? t("shift_break_none") : (m % 60 === 0 ? tf("shift_break_hours", {h: m / 60}) : tf("shift_break_min", {m}));
+        if (m === curBreak) o.selected = true;
+        breakSel.appendChild(o);
+      });
+      breakLabel.appendChild(breakSel);
+      row.appendChild(breakLabel);
+
       const closingLabel = document.createElement("label");
       closingLabel.style.cssText = "font-size:11.5px; display:flex; align-items:center; gap:4px; color:var(--text-muted);";
       const closingCb = document.createElement("input");
@@ -6863,10 +6888,11 @@ function renderDeptManagementUI() {
         shiftDrafts[shift.id] = {
           name: sNameInput.value, start: startInput.value, end: endInput.value,
           is_closing: closingCb.checked, blocked_after_closing: blockedCb.checked,
+          break_minutes: Number(breakSel.value),
         };
       };
       [sNameInput, startInput, endInput].forEach(el => { el.addEventListener("input", syncDraft); el.addEventListener("change", syncDraft); });
-      [closingCb, blockedCb].forEach(el => el.addEventListener("change", syncDraft));
+      [closingCb, blockedCb, breakSel].forEach(el => el.addEventListener("change", syncDraft));
 
       const saveThisRow = async () => {
         await api(`/api/shift-types/${shift.id}`, {
@@ -6874,6 +6900,7 @@ function renderDeptManagementUI() {
           body: JSON.stringify({
             name: sNameInput.value.trim(), start: startInput.value, end: endInput.value,
             is_closing: closingCb.checked, blocked_after_closing: blockedCb.checked,
+            break_minutes: Number(breakSel.value),
           }),
         });
         delete shiftDrafts[shift.id];
@@ -8487,7 +8514,7 @@ function isLeaveDay(emp, day) {
   return emp.leave_requests.find(lr => theDate >= lr.start_date && theDate <= lr.end_date) || null;
 }
 
-const BREAK_HOURS = 1; // 근무 9시간이든 8시간이든, 실제 근무는 이 시간만큼 뺀 값으로 집계합니다.
+const BREAK_HOURS = 1; // 근무유형에 휴게 설정이 없을 때만 쓰는 기본값(근무유형별 휴게는 SHIFT_BREAK)
 
 function getShiftTimeRange(shiftType) {
   // 근무유형이 나중에 삭제/변경됐는데 예전 스케줄에 그 근무유형을 참조하는 배정이
@@ -8504,7 +8531,8 @@ function assignmentDurationHours(a) {
   const [eh, em] = end.split(":").map(Number);
   let minutes = (eh * 60 + em) - (sh * 60 + sm);
   if (minutes < 0) minutes += 24 * 60; // 자정을 넘어가는 근무 대비
-  return Math.max(0, minutes / 60 - BREAK_HOURS);
+  const breakH = SHIFT_BREAK[a.shift_type] != null ? SHIFT_BREAK[a.shift_type] : BREAK_HOURS;
+  return Math.max(0, minutes / 60 - breakH);
 }
 
 function totalHoursForDay(day) {
@@ -8578,7 +8606,10 @@ function buildCalendarGrid() {
 
     const empCell = document.createElement("div");
     empCell.className = "cal-cell cal-emp-cell";
-    empCell.textContent = empNames[empId] || empId;
+    const weekHours = currentAssignments.filter(a => a.employee_id === empId)
+      .reduce((sum, a) => sum + assignmentDurationHours(a), 0);
+    empCell.innerHTML = `<div><span class="cal-emp-name">${escapeHtml(empNames[empId] || empId)}</span>` +
+      (weekHours > 0 ? `<span class="cal-emp-hours" title="${escapeHtml(t("emp_week_hours_tip"))}">${weekHours.toFixed(1)}h</span>` : "") + `</div>`;
     grid.appendChild(empCell);
 
     DAYS.forEach(day => {
