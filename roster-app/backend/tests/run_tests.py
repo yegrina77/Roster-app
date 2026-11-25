@@ -1090,10 +1090,10 @@ def _():
         ast.parse(open(os.path.join(BACKEND_DIR, fname), encoding="utf-8").read())
 
 
-@test("전체 앱 임포트 성공 + 등록된 라우트가 110개(=106개 + 회사 코드 수정 1개 + 직원 로그인 회사 확인 1개 + 인건비 주 매출/설정 저장 2개)")
+@test("전체 앱 임포트 성공 + 등록된 라우트가 111개(=110개 + 관리자 비밀번호 재설정 1개, 기존: 106개 + 회사 코드 수정 1개 + 직원 로그인 회사 확인 1개 + 인건비 주 매출/설정 저장 2개)")
 def _():
     rules = list(A.app.url_map.iter_rules())
-    assert len(rules) == 110, f"실제 라우트 개수: {len(rules)}"
+    assert len(rules) == 111, f"실제 라우트 개수: {len(rules)}"
 
 
 @test("모듈을 6개로 나눈 뒤에도, 각 파일 안에서 정의되지 않고 임포트도 안 된 이름을 쓰는 곳이 없다 (import 누락 검사)")
@@ -1248,6 +1248,81 @@ def _t_login_limit():
         assert r.status_code == 200                                      # 다른 IP는 영향 없음
         r = c.post("/api/auth/login", json={"email": "nobody@x.com", "password": "x"}, headers={"X-Forwarded-For": "5.5.5.5"})
         assert r.status_code == 401                                      # 없는 이메일도 실패로 집계
+    finally:
+        H.DATA_DIR = old
+
+
+@test("관리자 비밀번호 재설정 - 임시 비밀번호 발급, 새 비밀번호로 로그인, 관리자만 가능")
+def _t_admin_reset_pw():
+    import tempfile
+    old = H.DATA_DIR
+    H.DATA_DIR = tempfile.mkdtemp()
+    try:
+        c = A.app.test_client()
+        r1 = c.post("/api/auth/register", json={"name": "Admin Co", "contact_name": "t", "email": "adm@x.com",
+                    "password": "Passw0rd!x1", "employee_limit": 5})
+        admin_id = r1.get_json()["id"]
+        # 일반 회사는 승인 절차가 있을 수 있어 auth 파일에 직접 추가합니다.
+        auth = H.load_auth()
+        auth["companies"]["c2"] = {"id": "c2", "name": "Other", "email": "boss@x.com",
+                                    "password_hash": A._hash_password("Oldpass1!"), "created_at": "2026-01-01"}
+        H.save_auth(auth)
+        with c.session_transaction() as s:
+            s["company_id"] = "c2"
+        assert c.post("/api/admin/companies/c2/reset-password", json={}).status_code == 403   # 일반 사장은 불가
+        with c.session_transaction() as s:
+            s["company_id"] = admin_id
+        r = c.post("/api/admin/companies/c2/reset-password", json={})
+        assert r.status_code == 200, r.get_data()
+        pw = r.get_json()["password"]
+        assert A._password_error(pw) is None and len(pw) >= 10
+        c2 = A.app.test_client()
+        assert c2.post("/api/auth/login", json={"email": "boss@x.com", "password": "Oldpass1!"}).status_code == 401
+        assert c2.post("/api/auth/login", json={"email": "boss@x.com", "password": pw}).status_code == 200
+        assert c.post("/api/admin/companies/nope/reset-password", json={}).status_code == 404
+        assert c.post("/api/admin/companies/c2/reset-password", json={"password": "short"}).status_code == 400
+    finally:
+        H.DATA_DIR = old
+
+
+@test("근무유형별 휴게시간 - 기본 60분 유지, 근무유형마다 다르게 차감, 검증, 저장/조회")
+def _t_shift_break():
+    import tempfile
+    st = {"shift_types": [
+        {"id": "a", "name": "A", "department_id": "d", "start": "06:00", "end": "15:00"},                       # 값 없음 → 60분
+        {"id": "b", "name": "B", "department_id": "d", "start": "11:00", "end": "20:30", "break_minutes": 30},
+        {"id": "c", "name": "C", "department_id": "d", "start": "09:00", "end": "13:00", "break_minutes": 0},
+    ]}
+    br = H._effective_shift_breaks(st)
+    assert br == {"a": 1.0, "b": 0.5, "c": 0.0}, br
+    times = H._effective_shift_times(st)
+    assert H._assignment_duration_hours({"shift_type": "a"}, times, br) == 8.0
+    assert H._assignment_duration_hours({"shift_type": "b"}, times, br) == 9.0
+    assert H._assignment_duration_hours({"shift_type": "c"}, times, br) == 4.0
+    assert H._assignment_duration_hours({"shift_type": "b", "custom_start": "12:00", "custom_end": "20:00"}, times, br) == 7.5
+    assert H._assignment_duration_hours({"shift_type": "a"}, times) == 8.0          # 휴게 정보 없이도 예전처럼 동작
+    assert H._sanitize_break_minutes("45") == 45 and H._sanitize_break_minutes(-5) is None and H._sanitize_break_minutes(999) is None
+    old = H.DATA_DIR
+    H.DATA_DIR = tempfile.mkdtemp()
+    try:
+        c = A.app.test_client()
+        r = c.post("/api/auth/register", json={"name": "BR Co", "contact_name": "t", "email": "br@x.com",
+                   "password": "Passw0rd!x1", "employee_limit": 5})
+        with c.session_transaction() as s:
+            s["company_id"] = r.get_json()["id"]
+        types = c.get("/api/shift-types").get_json()
+        assert all(t["break_minutes"] == 60 for t in types)                           # 기존 근무유형은 60분으로 보임
+        sid = types[0]["id"]
+        assert c.put(f"/api/shift-types/{sid}", json={"break_minutes": 30}).get_json()["break_minutes"] == 30
+        assert c.put(f"/api/shift-types/{sid}", json={"break_minutes": 500}).status_code == 400
+        assert c.put(f"/api/shift-types/{sid}", json={"break_minutes": 0}).get_json()["break_minutes"] == 0
+        dept = types[0]["department_id"]
+        n = c.post("/api/shift-types", json={"name": "Mid", "department_id": dept, "start": "10:00", "end": "18:00", "break_minutes": 45})
+        assert n.get_json()["break_minutes"] == 45
+        n2 = c.post("/api/shift-types", json={"name": "Mid2", "department_id": dept})
+        assert n2.get_json()["break_minutes"] == 60
+        # 수동 배치 저장 시 법적 시간 계산도 근무유형별 휴게를 씀(휴게 0이면 8시간 전부 인정)
+        assert any(t["id"] == sid and t["break_minutes"] == 0 for t in c.get("/api/shift-types").get_json())
     finally:
         H.DATA_DIR = old
 
